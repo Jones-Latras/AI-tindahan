@@ -21,6 +21,8 @@ import { getHomeMetrics, getProductSalesVelocity, getWeeklyPaymentBreakdown } fr
 import { chatWithAlingAi, getOrCreateHomeAiBrief, isGeminiReady } from "@/services/ai";
 import type { ChatMessage, HomeAiBrief, HomeMetrics, ProductVelocity, WeeklyPaymentReport } from "@/types/models";
 import { formatCurrencyFromCents } from "@/utils/money";
+import { isSupabaseReady } from "@/utils/supabase";
+import { getLastSyncTime, restoreFromCloud, syncToCloud } from "@/utils/sync";
 
 function createChatMessage(role: ChatMessage["role"], text: string): ChatMessage {
   return {
@@ -46,6 +48,8 @@ export default function HomeScreen() {
   const [chatInput, setChatInput] = useState("");
   const [sendingChat, setSendingChat] = useState(false);
   const [seeding, setSeeding] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [lastSync, setLastSync] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([
     createChatMessage(
       "assistant",
@@ -80,6 +84,7 @@ export default function HomeScreen() {
       void Storage.getItem("tindahan.store-name").then((name) => {
         if (name) setStoreName(name);
       });
+      void getLastSyncTime().then(setLastSync);
     }, [loadDashboard]),
   );
 
@@ -723,6 +728,79 @@ export default function HomeScreen() {
               )}
             </SurfaceCard>
           </>
+        ) : null}
+
+        {isSupabaseReady() ? (
+          <SurfaceCard style={{ gap: theme.spacing.sm }}>
+            <View style={{ gap: 4 }}>
+              <Text
+                style={{
+                  color: theme.colors.text,
+                  fontFamily: theme.typography.display,
+                  fontSize: 24,
+                  fontWeight: "700",
+                }}
+              >
+                Cloud Backup
+              </Text>
+              <Text
+                style={{
+                  color: theme.colors.textMuted,
+                  fontFamily: theme.typography.body,
+                  fontSize: 14,
+                }}
+              >
+                {lastSync ? `Last backup: ${lastSync}` : "Hindi pa naka-backup sa cloud."}
+              </Text>
+            </View>
+            <ActionButton
+              disabled={syncing}
+              label={syncing ? "Syncing..." : "I-backup ngayon"}
+              onPress={async () => {
+                setSyncing(true);
+                try {
+                  const msg = await syncToCloud(db);
+                  Alert.alert("Backup", msg);
+                  setLastSync(await getLastSyncTime());
+                } catch (err) {
+                  Alert.alert("Backup failed", String(err));
+                } finally {
+                  setSyncing(false);
+                }
+              }}
+            />
+            <ActionButton
+              disabled={syncing}
+              label="Restore from Cloud"
+              onPress={() => {
+                Alert.alert(
+                  "Restore Data?",
+                  "I-o-overwrite nito ang local data mo. Sigurado ka ba?",
+                  [
+                    { text: "Cancel", style: "cancel" },
+                    {
+                      text: "Restore",
+                      style: "destructive",
+                      onPress: async () => {
+                        setSyncing(true);
+                        try {
+                          const msg = await restoreFromCloud(db);
+                          Alert.alert("Restore", msg);
+                          void loadDashboard();
+                          setLastSync(await getLastSyncTime());
+                        } catch (err) {
+                          Alert.alert("Restore failed", String(err));
+                        } finally {
+                          setSyncing(false);
+                        }
+                      },
+                    },
+                  ],
+                );
+              }}
+              variant="secondary"
+            />
+          </SurfaceCard>
         ) : null}
 
         {__DEV__ ? (

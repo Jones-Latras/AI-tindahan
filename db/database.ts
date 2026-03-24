@@ -1,7 +1,7 @@
 import type { SQLiteDatabase } from "expo-sqlite";
 
 export const DATABASE_NAME = "tindahan-ai.db";
-export const DATABASE_VERSION = 3;
+export const DATABASE_VERSION = 4;
 
 export async function migrateDbIfNeeded(db: SQLiteDatabase) {
   await db.execAsync("PRAGMA journal_mode = WAL;");
@@ -27,7 +27,8 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
         category TEXT,
         barcode TEXT UNIQUE,
         min_stock INTEGER NOT NULL DEFAULT 5 CHECK(min_stock >= 0),
-        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        synced INTEGER NOT NULL DEFAULT 0
       );
 
       CREATE TABLE IF NOT EXISTS sales (
@@ -38,7 +39,8 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
         discount_cents INTEGER NOT NULL DEFAULT 0 CHECK(discount_cents >= 0),
         payment_method TEXT NOT NULL DEFAULT 'cash' CHECK(payment_method IN ('cash', 'gcash', 'maya', 'utang')),
         customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL,
-        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        synced INTEGER NOT NULL DEFAULT 0
       );
 
       CREATE TABLE IF NOT EXISTS sale_items (
@@ -48,7 +50,8 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
         product_name TEXT NOT NULL,
         unit_price_cents INTEGER NOT NULL CHECK(unit_price_cents >= 0),
         unit_cost_cents INTEGER NOT NULL DEFAULT 0 CHECK(unit_cost_cents >= 0),
-        quantity INTEGER NOT NULL CHECK(quantity > 0)
+        quantity INTEGER NOT NULL CHECK(quantity > 0),
+        synced INTEGER NOT NULL DEFAULT 0
       );
 
       CREATE TABLE IF NOT EXISTS customers (
@@ -56,7 +59,8 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
         name TEXT NOT NULL COLLATE NOCASE,
         phone TEXT,
         trust_score TEXT NOT NULL DEFAULT 'Bago',
-        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        synced INTEGER NOT NULL DEFAULT 0
       );
 
       CREATE TABLE IF NOT EXISTS utang (
@@ -66,7 +70,8 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
         amount_paid_cents INTEGER NOT NULL DEFAULT 0 CHECK(amount_paid_cents >= 0),
         description TEXT,
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        paid_at TEXT
+        paid_at TEXT,
+        synced INTEGER NOT NULL DEFAULT 0
       );
 
       CREATE INDEX IF NOT EXISTS idx_products_name ON products(name);
@@ -96,6 +101,18 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
     `);
 
     currentVersion = 3;
+  }
+
+  if (currentVersion === 3) {
+    await db.execAsync(`
+      ALTER TABLE products ADD COLUMN synced INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE sales ADD COLUMN synced INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE sale_items ADD COLUMN synced INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE customers ADD COLUMN synced INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE utang ADD COLUMN synced INTEGER NOT NULL DEFAULT 0;
+    `);
+
+    currentVersion = 4;
   }
 
   await db.execAsync(`PRAGMA user_version = ${currentVersion};`);
