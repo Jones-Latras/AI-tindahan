@@ -77,6 +77,7 @@ type ProductFormPreview =
       stock: number;
       minStock: number;
       marginPercent: number;
+      sellingPriceTotalCents: number;
     };
 
 const emptyForm: ProductFormState = {
@@ -258,6 +259,7 @@ export default function ProduktoScreen() {
       stock,
       minStock,
       marginPercent: computeProfitMargin(costPriceCents, priceCents),
+      sellingPriceTotalCents: priceCents * stock,
     };
   }, [form]);
   const shouldShowValidationMessage = modalVisible && (editingProduct !== null || form.name.trim().length > 0);
@@ -1156,6 +1158,14 @@ export default function ProduktoScreen() {
               </Text>
               <Text style={{ color: theme.colors.primary, fontFamily: theme.typography.body, fontSize: 13, fontWeight: "700" }}>
                 {centsToDisplayValue(pricingPreview.priceCents)}
+              </Text>
+            </View>
+            <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+              <Text style={{ color: theme.colors.textMuted, fontFamily: theme.typography.body, fontSize: 13 }}>
+                Total projected sales
+              </Text>
+              <Text style={{ color: theme.colors.text, fontFamily: theme.typography.body, fontSize: 13, fontWeight: "700" }}>
+                {centsToDisplayValue(pricingPreview.sellingPriceTotalCents)}
               </Text>
             </View>
             <View style={{ flexDirection: "row", justifyContent: "space-between" }}>

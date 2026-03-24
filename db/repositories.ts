@@ -324,6 +324,9 @@ export async function saveProduct(db: SQLiteDatabase, input: ProductInput, produ
     if (costPriceCents >= priceCents) {
       throw new Error("Selling price must be greater than cost price.");
     }
+
+    costPriceTotalCents = costPriceCents * stock;
+    sellingPriceTotalCents = priceCents * stock;
   }
 
   if (productId) {
