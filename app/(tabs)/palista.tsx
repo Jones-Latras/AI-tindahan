@@ -636,20 +636,21 @@ export default function PalistaScreen() {
                         {t("palista.quickActions")}
                       </Text>
 
-                      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.xs }}>
+                      <View style={{ flexDirection: "row", gap: theme.spacing.xs }}>
                         <Pressable
                           onPress={() => void openCustomerDetail(customer)}
                           style={({ pressed }) => ({
                             alignItems: "center",
-                            alignSelf: "flex-start",
                             backgroundColor: theme.colors.primaryMuted,
                             borderColor: theme.colors.primaryMuted,
                             borderRadius: theme.radius.pill,
                             borderWidth: 1,
+                            flex: 1,
                             flexDirection: "row",
                             gap: theme.spacing.xs,
+                            justifyContent: "center",
                             opacity: pressed ? 0.88 : 1,
-                            paddingHorizontal: 12,
+                            paddingHorizontal: 8,
                             paddingVertical: 9,
                           })}
                         >
@@ -658,26 +659,28 @@ export default function PalistaScreen() {
                             style={{
                               color: theme.colors.primary,
                               fontFamily: theme.typography.body,
-                              fontSize: 12,
+                              fontSize: 11,
                               fontWeight: "700",
                             }}
+                            numberOfLines={1}
                           >
-                            {t("palista.viewHistory")}
+                            {t("palista.quickAction.history")}
                           </Text>
                         </Pressable>
                         <Pressable
                           onPress={() => void refreshSingleTrustScore(customer.id)}
                           style={({ pressed }) => ({
                             alignItems: "center",
-                            alignSelf: "flex-start",
                             backgroundColor: theme.colors.surfaceMuted,
                             borderColor: theme.colors.border,
                             borderRadius: theme.radius.pill,
                             borderWidth: 1,
+                            flex: 1,
                             flexDirection: "row",
                             gap: theme.spacing.xs,
+                            justifyContent: "center",
                             opacity: pressed ? 0.88 : 1,
-                            paddingHorizontal: 12,
+                            paddingHorizontal: 8,
                             paddingVertical: 9,
                           })}
                         >
@@ -686,26 +689,28 @@ export default function PalistaScreen() {
                             style={{
                               color: theme.colors.text,
                               fontFamily: theme.typography.body,
-                              fontSize: 12,
+                              fontSize: 11,
                               fontWeight: "700",
                             }}
+                            numberOfLines={1}
                           >
-                            {t("palista.refreshScore")}
+                            {t("palista.quickAction.refresh")}
                           </Text>
                         </Pressable>
                         <Pressable
                           onPress={() => openCustomerModal(customer)}
                           style={({ pressed }) => ({
                             alignItems: "center",
-                            alignSelf: "flex-start",
                             backgroundColor: theme.colors.surface,
                             borderColor: theme.colors.border,
                             borderRadius: theme.radius.pill,
                             borderWidth: 1,
+                            flex: 1,
                             flexDirection: "row",
                             gap: theme.spacing.xs,
+                            justifyContent: "center",
                             opacity: pressed ? 0.88 : 1,
-                            paddingHorizontal: 12,
+                            paddingHorizontal: 8,
                             paddingVertical: 9,
                           })}
                         >
@@ -714,11 +719,12 @@ export default function PalistaScreen() {
                             style={{
                               color: theme.colors.text,
                               fontFamily: theme.typography.body,
-                              fontSize: 12,
+                              fontSize: 11,
                               fontWeight: "700",
                             }}
+                            numberOfLines={1}
                           >
-                            {t("palista.editCustomerButton")}
+                            {t("palista.quickAction.edit")}
                           </Text>
                         </Pressable>
                       </View>
