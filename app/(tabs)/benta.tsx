@@ -1,0 +1,658 @@
+import { Feather } from "@expo/vector-icons";
+import { CameraView, useCameraPermissions, type BarcodeScanningResult } from "expo-camera";
+import { useFocusEffect } from "expo-router";
+import { useSQLiteContext } from "expo-sqlite";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { ActivityIndicator, Alert, Text, View } from "react-native";
+
+import { ActionButton } from "@/components/ActionButton";
+import { CartItem } from "@/components/CartItem";
+import { EmptyState } from "@/components/EmptyState";
+import { InputField } from "@/components/InputField";
+import { ModalSheet } from "@/components/ModalSheet";
+import { ProductCard } from "@/components/ProductCard";
+import { Screen } from "@/components/Screen";
+import { StatusBadge } from "@/components/StatusBadge";
+import { SurfaceCard } from "@/components/SurfaceCard";
+import { useAppTheme } from "@/contexts/ThemeContext";
+import { checkoutSale, getProductByBarcode, listCustomersWithBalances, listProducts } from "@/db/repositories";
+import { useCartStore } from "@/store/useCartStore";
+import type { CustomerSummary, PaymentMethod, Product } from "@/types/models";
+import { centsToDisplayValue, formatCurrencyFromCents, parseCurrencyToCents } from "@/utils/money";
+
+const QUICK_PAY_VALUES = [5000, 10000, 20000, 50000];
+const PAYMENT_METHODS: Array<{ key: PaymentMethod; label: string }> = [
+  { key: "cash", label: "Cash" },
+  { key: "gcash", label: "GCash" },
+  { key: "maya", label: "Maya" },
+  { key: "utang", label: "Utang" },
+];
+
+export default function BentaScreen() {
+  const db = useSQLiteContext();
+  const { theme } = useAppTheme();
+  const [products, setProducts] = useState<Product[]>([]);
+  const [customers, setCustomers] = useState<CustomerSummary[]>([]);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [cashInput, setCashInput] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
+  const [selectedCustomer, setSelectedCustomer] = useState<CustomerSummary | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [processingCheckout, setProcessingCheckout] = useState(false);
+  const [customerPickerVisible, setCustomerPickerVisible] = useState(false);
+  const [scannerVisible, setScannerVisible] = useState(false);
+  const [scannerBusy, setScannerBusy] = useState(false);
+
+  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
+
+  const cartItems = useCartStore((state) => state.items);
+  const addItem = useCartStore((state) => state.addItem);
+  const clearCart = useCartStore((state) => state.clearCart);
+  const removeItem = useCartStore((state) => state.removeItem);
+  const updateQuantity = useCartStore((state) => state.updateQuantity);
+  const totalCents = useCartStore((state) =>
+    state.items.reduce((runningTotal, item) => runningTotal + item.priceCents * item.quantity, 0),
+  );
+
+  const productById = useMemo(() => new Map(products.map((product) => [product.id, product])), [products]);
+
+  const loadScreenData = useCallback(async () => {
+    setLoading(true);
+
+    try {
+      const [nextProducts, nextCustomers] = await Promise.all([
+        listProducts(db, searchTerm),
+        listCustomersWithBalances(db),
+      ]);
+      setProducts(nextProducts);
+      setCustomers(nextCustomers);
+
+      if (selectedCustomer) {
+        const refreshedCustomer = nextCustomers.find((customer) => customer.id === selectedCustomer.id) ?? null;
+        setSelectedCustomer(refreshedCustomer);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [db, searchTerm, selectedCustomer]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadScreenData();
+    }, [loadScreenData]),
+  );
+
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      void loadScreenData();
+    }, 180);
+
+    return () => clearTimeout(timeout);
+  }, [loadScreenData]);
+
+  const cashPaidCents = parseCurrencyToCents(cashInput);
+  const hasValidCash = Number.isFinite(cashPaidCents);
+  const changeCents = paymentMethod === "cash" && hasValidCash ? cashPaidCents - totalCents : 0;
+  const isEnoughCash = paymentMethod === "cash" ? hasValidCash && cashPaidCents >= totalCents : true;
+  const requiresCustomer = paymentMethod === "utang";
+  const isCheckoutReady =
+    cartItems.length > 0 && isEnoughCash && (!requiresCustomer || Boolean(selectedCustomer));
+
+  const handleAddToCart = useCallback(
+    (product: Product) => {
+      if (product.stock <= 0) {
+        Alert.alert("Out of stock", `${product.name} is currently out of stock.`);
+        return;
+      }
+
+      addItem({
+        id: product.id,
+        name: product.name,
+        priceCents: product.priceCents,
+        stock: product.stock,
+      });
+    },
+    [addItem],
+  );
+
+  const handleOpenScanner = useCallback(async () => {
+    if (!cameraPermission || !cameraPermission.granted) {
+      const permission = await requestCameraPermission();
+      if (!permission.granted) {
+        Alert.alert("Camera needed", "Please allow camera access so TindaHan AI can scan product barcodes.");
+        return;
+      }
+    }
+
+    setScannerBusy(false);
+    setScannerVisible(true);
+  }, [cameraPermission, requestCameraPermission]);
+
+  const handleBarcodeScanned = useCallback(
+    async (result: BarcodeScanningResult) => {
+      if (scannerBusy) {
+        return;
+      }
+
+      setScannerBusy(true);
+      setScannerVisible(false);
+
+      try {
+        const product = await getProductByBarcode(db, result.data);
+
+        if (!product) {
+          Alert.alert("Product not found", "Hindi nahanap ang barcode. I-add mo muna ang product sa catalog.");
+          return;
+        }
+
+        handleAddToCart(product);
+      } finally {
+        setScannerBusy(false);
+      }
+    },
+    [db, handleAddToCart, scannerBusy],
+  );
+
+  const handleCheckout = useCallback(async () => {
+    if (cartItems.length === 0) {
+      Alert.alert("Cart is empty", "Add products before checking out.");
+      return;
+    }
+
+    if (paymentMethod === "cash" && (!hasValidCash || !isEnoughCash)) {
+      Alert.alert("Cash not enough", "Enter a valid amount that covers the full total.");
+      return;
+    }
+
+    if (paymentMethod === "utang" && !selectedCustomer) {
+      Alert.alert("Customer required", "Select a customer before saving this utang transaction.");
+      return;
+    }
+
+    const payloadItems = cartItems.map((item) => {
+      const product = productById.get(item.id);
+
+      if (!product) {
+        throw new Error(`Product ${item.name} could not be refreshed.`);
+      }
+
+      return {
+        id: item.id,
+        name: item.name,
+        priceCents: item.priceCents,
+        costPriceCents: product.costPriceCents,
+        quantity: item.quantity,
+      };
+    });
+
+    setProcessingCheckout(true);
+
+    try {
+      const saleId = await checkoutSale(db, {
+        items: payloadItems,
+        totalCents,
+        cashPaidCents: paymentMethod === "cash" && hasValidCash ? cashPaidCents : 0,
+        paymentMethod,
+        customerId: selectedCustomer?.id ?? null,
+        utangDescription: selectedCustomer ? `POS sale for ${selectedCustomer.name}` : undefined,
+      });
+
+      clearCart();
+      setCashInput("");
+      setPaymentMethod("cash");
+      setSelectedCustomer(null);
+      await loadScreenData();
+
+      const successSuffix =
+        paymentMethod === "cash"
+          ? `Change: ${formatCurrencyFromCents(changeCents)}.`
+          : paymentMethod === "utang"
+            ? `Linked to ${selectedCustomer?.name}'s utang ledger.`
+            : `Saved as ${paymentMethod.toUpperCase()} payment.`;
+
+      Alert.alert("Sale completed", `Transaction #${saleId} saved successfully. ${successSuffix}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Checkout failed. Please try again.";
+      Alert.alert("Checkout failed", message);
+    } finally {
+      setProcessingCheckout(false);
+    }
+  }, [
+    cartItems,
+    cashPaidCents,
+    changeCents,
+    clearCart,
+    db,
+    hasValidCash,
+    isEnoughCash,
+    loadScreenData,
+    paymentMethod,
+    productById,
+    selectedCustomer,
+    totalCents,
+  ]);
+
+  return (
+    <>
+      <Screen subtitle="Fast checkout with barcode scanning, digital payments, and safe local persistence." title="Benta">
+        <SurfaceCard style={{ gap: theme.spacing.md }}>
+          <InputField
+            label="Search products"
+            onChangeText={setSearchTerm}
+            placeholder="Find by name, category, or barcode"
+            value={searchTerm}
+          />
+          <ActionButton
+            icon={<Feather color={theme.colors.primaryText} name="camera" size={16} />}
+            label="Scan Barcode"
+            onPress={() => void handleOpenScanner()}
+          />
+        </SurfaceCard>
+
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.md }}>
+          {loading ? (
+            <SurfaceCard style={{ width: "100%" }}>
+              <View style={{ alignItems: "center", flexDirection: "row", gap: theme.spacing.sm }}>
+                <ActivityIndicator color={theme.colors.primary} />
+                <Text
+                  style={{
+                    color: theme.colors.textMuted,
+                    fontFamily: theme.typography.body,
+                    fontSize: 14,
+                  }}
+                >
+                  Loading product catalog...
+                </Text>
+              </View>
+            </SurfaceCard>
+          ) : products.length > 0 ? (
+            products.map((product) => {
+              const marginPercent =
+                product.priceCents > 0
+                  ? `${(((product.priceCents - product.costPriceCents) / product.priceCents) * 100).toFixed(0)}%`
+                  : "0%";
+
+              return (
+                <ProductCard
+                  category={product.category}
+                  disabled={product.stock <= 0}
+                  key={product.id}
+                  marginPercent={marginPercent}
+                  minStock={product.minStock}
+                  name={product.name}
+                  onPress={() => handleAddToCart(product)}
+                  priceCents={product.priceCents}
+                  stock={product.stock}
+                />
+              );
+            })
+          ) : (
+            <View style={{ width: "100%" }}>
+              <EmptyState
+                icon="package"
+                message="Add products first in the Produkto tab to start selling from the POS screen."
+                title="No Products Yet"
+              />
+            </View>
+          )}
+        </View>
+
+        <SurfaceCard style={{ gap: theme.spacing.md }}>
+          <View style={{ gap: 4 }}>
+            <Text
+              style={{
+                color: theme.colors.text,
+                fontFamily: theme.typography.display,
+                fontSize: 24,
+                fontWeight: "700",
+              }}
+            >
+              Current Cart
+            </Text>
+            <Text
+              style={{
+                color: theme.colors.textMuted,
+                fontFamily: theme.typography.body,
+                fontSize: 14,
+              }}
+            >
+              Update quantities before saving the sale.
+            </Text>
+          </View>
+
+          {cartItems.length > 0 ? (
+            cartItems.map((item) => (
+              <CartItem
+                key={item.id}
+                maxQuantity={item.stock}
+                name={item.name}
+                onDecrease={() => updateQuantity(item.id, item.quantity - 1)}
+                onIncrease={() => updateQuantity(item.id, item.quantity + 1)}
+                onRemove={() => removeItem(item.id)}
+                priceCents={item.priceCents}
+                quantity={item.quantity}
+              />
+            ))
+          ) : (
+            <EmptyState
+              icon="shopping-cart"
+              message="Tap any product card above and it will appear here instantly."
+              title="Cart Is Empty"
+            />
+          )}
+
+          <View
+            style={{
+              backgroundColor: theme.colors.surface,
+              borderColor: theme.colors.border,
+              borderRadius: theme.radius.md,
+              borderWidth: 1,
+              gap: theme.spacing.md,
+              padding: theme.spacing.lg,
+            }}
+          >
+            <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+              <Text
+                style={{
+                  color: theme.colors.textMuted,
+                  fontFamily: theme.typography.body,
+                  fontSize: 14,
+                  fontWeight: "600",
+                }}
+              >
+                Total
+              </Text>
+              <Text
+                style={{
+                  color: theme.colors.text,
+                  fontFamily: theme.typography.display,
+                  fontSize: 28,
+                  fontWeight: "700",
+                }}
+              >
+                {formatCurrencyFromCents(totalCents)}
+              </Text>
+            </View>
+
+            <View style={{ gap: theme.spacing.sm }}>
+              <Text
+                style={{
+                  color: theme.colors.textMuted,
+                  fontFamily: theme.typography.body,
+                  fontSize: 13,
+                  fontWeight: "700",
+                }}
+              >
+                Payment method
+              </Text>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
+                {PAYMENT_METHODS.map((method) => (
+                  <ActionButton
+                    key={method.key}
+                    label={method.label}
+                    onPress={() => {
+                      setPaymentMethod(method.key);
+                      if (method.key !== "utang") {
+                        setSelectedCustomer(null);
+                      }
+                    }}
+                    style={{ flex: 1, minWidth: 120 }}
+                    variant={paymentMethod === method.key ? "primary" : "ghost"}
+                  />
+                ))}
+              </View>
+            </View>
+
+            {paymentMethod === "cash" ? (
+              <>
+                <InputField
+                  keyboardType="decimal-pad"
+                  label="Cash received"
+                  onChangeText={setCashInput}
+                  placeholder="0.00"
+                  value={cashInput}
+                />
+
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
+                  {QUICK_PAY_VALUES.map((value) => (
+                    <ActionButton
+                      key={value}
+                      label={formatCurrencyFromCents(value)}
+                      onPress={() => setCashInput(centsToDisplayValue(value))}
+                      style={{ flex: 1, minWidth: 120 }}
+                      variant="ghost"
+                    />
+                  ))}
+                </View>
+              </>
+            ) : paymentMethod === "utang" ? (
+              <View style={{ gap: theme.spacing.sm }}>
+                {selectedCustomer ? (
+                  <SurfaceCard style={{ gap: theme.spacing.sm, padding: theme.spacing.md }}>
+                    <StatusBadge label="Linked Customer" tone="warning" />
+                    <Text
+                      style={{
+                        color: theme.colors.text,
+                        fontFamily: theme.typography.body,
+                        fontSize: 15,
+                        fontWeight: "700",
+                      }}
+                    >
+                      {selectedCustomer.name}
+                    </Text>
+                    <Text
+                      style={{
+                        color: theme.colors.textMuted,
+                        fontFamily: theme.typography.body,
+                        fontSize: 13,
+                      }}
+                    >
+                      Current balance: {formatCurrencyFromCents(selectedCustomer.balanceCents)}
+                    </Text>
+                  </SurfaceCard>
+                ) : null}
+
+                <ActionButton
+                  label={selectedCustomer ? "Change Customer" : "Select Customer"}
+                  onPress={() => setCustomerPickerVisible(true)}
+                  variant="secondary"
+                />
+                {customers.length === 0 ? (
+                  <Text
+                    style={{
+                      color: theme.colors.textMuted,
+                      fontFamily: theme.typography.body,
+                      fontSize: 13,
+                    }}
+                  >
+                    Add a customer in Palista first before saving an utang sale.
+                  </Text>
+                ) : null}
+              </View>
+            ) : (
+              <View
+                style={{
+                  backgroundColor: theme.colors.primaryMuted,
+                  borderRadius: theme.radius.sm,
+                  padding: theme.spacing.md,
+                }}
+              >
+                <Text
+                  style={{
+                    color: theme.colors.primary,
+                    fontFamily: theme.typography.body,
+                    fontSize: 14,
+                    fontWeight: "700",
+                  }}
+                >
+                  No cash input needed. This sale will be saved under {paymentMethod.toUpperCase()}.
+                </Text>
+              </View>
+            )}
+
+            <View
+              style={{
+                backgroundColor:
+                  paymentMethod === "cash"
+                    ? isEnoughCash
+                      ? theme.colors.successMuted
+                      : theme.colors.dangerMuted
+                    : paymentMethod === "utang" && !selectedCustomer
+                      ? theme.colors.warningMuted
+                      : theme.colors.successMuted,
+                borderRadius: theme.radius.sm,
+                padding: theme.spacing.md,
+              }}
+            >
+              <Text
+                style={{
+                  color:
+                    paymentMethod === "cash"
+                      ? isEnoughCash
+                        ? theme.colors.success
+                        : theme.colors.danger
+                      : paymentMethod === "utang" && !selectedCustomer
+                        ? theme.colors.warning
+                        : theme.colors.success,
+                  fontFamily: theme.typography.body,
+                  fontSize: 14,
+                  fontWeight: "700",
+                }}
+              >
+                {paymentMethod === "cash"
+                  ? isEnoughCash
+                    ? `Sukli: ${formatCurrencyFromCents(changeCents)}`
+                    : "Kulang pa ang cash para ma-checkout."
+                  : paymentMethod === "utang"
+                    ? selectedCustomer
+                      ? "This sale will be added to the selected customer's utang ledger."
+                      : "Pick a customer before saving this utang sale."
+                    : `Digital payment ready via ${paymentMethod.toUpperCase()}.`}
+              </Text>
+            </View>
+
+            <ActionButton
+              disabled={processingCheckout || !isCheckoutReady}
+              label={processingCheckout ? "Saving sale..." : "I-checkout"}
+              onPress={() => void handleCheckout()}
+            />
+          </View>
+        </SurfaceCard>
+      </Screen>
+
+      <ModalSheet
+        footer={<ActionButton label="Close" onPress={() => setCustomerPickerVisible(false)} variant="ghost" />}
+        onClose={() => setCustomerPickerVisible(false)}
+        subtitle="Choose the customer whose utang ledger should receive this sale."
+        title="Select Customer"
+        visible={customerPickerVisible}
+      >
+        {customers.length > 0 ? (
+          customers.map((customer) => (
+            <SurfaceCard key={customer.id} style={{ gap: theme.spacing.sm, padding: theme.spacing.md }}>
+              <View style={{ alignItems: "center", flexDirection: "row", justifyContent: "space-between" }}>
+                <View style={{ flex: 1, gap: 4, paddingRight: theme.spacing.md }}>
+                  <Text
+                    style={{
+                      color: theme.colors.text,
+                      fontFamily: theme.typography.body,
+                      fontSize: 15,
+                      fontWeight: "700",
+                    }}
+                  >
+                    {customer.name}
+                  </Text>
+                  <Text
+                    style={{
+                      color: theme.colors.textMuted,
+                      fontFamily: theme.typography.body,
+                      fontSize: 13,
+                    }}
+                  >
+                    Balance {formatCurrencyFromCents(customer.balanceCents)}
+                  </Text>
+                </View>
+                <StatusBadge
+                  label={customer.trustScore}
+                  tone={
+                    customer.trustScore === "Delikado"
+                      ? "danger"
+                      : customer.trustScore === "Bantayan"
+                        ? "warning"
+                        : customer.trustScore === "Maaasahan"
+                          ? "success"
+                          : "neutral"
+                  }
+                />
+              </View>
+              <ActionButton
+                label="Use This Customer"
+                onPress={() => {
+                  setSelectedCustomer(customer);
+                  setCustomerPickerVisible(false);
+                }}
+                variant="secondary"
+              />
+            </SurfaceCard>
+          ))
+        ) : (
+          <EmptyState
+            icon="users"
+            message="Create a customer in Palista first, then return here to save utang-based checkout."
+            title="No Customers Yet"
+          />
+        )}
+      </ModalSheet>
+
+      <ModalSheet
+        footer={<ActionButton label="Close Scanner" onPress={() => setScannerVisible(false)} variant="ghost" />}
+        onClose={() => setScannerVisible(false)}
+        subtitle="Point the camera at a supported product barcode to add it directly to the cart."
+        title="Barcode Scanner"
+        visible={scannerVisible}
+      >
+        <View
+          style={{
+            borderColor: theme.colors.border,
+            borderRadius: theme.radius.md,
+            borderWidth: 1,
+            overflow: "hidden",
+          }}
+        >
+          {cameraPermission?.granted ? (
+            <CameraView
+              barcodeScannerSettings={{
+                barcodeTypes: ["ean13", "ean8", "upc_a", "upc_e", "code128", "code39", "qr"],
+              }}
+              onBarcodeScanned={scannerVisible ? handleBarcodeScanned : undefined}
+              style={{ height: 340, width: "100%" }}
+            />
+          ) : (
+            <View
+              style={{
+                alignItems: "center",
+                backgroundColor: theme.colors.surface,
+                gap: theme.spacing.md,
+                justifyContent: "center",
+                minHeight: 220,
+                padding: theme.spacing.lg,
+              }}
+            >
+              <Text
+                style={{
+                  color: theme.colors.textMuted,
+                  fontFamily: theme.typography.body,
+                  fontSize: 14,
+                  textAlign: "center",
+                }}
+              >
+                Camera permission is required before barcode scanning can start.
+              </Text>
+              <ActionButton label="Grant Camera Access" onPress={() => void handleOpenScanner()} />
+            </View>
+          )}
+        </View>
+      </ModalSheet>
+    </>
+  );
+}

@@ -1,0 +1,115 @@
+import { Platform } from "react-native";
+
+import type { ThemeMode } from "@/types/models";
+
+const displayFontFamily = Platform.select({
+  ios: "Avenir Next Condensed",
+  android: "sans-serif-condensed",
+  default: "system-ui",
+});
+
+const bodyFontFamily = Platform.select({
+  ios: "Avenir Next",
+  android: "sans-serif",
+  default: "system-ui",
+});
+
+export const lightTheme = {
+  mode: "light" as ThemeMode,
+  colors: {
+    background: "#F3F0E9",
+    surface: "#FFFCF6",
+    surfaceMuted: "#ECE6DA",
+    card: "#FFFFFF",
+    border: "#D8D1C3",
+    borderStrong: "#BFB5A2",
+    text: "#151A18",
+    textMuted: "#675F54",
+    textSoft: "#8A8276",
+    primary: "#0D6A54",
+    primaryMuted: "#D8F0E7",
+    primaryText: "#F6FFFB",
+    accent: "#B8793D",
+    accentMuted: "#F2E3D2",
+    danger: "#B44B39",
+    dangerMuted: "#F7DDD8",
+    warning: "#9D6718",
+    warningMuted: "#F8E8D0",
+    success: "#2A8B66",
+    successMuted: "#DDF4EA",
+    overlay: "rgba(18, 24, 21, 0.38)",
+    shadow: "rgba(19, 24, 22, 0.08)"
+  },
+  typography: {
+    display: displayFontFamily,
+    body: bodyFontFamily,
+  },
+  spacing: {
+    xs: 6,
+    sm: 10,
+    md: 14,
+    lg: 18,
+    xl: 24,
+    xxl: 32,
+  },
+  radius: {
+    sm: 12,
+    md: 18,
+    lg: 24,
+    pill: 999,
+  },
+};
+
+export const darkTheme = {
+  mode: "dark" as ThemeMode,
+  colors: {
+    background: "#0E1311",
+    surface: "#131917",
+    surfaceMuted: "#1A221F",
+    card: "#161D1A",
+    border: "#28322E",
+    borderStrong: "#3B4843",
+    text: "#F4F1E9",
+    textMuted: "#C5BCAE",
+    textSoft: "#958D81",
+    primary: "#4FC49F",
+    primaryMuted: "#12362C",
+    primaryText: "#081510",
+    accent: "#D5A168",
+    accentMuted: "#34281A",
+    danger: "#DF7C68",
+    dangerMuted: "#351B17",
+    warning: "#E3B463",
+    warningMuted: "#372A15",
+    success: "#65D3A5",
+    successMuted: "#112F24",
+    overlay: "rgba(4, 7, 6, 0.6)",
+    shadow: "rgba(0, 0, 0, 0.28)"
+  },
+  typography: {
+    display: displayFontFamily,
+    body: bodyFontFamily,
+  },
+  spacing: {
+    xs: 6,
+    sm: 10,
+    md: 14,
+    lg: 18,
+    xl: 24,
+    xxl: 32,
+  },
+  radius: {
+    sm: 12,
+    md: 18,
+    lg: 24,
+    pill: 999,
+  },
+};
+
+export const themes = {
+  light: lightTheme,
+  dark: darkTheme,
+};
+
+export type AppTheme = typeof lightTheme;
+

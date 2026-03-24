@@ -1,0 +1,69 @@
+import { Feather } from "@expo/vector-icons";
+import { Text, View } from "react-native";
+
+import { useAppTheme } from "@/contexts/ThemeContext";
+import { SurfaceCard } from "@/components/SurfaceCard";
+
+type StatCardProps = {
+  icon: keyof typeof Feather.glyphMap;
+  label: string;
+  value: string;
+  tone?: "primary" | "accent" | "warning";
+};
+
+export function StatCard({ icon, label, value, tone = "primary" }: StatCardProps) {
+  const { theme } = useAppTheme();
+
+  const toneColors =
+    tone === "accent"
+      ? { bg: theme.colors.accentMuted, fg: theme.colors.accent }
+      : tone === "warning"
+        ? { bg: theme.colors.warningMuted, fg: theme.colors.warning }
+        : { bg: theme.colors.primaryMuted, fg: theme.colors.primary };
+
+  return (
+    <SurfaceCard
+      style={{
+        flex: 1,
+        gap: theme.spacing.md,
+        minWidth: "47%",
+      }}
+    >
+      <View
+        style={{
+          alignItems: "center",
+          backgroundColor: toneColors.bg,
+          borderRadius: theme.radius.pill,
+          height: 40,
+          justifyContent: "center",
+          width: 40,
+        }}
+      >
+        <Feather color={toneColors.fg} name={icon} size={18} />
+      </View>
+      <View style={{ gap: 6 }}>
+        <Text
+          style={{
+            color: theme.colors.textMuted,
+            fontFamily: theme.typography.body,
+            fontSize: 13,
+            fontWeight: "600",
+          }}
+        >
+          {label}
+        </Text>
+        <Text
+          style={{
+            color: theme.colors.text,
+            fontFamily: theme.typography.display,
+            fontSize: 24,
+            fontWeight: "700",
+          }}
+        >
+          {value}
+        </Text>
+      </View>
+    </SurfaceCard>
+  );
+}
+

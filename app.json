@@ -1,0 +1,34 @@
+{
+  "expo": {
+    "name": "TindaHan AI",
+    "slug": "tindahan-ai",
+    "scheme": "tindahanai",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "experiments": {
+      "typedRoutes": true
+    },
+    "plugins": [
+      "expo-router",
+      "expo-sqlite",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow TindaHan AI to scan product barcodes",
+          "barcodeScannerEnabled": true
+        }
+      ]
+    ],
+    "android": {
+      "package": "com.tindahanai.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#0D6A54"
+      }
+    },
+    "web": {
+      "bundler": "metro"
+    }
+  }
+}
