@@ -23,8 +23,11 @@ import type {
 } from "@/types/models";
 import { formatCurrencyFromCents } from "@/utils/money";
 
-const GEMINI_MODEL = "gemini-2.5-flash";
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+const GEMINI_MODELS = [
+  "gemini-3.1-flash-lite-preview",
+  "gemini-2.5-flash-lite",
+  "gemini-2.5-flash",
+] as const;
 const REQUEST_TIMEOUT_MS = 18_000;
 const HOME_AI_BRIEF_KEY_PREFIX = "ai.home-brief";
 
@@ -55,9 +58,28 @@ type GeminiFailure = {
   retryAfterSeconds?: number;
 };
 
+type GeminiRequestBody = {
+  system_instruction?: {
+    parts: Array<{ text: string }>;
+  };
+  contents: GeminiContent[];
+  generationConfig: {
+    temperature: number;
+    responseMimeType: string;
+    responseJsonSchema?: Record<string, unknown>;
+    thinkingConfig: {
+      thinkingBudget: number;
+    };
+  };
+};
+
 function getTodayCacheKey(language: AppLanguage) {
   const day = new Intl.DateTimeFormat("en-CA").format(new Date());
   return `${HOME_AI_BRIEF_KEY_PREFIX}.${language}.${day}`;
+}
+
+function getGeminiUrl(model: string) {
+  return `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
 }
 
 function getGeminiApiKey() {
@@ -180,90 +202,92 @@ function extractGeminiText(payload: any) {
 
 async function callGeminiText(options: GeminiTextOptions) {
   const geminiApiKey = ensureGeminiConfigured();
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-
-  try {
-    const response = await fetch(GEMINI_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-goog-api-key": geminiApiKey,
+  const body: GeminiRequestBody = {
+    system_instruction: options.systemInstruction
+      ? {
+          parts: [{ text: options.systemInstruction }],
+        }
+      : undefined,
+    contents: options.contents,
+    generationConfig: {
+      temperature: options.temperature ?? 0.4,
+      responseMimeType: "text/plain",
+      thinkingConfig: {
+        thinkingBudget: 0,
       },
-      body: JSON.stringify({
-        system_instruction: options.systemInstruction
-          ? {
-              parts: [{ text: options.systemInstruction }],
-            }
-          : undefined,
-        contents: options.contents,
-        generationConfig: {
-          temperature: options.temperature ?? 0.4,
-          responseMimeType: "text/plain",
-          thinkingConfig: {
-            thinkingBudget: 0,
-          },
-        },
-      }),
-      signal: controller.signal,
-    });
+    },
+  };
 
-    if (!response.ok) {
-      const failureText = await response.text();
-      throw new Error(`Gemini request failed (${response.status}): ${failureText || "Unknown error"}`);
-    }
-
-    const payload = await response.json();
-    return extractGeminiText(payload);
-  } finally {
-    clearTimeout(timeout);
-  }
+  return callGeminiWithFallback(geminiApiKey, body, (payload) => extractGeminiText(payload));
 }
 
 async function callGeminiJson<T>(options: GeminiJsonOptions<T>) {
   const geminiApiKey = ensureGeminiConfigured();
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-
-  try {
-    const response = await fetch(GEMINI_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-goog-api-key": geminiApiKey,
+  const body: GeminiRequestBody = {
+    system_instruction: options.systemInstruction
+      ? {
+          parts: [{ text: options.systemInstruction }],
+        }
+      : undefined,
+    contents: options.contents,
+    generationConfig: {
+      temperature: options.temperature ?? 0.3,
+      responseMimeType: "application/json",
+      responseJsonSchema: options.schema,
+      thinkingConfig: {
+        thinkingBudget: 0,
       },
-      body: JSON.stringify({
-        system_instruction: options.systemInstruction
-          ? {
-              parts: [{ text: options.systemInstruction }],
-            }
-          : undefined,
-        contents: options.contents,
-        generationConfig: {
-          temperature: options.temperature ?? 0.3,
-          responseMimeType: "application/json",
-          responseJsonSchema: options.schema,
-          thinkingConfig: {
-            thinkingBudget: 0,
-          },
-        },
-      }),
-      signal: controller.signal,
-    });
+    },
+  };
 
-    if (!response.ok) {
-      const failureText = await response.text();
-      throw new Error(`Gemini request failed (${response.status}): ${failureText || "Unknown error"}`);
-    }
-
-    const payload = await response.json();
+  return callGeminiWithFallback(geminiApiKey, body, (payload) => {
     const text = extractGeminiText(payload);
     return options.validate(JSON.parse(text));
-  } finally {
-    clearTimeout(timeout);
+  });
+}
+
+async function callGeminiWithFallback<T>(
+  geminiApiKey: string,
+  body: GeminiRequestBody,
+  parsePayload: (payload: any) => T,
+) {
+  const failures: string[] = [];
+
+  for (const model of GEMINI_MODELS) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+    try {
+      const response = await fetch(getGeminiUrl(model), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-goog-api-key": geminiApiKey,
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        const failureText = await response.text();
+        throw new Error(`Gemini request failed for ${model} (${response.status}): ${failureText || "Unknown error"}`);
+      }
+
+      const payload = await response.json();
+      return parsePayload(payload);
+    } catch (error) {
+      const message = getGeminiErrorMessage(error) || `Unknown error for ${model}.`;
+      failures.push(message);
+
+      if (model !== GEMINI_MODELS[GEMINI_MODELS.length - 1]) {
+        console.warn(`Gemini model fallback from ${model}: ${message}`);
+      }
+    } finally {
+      clearTimeout(timeout);
+    }
   }
+
+  throw new Error(failures.join(" | "));
 }
 
 function validateHomeAiBrief(value: unknown): HomeAiBrief {

@@ -2,7 +2,7 @@ import { Feather } from "@expo/vector-icons";
 import { useFocusEffect } from "expo-router";
 import { useSQLiteContext } from "expo-sqlite";
 import Storage from "expo-sqlite/kv-store";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from "react-native";
 
 import { seedStoreData } from "@/scripts/seed-store";
@@ -36,11 +36,93 @@ function createChatMessage(role: ChatMessage["role"], text: string): ChatMessage
   };
 }
 
+type HomePanel = "analytics" | "inventory" | "credit" | "cloud" | "dev";
+
+type HomeShortcutCardProps = {
+  icon: keyof typeof Feather.glyphMap;
+  onPress: () => void;
+  subtitle: string;
+  title: string;
+  tone: "primary" | "accent" | "warning" | "danger" | "neutral";
+};
+
+function HomeShortcutCard({ icon, onPress, subtitle, title, tone }: HomeShortcutCardProps) {
+  const { theme } = useAppTheme();
+
+  const palette =
+    tone === "accent"
+      ? { backgroundColor: theme.colors.accentMuted, color: theme.colors.accent }
+      : tone === "warning"
+        ? { backgroundColor: theme.colors.warningMuted, color: theme.colors.warning }
+        : tone === "danger"
+          ? { backgroundColor: theme.colors.dangerMuted, color: theme.colors.danger }
+          : tone === "neutral"
+            ? { backgroundColor: theme.colors.surfaceMuted, color: theme.colors.textMuted }
+            : { backgroundColor: theme.colors.primaryMuted, color: theme.colors.primary };
+
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => ({
+        backgroundColor: theme.colors.surface,
+        borderColor: theme.colors.border,
+        borderRadius: theme.radius.md,
+        borderWidth: 1,
+        flex: 1,
+        gap: theme.spacing.md,
+        minWidth: "47%",
+        opacity: pressed ? 0.9 : 1,
+        padding: theme.spacing.md,
+      })}
+    >
+      <View style={{ alignItems: "center", flexDirection: "row", justifyContent: "space-between" }}>
+        <View
+          style={{
+            alignItems: "center",
+            backgroundColor: palette.backgroundColor,
+            borderRadius: theme.radius.pill,
+            height: 42,
+            justifyContent: "center",
+            width: 42,
+          }}
+        >
+          <Feather color={palette.color} name={icon} size={18} />
+        </View>
+        <Feather color={theme.colors.textSoft} name="chevron-right" size={18} />
+      </View>
+
+      <View style={{ gap: 6 }}>
+        <Text
+          style={{
+            color: theme.colors.text,
+            fontFamily: theme.typography.display,
+            fontSize: 20,
+            fontWeight: "700",
+          }}
+        >
+          {title}
+        </Text>
+        <Text
+          style={{
+            color: theme.colors.textMuted,
+            fontFamily: theme.typography.body,
+            fontSize: 13,
+            lineHeight: 19,
+          }}
+        >
+          {subtitle}
+        </Text>
+      </View>
+    </Pressable>
+  );
+}
+
 export default function HomeScreen() {
   const db = useSQLiteContext();
   const { theme } = useAppTheme();
   const { language, t } = useAppLanguage();
   const geminiReady = isGeminiReady();
+  const supabaseReady = isSupabaseReady();
   const [metrics, setMetrics] = useState<HomeMetrics | null>(null);
   const [brief, setBrief] = useState<HomeAiBrief | null>(null);
   const [velocity, setVelocity] = useState<ProductVelocity[]>([]);
@@ -54,11 +136,66 @@ export default function HomeScreen() {
   const [seeding, setSeeding] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [lastSync, setLastSync] = useState<string | null>(null);
+  const [activePanel, setActivePanel] = useState<HomePanel | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>(() => [createChatMessage("assistant", t("home.aiWelcome"))]);
   const compactCardStyle = {
     gap: theme.spacing.sm,
     padding: theme.spacing.md,
   } as const;
+  const shortcutItems = useMemo(() => {
+    const items: Array<{
+      icon: keyof typeof Feather.glyphMap;
+      key: HomePanel;
+      subtitle: string;
+      title: string;
+      tone: HomeShortcutCardProps["tone"];
+    }> = [
+      {
+        icon: "bar-chart-2",
+        key: "analytics",
+        subtitle: t("home.shortcuts.analytics.subtitle"),
+        title: t("home.shortcuts.analytics.title"),
+        tone: "primary",
+      },
+      {
+        icon: "package",
+        key: "inventory",
+        subtitle: t("home.shortcuts.inventory.subtitle"),
+        title: t("home.shortcuts.inventory.title"),
+        tone: "warning",
+      },
+      {
+        icon: "users",
+        key: "credit",
+        subtitle: t("home.shortcuts.credit.subtitle"),
+        title: t("home.shortcuts.credit.title"),
+        tone: "danger",
+      },
+    ];
+
+    if (supabaseReady) {
+      items.push({
+        icon: "cloud",
+        key: "cloud",
+        subtitle: t("home.shortcuts.cloud.subtitle"),
+        title: t("home.shortcuts.cloud.title"),
+        tone: "accent",
+      });
+    }
+
+    if (__DEV__) {
+      items.push({
+        icon: "tool",
+        key: "dev",
+        subtitle: t("home.shortcuts.dev.subtitle"),
+        title: t("home.shortcuts.dev.title"),
+        tone: "neutral",
+      });
+    }
+
+    return items;
+  }, [supabaseReady, t]);
+  const activeShortcut = shortcutItems.find((item) => item.key === activePanel) ?? null;
 
   useEffect(() => {
     setMessages((current) =>
@@ -118,6 +255,559 @@ export default function HomeScreen() {
       setSendingChat(false);
     }
   }, [chatInput, db, language, messages, sendingChat]);
+
+  const renderAnalyticsPanel = () => {
+    if (!metrics) {
+      return null;
+    }
+
+    return (
+      <>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
+          <StatCard
+            icon="bar-chart-2"
+            label={language === "english" ? "Sales Today" : "Kita Today"}
+            tone="primary"
+            value={formatCurrencyFromCents(metrics.todaySalesCents)}
+          />
+          <StatCard
+            icon="layers"
+            label="Transactions"
+            tone="accent"
+            value={String(metrics.todayTransactions)}
+          />
+          <StatCard
+            icon="trending-up"
+            label={language === "english" ? "Profit Today" : "Profit Today"}
+            tone="primary"
+            value={formatCurrencyFromCents(metrics.todayProfitCents)}
+          />
+          <StatCard
+            icon="alert-circle"
+            label={language === "english" ? "Many Debts" : "Maraming Utang"}
+            tone="warning"
+            value={formatCurrencyFromCents(metrics.totalUtangCents)}
+          />
+        </View>
+
+        <SurfaceCard style={compactCardStyle}>
+          <View style={{ gap: 4 }}>
+            <Text
+              style={{
+                color: theme.colors.text,
+                fontFamily: theme.typography.display,
+                fontSize: 24,
+                fontWeight: "700",
+              }}
+            >
+              {t("home.paymentMix.title")}
+            </Text>
+            <Text
+              style={{
+                color: theme.colors.textMuted,
+                fontFamily: theme.typography.body,
+                fontSize: 14,
+              }}
+            >
+              {t("home.paymentMix.subtitle")}
+            </Text>
+          </View>
+
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
+            <StatusBadge label={`Cash ${formatCurrencyFromCents(metrics.paymentBreakdown.cashCents)}`} tone="success" />
+            <StatusBadge label={`GCash ${formatCurrencyFromCents(metrics.paymentBreakdown.gcashCents)}`} tone="primary" />
+            <StatusBadge label={`Maya ${formatCurrencyFromCents(metrics.paymentBreakdown.mayaCents)}`} tone="primary" />
+            <StatusBadge label={`Utang ${formatCurrencyFromCents(metrics.paymentBreakdown.utangCents)}`} tone="warning" />
+          </View>
+        </SurfaceCard>
+
+        <SurfaceCard style={compactCardStyle}>
+          <View style={{ gap: 4 }}>
+            <Text
+              style={{
+                color: theme.colors.text,
+                fontFamily: theme.typography.display,
+                fontSize: 24,
+                fontWeight: "700",
+              }}
+            >
+              {t("home.weekly.title")}
+            </Text>
+            <Text
+              style={{
+                color: theme.colors.textMuted,
+                fontFamily: theme.typography.body,
+                fontSize: 14,
+              }}
+            >
+              {t("home.weekly.subtitle")}
+            </Text>
+          </View>
+
+          {weeklyReports.length > 0 && weeklyReports.some((w) => w.totalCents > 0) ? (
+            weeklyReports.map((week) => {
+              const maxCents = Math.max(...weeklyReports.map((w) => w.totalCents), 1);
+              const barWidth = Math.max((week.totalCents / maxCents) * 100, 2);
+              const { breakdown } = week;
+              const total = week.totalCents || 1;
+
+              return (
+                <View key={week.weekLabel} style={{ gap: theme.spacing.xs }}>
+                  <View style={{ alignItems: "center", flexDirection: "row", justifyContent: "space-between" }}>
+                    <Text
+                      style={{
+                        color: theme.colors.text,
+                        fontFamily: theme.typography.body,
+                        fontSize: 13,
+                        fontWeight: "700",
+                      }}
+                    >
+                      {week.weekLabel}
+                    </Text>
+                    <Text
+                      style={{
+                        color: theme.colors.textMuted,
+                        fontFamily: theme.typography.body,
+                        fontSize: 13,
+                      }}
+                    >
+                      {formatCurrencyFromCents(week.totalCents)}
+                    </Text>
+                  </View>
+
+                  <View
+                    style={{
+                      borderRadius: theme.radius.sm,
+                      flexDirection: "row",
+                      height: 14,
+                      overflow: "hidden",
+                      width: `${barWidth}%`,
+                    }}
+                  >
+                    {breakdown.cashCents > 0 ? (
+                      <View style={{ backgroundColor: theme.colors.success, flex: breakdown.cashCents / total }} />
+                    ) : null}
+                    {breakdown.gcashCents > 0 ? (
+                      <View style={{ backgroundColor: theme.colors.primary, flex: breakdown.gcashCents / total }} />
+                    ) : null}
+                    {breakdown.mayaCents > 0 ? (
+                      <View style={{ backgroundColor: theme.colors.accent, flex: breakdown.mayaCents / total }} />
+                    ) : null}
+                    {breakdown.utangCents > 0 ? (
+                      <View style={{ backgroundColor: theme.colors.warning, flex: breakdown.utangCents / total }} />
+                    ) : null}
+                  </View>
+                </View>
+              );
+            })
+          ) : (
+            <Text
+              style={{
+                color: theme.colors.textMuted,
+                fontFamily: theme.typography.body,
+                fontSize: 14,
+              }}
+            >
+              {t("home.weekly.noData")}
+            </Text>
+          )}
+
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
+            <View style={{ alignItems: "center", flexDirection: "row", gap: 6 }}>
+              <View style={{ backgroundColor: theme.colors.success, borderRadius: 4, height: 10, width: 10 }} />
+              <Text style={{ color: theme.colors.textMuted, fontFamily: theme.typography.body, fontSize: 12 }}>Cash</Text>
+            </View>
+            <View style={{ alignItems: "center", flexDirection: "row", gap: 6 }}>
+              <View style={{ backgroundColor: theme.colors.primary, borderRadius: 4, height: 10, width: 10 }} />
+              <Text style={{ color: theme.colors.textMuted, fontFamily: theme.typography.body, fontSize: 12 }}>GCash</Text>
+            </View>
+            <View style={{ alignItems: "center", flexDirection: "row", gap: 6 }}>
+              <View style={{ backgroundColor: theme.colors.accent, borderRadius: 4, height: 10, width: 10 }} />
+              <Text style={{ color: theme.colors.textMuted, fontFamily: theme.typography.body, fontSize: 12 }}>Maya</Text>
+            </View>
+            <View style={{ alignItems: "center", flexDirection: "row", gap: 6 }}>
+              <View style={{ backgroundColor: theme.colors.warning, borderRadius: 4, height: 10, width: 10 }} />
+              <Text style={{ color: theme.colors.textMuted, fontFamily: theme.typography.body, fontSize: 12 }}>Utang</Text>
+            </View>
+          </View>
+        </SurfaceCard>
+      </>
+    );
+  };
+
+  const renderInventoryPanel = () => {
+    if (!metrics) {
+      return null;
+    }
+
+    return (
+      <>
+        <SurfaceCard style={compactCardStyle}>
+          <View style={{ gap: 4 }}>
+            <Text
+              style={{
+                color: theme.colors.text,
+                fontFamily: theme.typography.display,
+                fontSize: 24,
+                fontWeight: "700",
+              }}
+            >
+              {t("home.runout.title")}
+            </Text>
+            <Text
+              style={{
+                color: theme.colors.textMuted,
+                fontFamily: theme.typography.body,
+                fontSize: 14,
+              }}
+            >
+              {t("home.runout.subtitle")}
+            </Text>
+          </View>
+
+          {velocity.length > 0 ? (
+            velocity.map((item) => (
+              <View
+                key={item.id}
+                style={{
+                  alignItems: "center",
+                  backgroundColor: theme.colors.surface,
+                  borderColor: theme.colors.border,
+                  borderRadius: theme.radius.sm,
+                  borderWidth: 1,
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  padding: theme.spacing.md,
+                }}
+              >
+                <View style={{ flex: 1, gap: 4, paddingRight: theme.spacing.md }}>
+                  <Text
+                    style={{
+                      color: theme.colors.text,
+                      fontFamily: theme.typography.body,
+                      fontSize: 15,
+                      fontWeight: "700",
+                    }}
+                  >
+                    {item.name}
+                  </Text>
+                  <Text
+                    style={{
+                      color: theme.colors.textMuted,
+                      fontFamily: theme.typography.body,
+                      fontSize: 13,
+                    }}
+                  >
+                    {item.unitsPerDay} units/day
+                  </Text>
+                </View>
+                <StatusBadge
+                  label={t("home.runout.daysLeft", { days: item.daysUntilOutOfStock ?? 0 })}
+                  tone={(item.daysUntilOutOfStock ?? 99) <= 3 ? "danger" : "warning"}
+                />
+              </View>
+            ))
+          ) : (
+            <Text
+              style={{
+                color: theme.colors.textMuted,
+                fontFamily: theme.typography.body,
+                fontSize: 14,
+              }}
+            >
+              {t("home.runout.noData")}
+            </Text>
+          )}
+        </SurfaceCard>
+
+        <SurfaceCard style={compactCardStyle}>
+          <View style={{ gap: 4 }}>
+            <Text
+              style={{
+                color: theme.colors.text,
+                fontFamily: theme.typography.display,
+                fontSize: 24,
+                fontWeight: "700",
+              }}
+            >
+              {t("home.lowStock.title")}
+            </Text>
+            <Text
+              style={{
+                color: theme.colors.textMuted,
+                fontFamily: theme.typography.body,
+                fontSize: 14,
+              }}
+            >
+              {t("home.lowStock.subtitle")}
+            </Text>
+          </View>
+
+          {metrics.lowStockProducts.length > 0 ? (
+            metrics.lowStockProducts.map((product) => (
+              <View
+                key={product.id}
+                style={{
+                  alignItems: "center",
+                  backgroundColor: theme.colors.warningMuted,
+                  borderRadius: theme.radius.sm,
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  padding: theme.spacing.md,
+                }}
+              >
+                <View style={{ flex: 1, gap: 4, paddingRight: theme.spacing.md }}>
+                  <Text
+                    style={{
+                      color: theme.colors.text,
+                      fontFamily: theme.typography.body,
+                      fontSize: 15,
+                      fontWeight: "700",
+                    }}
+                  >
+                    {product.name}
+                  </Text>
+                  <Text
+                    style={{
+                      color: theme.colors.textMuted,
+                      fontFamily: theme.typography.body,
+                      fontSize: 13,
+                    }}
+                  >
+                    Reorder point: {product.minStock} units
+                  </Text>
+                </View>
+                <StatusBadge label={`${product.stock} left`} tone="warning" />
+              </View>
+            ))
+          ) : (
+            <EmptyState
+              icon="check-circle"
+              message={t("home.lowStock.emptyMessage")}
+              title={t("home.lowStock.emptyTitle")}
+            />
+          )}
+        </SurfaceCard>
+      </>
+    );
+  };
+
+  const renderCreditPanel = () => {
+    if (!metrics) {
+      return null;
+    }
+
+    return (
+      <SurfaceCard style={compactCardStyle}>
+        <View style={{ gap: 4 }}>
+          <Text
+            style={{
+              color: theme.colors.text,
+              fontFamily: theme.typography.display,
+              fontSize: 24,
+              fontWeight: "700",
+            }}
+          >
+            {t("home.risk.title")}
+          </Text>
+          <Text
+            style={{
+              color: theme.colors.textMuted,
+              fontFamily: theme.typography.body,
+              fontSize: 14,
+            }}
+          >
+            {t("home.risk.subtitle")}
+          </Text>
+        </View>
+
+        {metrics.delikadoCustomers.length > 0 ? (
+          metrics.delikadoCustomers.map((customer) => (
+            <View
+              key={customer.id}
+              style={{
+                alignItems: "center",
+                backgroundColor: theme.colors.dangerMuted,
+                borderRadius: theme.radius.sm,
+                flexDirection: "row",
+                justifyContent: "space-between",
+                padding: theme.spacing.md,
+              }}
+            >
+              <Text
+                style={{
+                  color: theme.colors.text,
+                  flex: 1,
+                  fontFamily: theme.typography.body,
+                  fontSize: 15,
+                  fontWeight: "700",
+                  paddingRight: theme.spacing.md,
+                }}
+              >
+                {customer.name}
+              </Text>
+              <StatusBadge label={formatCurrencyFromCents(customer.balanceCents)} tone="danger" />
+            </View>
+          ))
+        ) : (
+          <EmptyState
+            icon="shield"
+            message={t("home.risk.emptyMessage")}
+            title={t("home.risk.emptyTitle")}
+          />
+        )}
+      </SurfaceCard>
+    );
+  };
+
+  const renderCloudPanel = () => {
+    if (!supabaseReady) {
+      return null;
+    }
+
+    return (
+      <SurfaceCard style={compactCardStyle}>
+        <View style={{ gap: 4 }}>
+          <Text
+            style={{
+              color: theme.colors.text,
+              fontFamily: theme.typography.display,
+              fontSize: 24,
+              fontWeight: "700",
+            }}
+          >
+            {t("home.cloud.title")}
+          </Text>
+          <Text
+            style={{
+              color: theme.colors.textMuted,
+              fontFamily: theme.typography.body,
+              fontSize: 14,
+            }}
+          >
+            {lastSync ? t("home.cloud.lastBackup", { time: lastSync }) : t("home.cloud.none")}
+          </Text>
+        </View>
+        <ActionButton
+          disabled={syncing}
+          label={syncing ? "Syncing..." : t("home.cloud.backupNow")}
+          onPress={async () => {
+            setSyncing(true);
+            try {
+              const msg = await syncToCloud(db);
+              Alert.alert(t("home.cloud.backupTitle"), msg);
+              setLastSync(await getLastSyncTime());
+            } catch (err) {
+              Alert.alert(t("home.cloud.backupFailed"), String(err));
+            } finally {
+              setSyncing(false);
+            }
+          }}
+        />
+        <ActionButton
+          disabled={syncing}
+          label={t("home.cloud.restore")}
+          onPress={() => {
+            Alert.alert(
+              t("home.cloud.restoreTitle"),
+              t("home.cloud.restoreMessage"),
+              [
+                { text: t("home.cloud.cancel"), style: "cancel" },
+                {
+                  text: t("home.cloud.confirmRestore"),
+                  style: "destructive",
+                  onPress: async () => {
+                    setSyncing(true);
+                    try {
+                      const msg = await restoreFromCloud(db);
+                      Alert.alert(t("home.cloud.restoreResult"), msg);
+                      void loadDashboard();
+                      setLastSync(await getLastSyncTime());
+                    } catch (err) {
+                      Alert.alert(t("home.cloud.restoreFailed"), String(err));
+                    } finally {
+                      setSyncing(false);
+                    }
+                  },
+                },
+              ],
+            );
+          }}
+          variant="secondary"
+        />
+      </SurfaceCard>
+    );
+  };
+
+  const renderDevPanel = () => {
+    if (!__DEV__) {
+      return null;
+    }
+
+    return (
+      <SurfaceCard
+        style={{
+          borderColor: theme.colors.warning,
+          borderWidth: 1,
+          gap: theme.spacing.sm,
+        }}
+      >
+        <Text
+          style={{
+            color: theme.colors.warning,
+            fontFamily: theme.typography.body,
+            fontSize: 13,
+            fontWeight: "700",
+          }}
+        >
+          {t("home.dev.title")}
+        </Text>
+        <ActionButton
+          disabled={seeding}
+          label={seeding ? "Seeding..." : t("home.dev.seed")}
+          onPress={async () => {
+            setSeeding(true);
+            try {
+              const result = await seedStoreData(db);
+              Alert.alert(result.skipped ? t("home.dev.skipped") : t("home.dev.done"), result.message);
+              if (!result.skipped) {
+                void loadDashboard();
+              }
+            } catch (err) {
+              Alert.alert(t("home.dev.error"), String(err));
+            } finally {
+              setSeeding(false);
+            }
+          }}
+          variant="secondary"
+        />
+      </SurfaceCard>
+    );
+  };
+
+  const renderActivePanelContent = () => {
+    if (activePanel === "analytics") {
+      return renderAnalyticsPanel();
+    }
+
+    if (activePanel === "inventory") {
+      return renderInventoryPanel();
+    }
+
+    if (activePanel === "credit") {
+      return renderCreditPanel();
+    }
+
+    if (activePanel === "cloud") {
+      return renderCloudPanel();
+    }
+
+    if (activePanel === "dev") {
+      return renderDevPanel();
+    }
+
+    return null;
+  };
 
   return (
     <>
@@ -299,386 +989,6 @@ export default function HomeScreen() {
             </Text>
           </SurfaceCard>
         ) : metrics ? (
-          <>
-            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
-              <StatCard
-                icon="bar-chart-2"
-                label={language === "english" ? "Sales Today" : "Kita Today"}
-                tone="primary"
-                value={formatCurrencyFromCents(metrics.todaySalesCents)}
-              />
-              <StatCard
-                icon="layers"
-                label="Transactions"
-                tone="accent"
-                value={String(metrics.todayTransactions)}
-              />
-              <StatCard
-                icon="trending-up"
-                label={language === "english" ? "Profit Today" : "Profit Today"}
-                tone="primary"
-                value={formatCurrencyFromCents(metrics.todayProfitCents)}
-              />
-              <StatCard
-                icon="alert-circle"
-                label={language === "english" ? "Many Debts" : "Maraming Utang"}
-                tone="warning"
-                value={formatCurrencyFromCents(metrics.totalUtangCents)}
-              />
-            </View>
-
-            <SurfaceCard style={compactCardStyle}>
-              <View style={{ gap: 4 }}>
-                <Text
-                  style={{
-                    color: theme.colors.text,
-                    fontFamily: theme.typography.display,
-                    fontSize: 24,
-                    fontWeight: "700",
-                  }}
-                >
-                  {t("home.runout.title")}
-                </Text>
-                <Text
-                  style={{
-                    color: theme.colors.textMuted,
-                    fontFamily: theme.typography.body,
-                    fontSize: 14,
-                  }}
-                >
-                  {t("home.runout.subtitle")}
-                </Text>
-              </View>
-
-              {velocity.length > 0 ? (
-                velocity.map((item) => (
-                  <View
-                    key={item.id}
-                    style={{
-                      alignItems: "center",
-                      backgroundColor: theme.colors.surface,
-                      borderColor: theme.colors.border,
-                      borderRadius: theme.radius.sm,
-                      borderWidth: 1,
-                      flexDirection: "row",
-                      justifyContent: "space-between",
-                      padding: theme.spacing.md,
-                    }}
-                  >
-                    <View style={{ flex: 1, gap: 4, paddingRight: theme.spacing.md }}>
-                      <Text
-                        style={{
-                          color: theme.colors.text,
-                          fontFamily: theme.typography.body,
-                          fontSize: 15,
-                          fontWeight: "700",
-                        }}
-                      >
-                        {item.name}
-                      </Text>
-                      <Text
-                        style={{
-                          color: theme.colors.textMuted,
-                          fontFamily: theme.typography.body,
-                          fontSize: 13,
-                        }}
-                      >
-                        {item.unitsPerDay} units/day
-                      </Text>
-                    </View>
-                    <StatusBadge
-                      label={t("home.runout.daysLeft", { days: item.daysUntilOutOfStock ?? 0 })}
-                      tone={(item.daysUntilOutOfStock ?? 99) <= 3 ? "danger" : "warning"}
-                    />
-                  </View>
-                ))
-              ) : (
-                <Text
-                  style={{
-                    color: theme.colors.textMuted,
-                    fontFamily: theme.typography.body,
-                    fontSize: 14,
-                  }}
-                >
-                  {t("home.runout.noData")}
-                </Text>
-              )}
-            </SurfaceCard>
-
-            <SurfaceCard style={compactCardStyle}>
-              <View style={{ gap: 4 }}>
-                <Text
-                  style={{
-                    color: theme.colors.text,
-                    fontFamily: theme.typography.display,
-                    fontSize: 24,
-                    fontWeight: "700",
-                  }}
-                >
-                  {t("home.paymentMix.title")}
-                </Text>
-                <Text
-                  style={{
-                    color: theme.colors.textMuted,
-                    fontFamily: theme.typography.body,
-                    fontSize: 14,
-                  }}
-                >
-                  {t("home.paymentMix.subtitle")}
-                </Text>
-              </View>
-
-              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
-                <StatusBadge label={`Cash ${formatCurrencyFromCents(metrics.paymentBreakdown.cashCents)}`} tone="success" />
-                <StatusBadge label={`GCash ${formatCurrencyFromCents(metrics.paymentBreakdown.gcashCents)}`} tone="primary" />
-                <StatusBadge label={`Maya ${formatCurrencyFromCents(metrics.paymentBreakdown.mayaCents)}`} tone="primary" />
-                <StatusBadge label={`Utang ${formatCurrencyFromCents(metrics.paymentBreakdown.utangCents)}`} tone="warning" />
-              </View>
-            </SurfaceCard>
-
-            <SurfaceCard style={compactCardStyle}>
-              <View style={{ gap: 4 }}>
-                <Text
-                  style={{
-                    color: theme.colors.text,
-                    fontFamily: theme.typography.display,
-                    fontSize: 24,
-                    fontWeight: "700",
-                  }}
-                >
-                  {t("home.weekly.title")}
-                </Text>
-                <Text
-                  style={{
-                    color: theme.colors.textMuted,
-                    fontFamily: theme.typography.body,
-                    fontSize: 14,
-                  }}
-                >
-                  {t("home.weekly.subtitle")}
-                </Text>
-              </View>
-
-              {weeklyReports.length > 0 && weeklyReports.some((w) => w.totalCents > 0) ? (
-                weeklyReports.map((week) => {
-                  const maxCents = Math.max(...weeklyReports.map((w) => w.totalCents), 1);
-                  const barWidth = Math.max((week.totalCents / maxCents) * 100, 2);
-                  const { breakdown } = week;
-                  const total = week.totalCents || 1;
-
-                  return (
-                    <View key={week.weekLabel} style={{ gap: theme.spacing.xs }}>
-                      <View style={{ alignItems: "center", flexDirection: "row", justifyContent: "space-between" }}>
-                        <Text
-                          style={{
-                            color: theme.colors.text,
-                            fontFamily: theme.typography.body,
-                            fontSize: 13,
-                            fontWeight: "700",
-                          }}
-                        >
-                          {week.weekLabel}
-                        </Text>
-                        <Text
-                          style={{
-                            color: theme.colors.textMuted,
-                            fontFamily: theme.typography.body,
-                            fontSize: 13,
-                          }}
-                        >
-                          {formatCurrencyFromCents(week.totalCents)}
-                        </Text>
-                      </View>
-
-                      <View
-                        style={{
-                          borderRadius: theme.radius.sm,
-                          flexDirection: "row",
-                          height: 14,
-                          overflow: "hidden",
-                          width: `${barWidth}%`,
-                        }}
-                      >
-                        {breakdown.cashCents > 0 ? (
-                          <View style={{ backgroundColor: theme.colors.success, flex: breakdown.cashCents / total }} />
-                        ) : null}
-                        {breakdown.gcashCents > 0 ? (
-                          <View style={{ backgroundColor: theme.colors.primary, flex: breakdown.gcashCents / total }} />
-                        ) : null}
-                        {breakdown.mayaCents > 0 ? (
-                          <View style={{ backgroundColor: theme.colors.accent, flex: breakdown.mayaCents / total }} />
-                        ) : null}
-                        {breakdown.utangCents > 0 ? (
-                          <View style={{ backgroundColor: theme.colors.warning, flex: breakdown.utangCents / total }} />
-                        ) : null}
-                      </View>
-                    </View>
-                  );
-                })
-              ) : (
-                <Text
-                  style={{
-                    color: theme.colors.textMuted,
-                    fontFamily: theme.typography.body,
-                    fontSize: 14,
-                  }}
-                >
-                  {t("home.weekly.noData")}
-                </Text>
-              )}
-
-              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
-                <View style={{ alignItems: "center", flexDirection: "row", gap: 6 }}>
-                  <View style={{ backgroundColor: theme.colors.success, borderRadius: 4, height: 10, width: 10 }} />
-                  <Text style={{ color: theme.colors.textMuted, fontFamily: theme.typography.body, fontSize: 12 }}>Cash</Text>
-                </View>
-                <View style={{ alignItems: "center", flexDirection: "row", gap: 6 }}>
-                  <View style={{ backgroundColor: theme.colors.primary, borderRadius: 4, height: 10, width: 10 }} />
-                  <Text style={{ color: theme.colors.textMuted, fontFamily: theme.typography.body, fontSize: 12 }}>GCash</Text>
-                </View>
-                <View style={{ alignItems: "center", flexDirection: "row", gap: 6 }}>
-                  <View style={{ backgroundColor: theme.colors.accent, borderRadius: 4, height: 10, width: 10 }} />
-                  <Text style={{ color: theme.colors.textMuted, fontFamily: theme.typography.body, fontSize: 12 }}>Maya</Text>
-                </View>
-                <View style={{ alignItems: "center", flexDirection: "row", gap: 6 }}>
-                  <View style={{ backgroundColor: theme.colors.warning, borderRadius: 4, height: 10, width: 10 }} />
-                  <Text style={{ color: theme.colors.textMuted, fontFamily: theme.typography.body, fontSize: 12 }}>Utang</Text>
-                </View>
-              </View>
-            </SurfaceCard>
-
-            <SurfaceCard style={compactCardStyle}>
-              <View style={{ gap: 4 }}>
-                <Text
-                  style={{
-                    color: theme.colors.text,
-                    fontFamily: theme.typography.display,
-                    fontSize: 24,
-                    fontWeight: "700",
-                  }}
-                >
-                  {t("home.risk.title")}
-                </Text>
-                <Text
-                  style={{
-                    color: theme.colors.textMuted,
-                    fontFamily: theme.typography.body,
-                    fontSize: 14,
-                  }}
-                >
-                  {t("home.risk.subtitle")}
-                </Text>
-              </View>
-
-              {metrics.delikadoCustomers.length > 0 ? (
-                metrics.delikadoCustomers.map((customer) => (
-                  <View
-                    key={customer.id}
-                    style={{
-                      alignItems: "center",
-                      backgroundColor: theme.colors.dangerMuted,
-                      borderRadius: theme.radius.sm,
-                      flexDirection: "row",
-                      justifyContent: "space-between",
-                      padding: theme.spacing.md,
-                    }}
-                  >
-                    <Text
-                      style={{
-                        color: theme.colors.text,
-                        flex: 1,
-                        fontFamily: theme.typography.body,
-                        fontSize: 15,
-                        fontWeight: "700",
-                        paddingRight: theme.spacing.md,
-                      }}
-                    >
-                      {customer.name}
-                    </Text>
-                    <StatusBadge label={formatCurrencyFromCents(customer.balanceCents)} tone="danger" />
-                  </View>
-                ))
-              ) : (
-                <EmptyState
-                  icon="shield"
-                  message={t("home.risk.emptyMessage")}
-                  title={t("home.risk.emptyTitle")}
-                />
-              )}
-            </SurfaceCard>
-
-            <SurfaceCard style={compactCardStyle}>
-              <View style={{ gap: 4 }}>
-                <Text
-                  style={{
-                    color: theme.colors.text,
-                    fontFamily: theme.typography.display,
-                    fontSize: 24,
-                    fontWeight: "700",
-                  }}
-                >
-                  {t("home.lowStock.title")}
-                </Text>
-                <Text
-                  style={{
-                    color: theme.colors.textMuted,
-                    fontFamily: theme.typography.body,
-                    fontSize: 14,
-                  }}
-                >
-                  {t("home.lowStock.subtitle")}
-                </Text>
-              </View>
-
-              {metrics.lowStockProducts.length > 0 ? (
-                metrics.lowStockProducts.map((product) => (
-                  <View
-                    key={product.id}
-                    style={{
-                      alignItems: "center",
-                      backgroundColor: theme.colors.warningMuted,
-                      borderRadius: theme.radius.sm,
-                      flexDirection: "row",
-                      justifyContent: "space-between",
-                      padding: theme.spacing.md,
-                    }}
-                  >
-                    <View style={{ flex: 1, gap: 4, paddingRight: theme.spacing.md }}>
-                      <Text
-                        style={{
-                          color: theme.colors.text,
-                          fontFamily: theme.typography.body,
-                          fontSize: 15,
-                          fontWeight: "700",
-                        }}
-                      >
-                        {product.name}
-                      </Text>
-                      <Text
-                        style={{
-                          color: theme.colors.textMuted,
-                          fontFamily: theme.typography.body,
-                          fontSize: 13,
-                        }}
-                      >
-                        Reorder point: {product.minStock} units
-                      </Text>
-                    </View>
-                    <StatusBadge label={`${product.stock} left`} tone="warning" />
-                  </View>
-                ))
-              ) : (
-                <EmptyState
-                  icon="check-circle"
-                  message={t("home.lowStock.emptyMessage")}
-                  title={t("home.lowStock.emptyTitle")}
-                />
-              )}
-            </SurfaceCard>
-          </>
-        ) : null}
-
-        {isSupabaseReady() ? (
           <SurfaceCard style={compactCardStyle}>
             <View style={{ gap: 4 }}>
               <Text
@@ -689,7 +999,7 @@ export default function HomeScreen() {
                   fontWeight: "700",
                 }}
               >
-                {t("home.cloud.title")}
+                {t("home.shortcuts.title")}
               </Text>
               <Text
                 style={{
@@ -698,99 +1008,35 @@ export default function HomeScreen() {
                   fontSize: 14,
                 }}
               >
-                {lastSync ? t("home.cloud.lastBackup", { time: lastSync }) : t("home.cloud.none")}
+                {t("home.shortcuts.subtitle")}
               </Text>
             </View>
-            <ActionButton
-              disabled={syncing}
-              label={syncing ? "Syncing..." : t("home.cloud.backupNow")}
-              onPress={async () => {
-                setSyncing(true);
-                try {
-                  const msg = await syncToCloud(db);
-                  Alert.alert(t("home.cloud.backupTitle"), msg);
-                  setLastSync(await getLastSyncTime());
-                } catch (err) {
-                  Alert.alert(t("home.cloud.backupFailed"), String(err));
-                } finally {
-                  setSyncing(false);
-                }
-              }}
-            />
-            <ActionButton
-              disabled={syncing}
-              label={t("home.cloud.restore")}
-              onPress={() => {
-                Alert.alert(
-                  t("home.cloud.restoreTitle"),
-                  t("home.cloud.restoreMessage"),
-                  [
-                    { text: t("home.cloud.cancel"), style: "cancel" },
-                    {
-                      text: t("home.cloud.confirmRestore"),
-                      style: "destructive",
-                      onPress: async () => {
-                        setSyncing(true);
-                        try {
-                          const msg = await restoreFromCloud(db);
-                          Alert.alert(t("home.cloud.restoreResult"), msg);
-                          void loadDashboard();
-                          setLastSync(await getLastSyncTime());
-                        } catch (err) {
-                          Alert.alert(t("home.cloud.restoreFailed"), String(err));
-                        } finally {
-                          setSyncing(false);
-                        }
-                      },
-                    },
-                  ],
-                );
-              }}
-              variant="secondary"
-            />
-          </SurfaceCard>
-        ) : null}
 
-        {__DEV__ ? (
-          <SurfaceCard
-            style={{
-              borderColor: theme.colors.warning,
-              borderWidth: 1,
-              gap: theme.spacing.sm,
-            }}
-          >
-            <Text
-              style={{
-                color: theme.colors.warning,
-                fontFamily: theme.typography.body,
-                fontSize: 13,
-                fontWeight: "700",
-              }}
-            >
-              {t("home.dev.title")}
-            </Text>
-            <ActionButton
-              disabled={seeding}
-              label={seeding ? "Seeding..." : t("home.dev.seed")}
-              onPress={async () => {
-                setSeeding(true);
-                try {
-                  const result = await seedStoreData(db);
-                  Alert.alert(result.skipped ? t("home.dev.skipped") : t("home.dev.done"), result.message);
-                  if (!result.skipped) {
-                    void loadDashboard();
-                  }
-                } catch (err) {
-                  Alert.alert(t("home.dev.error"), String(err));
-                } finally {
-                  setSeeding(false);
-                }
-              }}
-              variant="secondary"
-            />
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
+              {shortcutItems.map((item) => (
+                <HomeShortcutCard
+                  icon={item.icon}
+                  key={item.key}
+                  onPress={() => setActivePanel(item.key)}
+                  subtitle={item.subtitle}
+                  title={item.title}
+                  tone={item.tone}
+                />
+              ))}
+            </View>
           </SurfaceCard>
         ) : null}
       </Screen>
+
+      <ModalSheet
+        fullHeight
+        onClose={() => setActivePanel(null)}
+        subtitle={activeShortcut?.subtitle}
+        title={activeShortcut?.title ?? ""}
+        visible={activePanel !== null}
+      >
+        {renderActivePanelContent()}
+      </ModalSheet>
 
       <ModalSheet
         footer={
