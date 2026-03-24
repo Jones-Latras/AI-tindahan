@@ -25,8 +25,9 @@ export function StatCard({ icon, label, value, tone = "primary" }: StatCardProps
     <SurfaceCard
       style={{
         flex: 1,
-        gap: theme.spacing.md,
+        gap: theme.spacing.sm,
         minWidth: "47%",
+        padding: theme.spacing.md,
       }}
     >
       <View
@@ -34,19 +35,19 @@ export function StatCard({ icon, label, value, tone = "primary" }: StatCardProps
           alignItems: "center",
           backgroundColor: toneColors.bg,
           borderRadius: theme.radius.pill,
-          height: 40,
+          height: 36,
           justifyContent: "center",
-          width: 40,
+          width: 36,
         }}
       >
-        <Feather color={toneColors.fg} name={icon} size={18} />
+        <Feather color={toneColors.fg} name={icon} size={16} />
       </View>
       <View style={{ gap: 6 }}>
         <Text
           style={{
             color: theme.colors.textMuted,
             fontFamily: theme.typography.body,
-            fontSize: 13,
+            fontSize: 12,
             fontWeight: "600",
           }}
         >
@@ -56,7 +57,7 @@ export function StatCard({ icon, label, value, tone = "primary" }: StatCardProps
           style={{
             color: theme.colors.text,
             fontFamily: theme.typography.display,
-            fontSize: 24,
+            fontSize: 22,
             fontWeight: "700",
           }}
         >

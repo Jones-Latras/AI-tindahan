@@ -1,5 +1,5 @@
 import { Feather } from "@expo/vector-icons";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useFocusEffect } from "expo-router";
 import { useSQLiteContext } from "expo-sqlite";
 import Storage from "expo-sqlite/kv-store";
 import { useCallback, useState } from "react";
@@ -8,6 +8,7 @@ import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from "rea
 import { seedStoreData } from "@/scripts/seed-store";
 
 import { ActionButton } from "@/components/ActionButton";
+import { AutoSwipeSuggestionCarousel } from "@/components/AutoSwipeSuggestionCarousel";
 import { EmptyState } from "@/components/EmptyState";
 import { InputField } from "@/components/InputField";
 import { ModalSheet } from "@/components/ModalSheet";
@@ -35,8 +36,8 @@ function createChatMessage(role: ChatMessage["role"], text: string): ChatMessage
 
 export default function HomeScreen() {
   const db = useSQLiteContext();
-  const router = useRouter();
   const { theme } = useAppTheme();
+  const geminiReady = isGeminiReady();
   const [metrics, setMetrics] = useState<HomeMetrics | null>(null);
   const [brief, setBrief] = useState<HomeAiBrief | null>(null);
   const [velocity, setVelocity] = useState<ProductVelocity[]>([]);
@@ -56,6 +57,10 @@ export default function HomeScreen() {
       "Kumusta. I can help explain sales, restock pressure, utang risk, and overall store performance in Taglish.",
     ),
   ]);
+  const compactCardStyle = {
+    gap: theme.spacing.sm,
+    padding: theme.spacing.md,
+  } as const;
 
   const loadDashboard = useCallback(async () => {
     setLoading(true);
@@ -111,6 +116,11 @@ export default function HomeScreen() {
   return (
     <>
       <Screen
+        contentContainerStyle={{
+          gap: theme.spacing.md,
+          paddingBottom: 120,
+          paddingTop: theme.spacing.md,
+        }}
         overlay={
           <Pressable
             onPress={() => setChatVisible(true)}
@@ -147,67 +157,11 @@ export default function HomeScreen() {
           </Pressable>
         }
         rightSlot={<ThemeToggle />}
-        subtitle="Offline-first operations with an optional Gemini-powered assistant layered on top."
+        subtitle="Sales, stock, and utang in one quick glance."
         title={storeName || "TindaHan AI"}
       >
-        <SurfaceCard
-          style={{
-            backgroundColor: theme.colors.surface,
-            gap: theme.spacing.lg,
-          }}
-        >
-          <View style={{ gap: theme.spacing.sm }}>
-            <View style={{ flexDirection: "row", gap: theme.spacing.sm, alignItems: "center", flexWrap: "wrap" }}>
-              <Text
-                style={{
-                  color: theme.colors.text,
-                  fontFamily: theme.typography.display,
-                  fontSize: 26,
-                  fontWeight: "700",
-                }}
-              >
-                Store Pulse
-              </Text>
-              <StatusBadge label={isGeminiReady() ? "Gemini Ready" : "AI Not Configured"} tone={isGeminiReady() ? "primary" : "neutral"} />
-            </View>
-            <Text
-              style={{
-                color: theme.colors.textMuted,
-                fontFamily: theme.typography.body,
-                fontSize: 15,
-                lineHeight: 22,
-              }}
-            >
-              Secure local storage, clean checkout flow, AI-powered insights, and a theme system that keeps every screen consistent.
-            </Text>
-          </View>
-
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
-            <ActionButton
-              icon={<Feather color={theme.colors.primaryText} name="shopping-bag" size={16} />}
-              label="Open Benta"
-              onPress={() => router.push("/benta")}
-              style={{ flex: 1, minWidth: 160 }}
-            />
-            <ActionButton
-              icon={<Feather color={theme.colors.primary} name="package" size={16} />}
-              label="Manage Products"
-              onPress={() => router.push("/produkto")}
-              style={{ flex: 1, minWidth: 160 }}
-              variant="secondary"
-            />
-            <ActionButton
-              icon={<Feather color={theme.colors.text} name="users" size={16} />}
-              label="Open Palista"
-              onPress={() => router.push("/palista")}
-              style={{ flex: 1, minWidth: 160 }}
-              variant="ghost"
-            />
-          </View>
-        </SurfaceCard>
-
         {aiLoading ? (
-          <SurfaceCard style={{ gap: theme.spacing.md }}>
+          <SurfaceCard style={compactCardStyle}>
             <View
               style={{
                 backgroundColor: theme.colors.surfaceMuted,
@@ -252,14 +206,14 @@ export default function HomeScreen() {
             </View>
           </SurfaceCard>
         ) : brief ? (
-          <SurfaceCard style={{ gap: theme.spacing.md }}>
-            <View style={{ alignItems: "center", flexDirection: "row", justifyContent: "space-between", gap: theme.spacing.md }}>
+          <SurfaceCard style={compactCardStyle}>
+            <View style={{ alignItems: "center", flexDirection: "row", justifyContent: "space-between", gap: theme.spacing.sm }}>
               <View style={{ flex: 1, gap: 4 }}>
                 <Text
                   style={{
                     color: theme.colors.text,
                     fontFamily: theme.typography.display,
-                    fontSize: 24,
+                    fontSize: 22,
                     fontWeight: "700",
                   }}
                 >
@@ -269,59 +223,42 @@ export default function HomeScreen() {
                   style={{
                     color: theme.colors.textMuted,
                     fontFamily: theme.typography.body,
-                    fontSize: 14,
+                    fontSize: 13,
                   }}
                 >
                   Fresh insight for today&apos;s store rhythm.
                 </Text>
               </View>
-              <StatusBadge label={brief.source === "ai" ? "Live Insight" : "Fallback"} tone={brief.source === "ai" ? "primary" : "neutral"} />
+              <StatusBadge
+                label={brief.source === "ai" ? "Live Insight" : geminiReady ? "Fallback" : "AI Off"}
+                tone={brief.source === "ai" ? "primary" : "neutral"}
+              />
             </View>
 
             <Text
               style={{
                 color: theme.colors.text,
                 fontFamily: theme.typography.body,
-                fontSize: 15,
-                lineHeight: 24,
+                fontSize: 14,
+                lineHeight: 22,
               }}
             >
               {brief.insight}
             </Text>
 
-            <View style={{ gap: theme.spacing.sm }}>
+            <View style={{ gap: theme.spacing.xs }}>
               <Text
                 style={{
                   color: theme.colors.textMuted,
                   fontFamily: theme.typography.body,
-                  fontSize: 13,
+                  fontSize: 12,
                   fontWeight: "700",
                 }}
               >
                 Restock suggestions
               </Text>
               {brief.restockSuggestions.length > 0 ? (
-                brief.restockSuggestions.map((suggestion) => (
-                  <View
-                    key={suggestion}
-                    style={{
-                      backgroundColor: theme.colors.primaryMuted,
-                      borderRadius: theme.radius.sm,
-                      padding: theme.spacing.md,
-                    }}
-                  >
-                    <Text
-                      style={{
-                        color: theme.colors.primary,
-                        fontFamily: theme.typography.body,
-                        fontSize: 14,
-                        fontWeight: "600",
-                      }}
-                    >
-                      {suggestion}
-                    </Text>
-                  </View>
-                ))
+                <AutoSwipeSuggestionCarousel suggestions={brief.restockSuggestions} />
               ) : (
                 <Text
                   style={{
@@ -338,7 +275,7 @@ export default function HomeScreen() {
         ) : null}
 
         {loading ? (
-          <SurfaceCard style={{ alignItems: "center", gap: theme.spacing.md }}>
+          <SurfaceCard style={[compactCardStyle, { alignItems: "center" }]}>
             <ActivityIndicator color={theme.colors.primary} />
             <Text
               style={{
@@ -352,7 +289,7 @@ export default function HomeScreen() {
           </SurfaceCard>
         ) : metrics ? (
           <>
-            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.md }}>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
               <StatCard
                 icon="bar-chart-2"
                 label="Kita Today"
@@ -379,7 +316,7 @@ export default function HomeScreen() {
               />
             </View>
 
-            <SurfaceCard style={{ gap: theme.spacing.md }}>
+            <SurfaceCard style={compactCardStyle}>
               <View style={{ gap: 4 }}>
                 <Text
                   style={{
@@ -457,7 +394,7 @@ export default function HomeScreen() {
               )}
             </SurfaceCard>
 
-            <SurfaceCard style={{ gap: theme.spacing.md }}>
+            <SurfaceCard style={compactCardStyle}>
               <View style={{ gap: 4 }}>
                 <Text
                   style={{
@@ -488,7 +425,7 @@ export default function HomeScreen() {
               </View>
             </SurfaceCard>
 
-            <SurfaceCard style={{ gap: theme.spacing.md }}>
+            <SurfaceCard style={compactCardStyle}>
               <View style={{ gap: 4 }}>
                 <Text
                   style={{
@@ -599,7 +536,7 @@ export default function HomeScreen() {
               </View>
             </SurfaceCard>
 
-            <SurfaceCard style={{ gap: theme.spacing.md }}>
+            <SurfaceCard style={compactCardStyle}>
               <View style={{ gap: 4 }}>
                 <Text
                   style={{
@@ -659,7 +596,7 @@ export default function HomeScreen() {
               )}
             </SurfaceCard>
 
-            <SurfaceCard style={{ gap: theme.spacing.md }}>
+            <SurfaceCard style={compactCardStyle}>
               <View style={{ gap: 4 }}>
                 <Text
                   style={{
@@ -731,7 +668,7 @@ export default function HomeScreen() {
         ) : null}
 
         {isSupabaseReady() ? (
-          <SurfaceCard style={{ gap: theme.spacing.sm }}>
+          <SurfaceCard style={compactCardStyle}>
             <View style={{ gap: 4 }}>
               <Text
                 style={{
