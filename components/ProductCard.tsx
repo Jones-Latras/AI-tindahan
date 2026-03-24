@@ -50,7 +50,18 @@ export function ProductCard({
   const hasImage = Boolean(imageUri && !imageFailed);
   const faceGap = compact ? theme.spacing.sm : theme.spacing.md;
   const facePadding = compact ? theme.spacing.md : theme.spacing.lg;
-  const baseCardHeight = compact ? (hasImage ? 320 : 264) : hasImage ? 360 : 292;
+  const frontImageHeight = showInfoFlip ? (compact ? 110 : 138) : compact ? 88 : 116;
+  const baseCardHeight = compact
+    ? hasImage
+      ? showInfoFlip
+        ? 300
+        : 320
+      : 264
+    : hasImage
+      ? showInfoFlip
+        ? 344
+        : 360
+      : 292;
   const estimatedBackNameLines = Math.max(2, Math.ceil(name.trim().length / (compact ? 16 : 20)));
   const extraBackNameHeight = Math.max(0, estimatedBackNameLines - 2) * (compact ? 18 : 22);
   const fallbackCardHeight = baseCardHeight + extraBackNameHeight;
@@ -133,7 +144,7 @@ export function ProductCard({
             source={{ uri: imageUri ?? undefined }}
             style={{
               backgroundColor: theme.colors.surfaceMuted,
-              height: compact ? 88 : 116,
+              height: frontImageHeight,
               width: "100%",
             }}
           />
@@ -320,7 +331,7 @@ export function ProductCard({
           transform: [{ perspective: 1200 }, { rotateY: backRotation }],
         }}
       >
-        <View style={{ flex: 1, justifyContent: "space-between", paddingTop: compact ? 10 : 14 }}>
+        <View style={{ flex: 1, paddingTop: compact ? 6 : 10 }}>
           <View style={{ gap: compact ? theme.spacing.sm : faceGap }}>
             <View style={{ gap: theme.spacing.xs, paddingRight: compact ? 34 : 40 }}>
               <Text
@@ -379,41 +390,41 @@ export function ProductCard({
                 </View>
               ))}
             </View>
-          </View>
 
-          <Pressable
-            disabled={disabled || !onPress}
-            onPress={handleBackAddToCart}
-            style={({ pressed }) => ({
-              alignItems: "center",
-              alignSelf: "stretch",
-              backgroundColor: disabled ? theme.colors.surfaceMuted : theme.colors.primary,
-              borderRadius: theme.radius.pill,
-              flexDirection: "row",
-              gap: theme.spacing.xs,
-              justifyContent: "center",
-              opacity: pressed ? 0.88 : 1,
-              marginTop: compact ? theme.spacing.sm : theme.spacing.md,
-              paddingHorizontal: compact ? 10 : 14,
-              paddingVertical: compact ? 7 : 9,
-            })}
-          >
-            <Feather
-              color={disabled ? theme.colors.textSoft : theme.colors.primaryText}
-              name="shopping-cart"
-              size={compact ? 13 : 14}
-            />
-            <Text
-              style={{
-                color: disabled ? theme.colors.textSoft : theme.colors.primaryText,
-                fontFamily: theme.typography.body,
-                fontSize: compact ? 11 : 12,
-                fontWeight: "700",
-              }}
+            <Pressable
+              disabled={disabled || !onPress}
+              onPress={handleBackAddToCart}
+              style={({ pressed }) => ({
+                alignItems: "center",
+                alignSelf: "stretch",
+                backgroundColor: disabled ? theme.colors.surfaceMuted : theme.colors.primary,
+                borderRadius: theme.radius.pill,
+                flexDirection: "row",
+                gap: theme.spacing.xs,
+                justifyContent: "center",
+                opacity: pressed ? 0.88 : 1,
+                marginTop: compact ? 0 : 2,
+                paddingHorizontal: compact ? 10 : 14,
+                paddingVertical: compact ? 7 : 9,
+              })}
             >
-              {disabled ? "Out of stock" : "Add to cart"}
-            </Text>
-          </Pressable>
+              <Feather
+                color={disabled ? theme.colors.textSoft : theme.colors.primaryText}
+                name="shopping-cart"
+                size={compact ? 13 : 14}
+              />
+              <Text
+                style={{
+                  color: disabled ? theme.colors.textSoft : theme.colors.primaryText,
+                  fontFamily: theme.typography.body,
+                  fontSize: compact ? 11 : 12,
+                  fontWeight: "700",
+                }}
+              >
+                {disabled ? "Out of stock" : "Add to cart"}
+              </Text>
+            </Pressable>
+          </View>
         </View>
 
         <Pressable
