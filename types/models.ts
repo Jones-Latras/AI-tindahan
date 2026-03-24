@@ -85,6 +85,12 @@ export interface PaymentBreakdown {
   utangCents: number;
 }
 
+export interface WeeklyPaymentReport {
+  weekLabel: string;
+  totalCents: number;
+  breakdown: PaymentBreakdown;
+}
+
 export interface DailySalesPoint {
   date: string;
   totalCents: number;

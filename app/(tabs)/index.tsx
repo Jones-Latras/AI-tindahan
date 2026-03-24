@@ -2,7 +2,9 @@ import { Feather } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useSQLiteContext } from "expo-sqlite";
 import { useCallback, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from "react-native";
+
+import { seedStoreData } from "@/scripts/seed-store";
 
 import { ActionButton } from "@/components/ActionButton";
 import { EmptyState } from "@/components/EmptyState";
@@ -14,9 +16,9 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { SurfaceCard } from "@/components/SurfaceCard";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useAppTheme } from "@/contexts/ThemeContext";
-import { getHomeMetrics, getProductSalesVelocity } from "@/db/repositories";
+import { getHomeMetrics, getProductSalesVelocity, getWeeklyPaymentBreakdown } from "@/db/repositories";
 import { chatWithAlingAi, getOrCreateHomeAiBrief, isGeminiReady } from "@/services/ai";
-import type { ChatMessage, HomeAiBrief, HomeMetrics, ProductVelocity } from "@/types/models";
+import type { ChatMessage, HomeAiBrief, HomeMetrics, ProductVelocity, WeeklyPaymentReport } from "@/types/models";
 import { formatCurrencyFromCents } from "@/utils/money";
 
 function createChatMessage(role: ChatMessage["role"], text: string): ChatMessage {
@@ -35,11 +37,13 @@ export default function HomeScreen() {
   const [metrics, setMetrics] = useState<HomeMetrics | null>(null);
   const [brief, setBrief] = useState<HomeAiBrief | null>(null);
   const [velocity, setVelocity] = useState<ProductVelocity[]>([]);
+  const [weeklyReports, setWeeklyReports] = useState<WeeklyPaymentReport[]>([]);
   const [loading, setLoading] = useState(true);
   const [aiLoading, setAiLoading] = useState(true);
   const [chatVisible, setChatVisible] = useState(false);
   const [chatInput, setChatInput] = useState("");
   const [sendingChat, setSendingChat] = useState(false);
+  const [seeding, setSeeding] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([
     createChatMessage(
       "assistant",
@@ -52,14 +56,16 @@ export default function HomeScreen() {
     setAiLoading(true);
 
     try {
-      const [nextMetrics, nextBrief, nextVelocity] = await Promise.all([
+      const [nextMetrics, nextBrief, nextVelocity, nextWeekly] = await Promise.all([
         getHomeMetrics(db),
         getOrCreateHomeAiBrief(db),
         getProductSalesVelocity(db),
+        getWeeklyPaymentBreakdown(db),
       ]);
       setMetrics(nextMetrics);
       setBrief(nextBrief);
       setVelocity(nextVelocity.filter((item) => item.unitsPerDay > 0 && (item.daysUntilOutOfStock ?? Infinity) <= 7).slice(0, 5));
+      setWeeklyReports(nextWeekly);
     } finally {
       setLoading(false);
       setAiLoading(false);
@@ -482,6 +488,117 @@ export default function HomeScreen() {
                     fontWeight: "700",
                   }}
                 >
+                  Weekly Sales Report
+                </Text>
+                <Text
+                  style={{
+                    color: theme.colors.textMuted,
+                    fontFamily: theme.typography.body,
+                    fontSize: 14,
+                  }}
+                >
+                  Cash vs GCash vs Maya vs Utang by week.
+                </Text>
+              </View>
+
+              {weeklyReports.length > 0 && weeklyReports.some((w) => w.totalCents > 0) ? (
+                weeklyReports.map((week) => {
+                  const maxCents = Math.max(...weeklyReports.map((w) => w.totalCents), 1);
+                  const barWidth = Math.max((week.totalCents / maxCents) * 100, 2);
+                  const { breakdown } = week;
+                  const total = week.totalCents || 1;
+
+                  return (
+                    <View key={week.weekLabel} style={{ gap: theme.spacing.xs }}>
+                      <View style={{ alignItems: "center", flexDirection: "row", justifyContent: "space-between" }}>
+                        <Text
+                          style={{
+                            color: theme.colors.text,
+                            fontFamily: theme.typography.body,
+                            fontSize: 13,
+                            fontWeight: "700",
+                          }}
+                        >
+                          {week.weekLabel}
+                        </Text>
+                        <Text
+                          style={{
+                            color: theme.colors.textMuted,
+                            fontFamily: theme.typography.body,
+                            fontSize: 13,
+                          }}
+                        >
+                          {formatCurrencyFromCents(week.totalCents)}
+                        </Text>
+                      </View>
+
+                      <View
+                        style={{
+                          borderRadius: theme.radius.sm,
+                          flexDirection: "row",
+                          height: 14,
+                          overflow: "hidden",
+                          width: `${barWidth}%`,
+                        }}
+                      >
+                        {breakdown.cashCents > 0 ? (
+                          <View style={{ backgroundColor: theme.colors.success, flex: breakdown.cashCents / total }} />
+                        ) : null}
+                        {breakdown.gcashCents > 0 ? (
+                          <View style={{ backgroundColor: theme.colors.primary, flex: breakdown.gcashCents / total }} />
+                        ) : null}
+                        {breakdown.mayaCents > 0 ? (
+                          <View style={{ backgroundColor: theme.colors.accent, flex: breakdown.mayaCents / total }} />
+                        ) : null}
+                        {breakdown.utangCents > 0 ? (
+                          <View style={{ backgroundColor: theme.colors.warning, flex: breakdown.utangCents / total }} />
+                        ) : null}
+                      </View>
+                    </View>
+                  );
+                })
+              ) : (
+                <Text
+                  style={{
+                    color: theme.colors.textMuted,
+                    fontFamily: theme.typography.body,
+                    fontSize: 14,
+                  }}
+                >
+                  No sales recorded in the last 4 weeks yet.
+                </Text>
+              )}
+
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
+                <View style={{ alignItems: "center", flexDirection: "row", gap: 6 }}>
+                  <View style={{ backgroundColor: theme.colors.success, borderRadius: 4, height: 10, width: 10 }} />
+                  <Text style={{ color: theme.colors.textMuted, fontFamily: theme.typography.body, fontSize: 12 }}>Cash</Text>
+                </View>
+                <View style={{ alignItems: "center", flexDirection: "row", gap: 6 }}>
+                  <View style={{ backgroundColor: theme.colors.primary, borderRadius: 4, height: 10, width: 10 }} />
+                  <Text style={{ color: theme.colors.textMuted, fontFamily: theme.typography.body, fontSize: 12 }}>GCash</Text>
+                </View>
+                <View style={{ alignItems: "center", flexDirection: "row", gap: 6 }}>
+                  <View style={{ backgroundColor: theme.colors.accent, borderRadius: 4, height: 10, width: 10 }} />
+                  <Text style={{ color: theme.colors.textMuted, fontFamily: theme.typography.body, fontSize: 12 }}>Maya</Text>
+                </View>
+                <View style={{ alignItems: "center", flexDirection: "row", gap: 6 }}>
+                  <View style={{ backgroundColor: theme.colors.warning, borderRadius: 4, height: 10, width: 10 }} />
+                  <Text style={{ color: theme.colors.textMuted, fontFamily: theme.typography.body, fontSize: 12 }}>Utang</Text>
+                </View>
+              </View>
+            </SurfaceCard>
+
+            <SurfaceCard style={{ gap: theme.spacing.md }}>
+              <View style={{ gap: 4 }}>
+                <Text
+                  style={{
+                    color: theme.colors.text,
+                    fontFamily: theme.typography.display,
+                    fontSize: 24,
+                    fontWeight: "700",
+                  }}
+                >
                   Delikado Customers
                 </Text>
                 <Text
@@ -601,6 +718,46 @@ export default function HomeScreen() {
               )}
             </SurfaceCard>
           </>
+        ) : null}
+
+        {__DEV__ ? (
+          <SurfaceCard
+            style={{
+              borderColor: theme.colors.warning,
+              borderWidth: 1,
+              gap: theme.spacing.sm,
+            }}
+          >
+            <Text
+              style={{
+                color: theme.colors.warning,
+                fontFamily: theme.typography.body,
+                fontSize: 13,
+                fontWeight: "700",
+              }}
+            >
+              Dev Tools
+            </Text>
+            <ActionButton
+              disabled={seeding}
+              label={seeding ? "Seeding..." : "Seed Store Data"}
+              onPress={async () => {
+                setSeeding(true);
+                try {
+                  const result = await seedStoreData(db);
+                  Alert.alert(result.skipped ? "Skipped" : "Done", result.message);
+                  if (!result.skipped) {
+                    void loadDashboard();
+                  }
+                } catch (err) {
+                  Alert.alert("Error", String(err));
+                } finally {
+                  setSeeding(false);
+                }
+              }}
+              variant="secondary"
+            />
+          </SurfaceCard>
         ) : null}
       </Screen>
 

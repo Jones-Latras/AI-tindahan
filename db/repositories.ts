@@ -17,6 +17,7 @@ import type {
   TopProductSummary,
   TrustScore,
   UtangLedgerEntry,
+  WeeklyPaymentReport,
 } from "@/types/models";
 
 type ProductRow = {
@@ -803,4 +804,58 @@ export async function checkoutSale(db: SQLiteDatabase, input: CheckoutInput) {
   });
 
   return saleId;
+}
+
+type WeeklyBreakdownRow = {
+  week_start: string;
+  cash_cents: number | null;
+  gcash_cents: number | null;
+  maya_cents: number | null;
+  utang_cents: number | null;
+};
+
+export async function getWeeklyPaymentBreakdown(db: SQLiteDatabase, weeks = 4): Promise<WeeklyPaymentReport[]> {
+  const rows = await db.getAllAsync<WeeklyBreakdownRow>(
+    `
+      WITH RECURSIVE week_series(week_offset) AS (
+        SELECT 0
+        UNION ALL
+        SELECT week_offset + 1 FROM week_series WHERE week_offset < ? - 1
+      )
+      SELECT
+        DATE('now', '-' || (week_offset * 7 + 6) || ' days', 'localtime') AS week_start,
+        COALESCE(SUM(CASE WHEN s.payment_method = 'cash' THEN s.total_cents ELSE 0 END), 0) AS cash_cents,
+        COALESCE(SUM(CASE WHEN s.payment_method = 'gcash' THEN s.total_cents ELSE 0 END), 0) AS gcash_cents,
+        COALESCE(SUM(CASE WHEN s.payment_method = 'maya' THEN s.total_cents ELSE 0 END), 0) AS maya_cents,
+        COALESCE(SUM(CASE WHEN s.payment_method = 'utang' THEN s.total_cents ELSE 0 END), 0) AS utang_cents
+      FROM week_series ws
+      LEFT JOIN sales s
+        ON DATE(s.created_at, 'localtime') BETWEEN DATE('now', '-' || (ws.week_offset * 7 + 6) || ' days', 'localtime')
+                                                AND DATE('now', '-' || (ws.week_offset * 7) || ' days', 'localtime')
+      GROUP BY ws.week_offset
+      ORDER BY ws.week_offset ASC
+    `,
+    weeks,
+  );
+
+  return rows.map((row) => {
+    const start = new Date(row.week_start);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 6);
+
+    const fmt = (d: Date) =>
+      d.toLocaleDateString("en-PH", { month: "short", day: "numeric" });
+
+    const breakdown = normalizePaymentBreakdown(row);
+
+    return {
+      weekLabel: `${fmt(start)}–${fmt(end)}`,
+      totalCents:
+        breakdown.cashCents +
+        breakdown.gcashCents +
+        breakdown.mayaCents +
+        breakdown.utangCents,
+      breakdown,
+    };
+  });
 }
