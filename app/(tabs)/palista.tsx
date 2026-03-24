@@ -9,6 +9,7 @@ import {
   Easing,
   LayoutAnimation,
   Platform,
+  Pressable,
   Text,
   UIManager,
   View,
@@ -105,6 +106,7 @@ export default function PalistaScreen() {
   const [refreshingList, setRefreshingList] = useState(false);
   const [searchVisible, setSearchVisible] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [expandedCustomerId, setExpandedCustomerId] = useState<number | null>(null);
   const hasLoadedCustomersRef = useRef(false);
   const customerListOpacity = useRef(new Animated.Value(1)).current;
 
@@ -145,6 +147,9 @@ export default function PalistaScreen() {
           currentSelected
             ? nextCustomers.find((customer) => customer.id === currentSelected.id) ?? null
             : currentSelected,
+        );
+        setExpandedCustomerId((currentExpanded) =>
+          currentExpanded !== null && nextCustomers.some((customer) => customer.id === currentExpanded) ? currentExpanded : null,
         );
         hasLoadedCustomersRef.current = true;
       } finally {
@@ -252,6 +257,11 @@ export default function PalistaScreen() {
       phone: customer?.phone ?? "",
     });
     setCustomerModalVisible(true);
+  }, []);
+
+  const toggleCustomerExpanded = useCallback((customerId: number) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setExpandedCustomerId((currentExpanded) => (currentExpanded === customerId ? null : customerId));
   }, []);
 
   const openCustomerDetail = useCallback(
@@ -376,19 +386,30 @@ export default function PalistaScreen() {
 
   return (
     <Screen title={t("palista.title")}>
-      <SurfaceCard style={{ gap: theme.spacing.md }}>
+      <SurfaceCard style={{ gap: theme.spacing.lg }}>
         <View style={{ alignItems: "center", flexDirection: "row", justifyContent: "space-between", gap: theme.spacing.md }}>
-          <Text
-            style={{
-              color: theme.colors.text,
-              flex: 1,
-              fontFamily: theme.typography.display,
-              fontSize: 24,
-              fontWeight: "700",
-            }}
-          >
-            {t("palista.ledgerTitle")}
-          </Text>
+          <View style={{ flex: 1, gap: 4 }}>
+            <Text
+              style={{
+                color: theme.colors.text,
+                fontFamily: theme.typography.display,
+                fontSize: 24,
+                fontWeight: "700",
+              }}
+            >
+              {t("palista.ledgerTitle")}
+            </Text>
+            <Text
+              style={{
+                color: theme.colors.textMuted,
+                fontFamily: theme.typography.body,
+                fontSize: 13,
+                lineHeight: 19,
+              }}
+            >
+              {t("palista.ledgerSubtitle")}
+            </Text>
+          </View>
           {refreshingList ? (
             <View style={{ alignItems: "center", flexDirection: "row", gap: theme.spacing.xs }}>
               <ActivityIndicator color={theme.colors.primary} size="small" />
@@ -405,13 +426,14 @@ export default function PalistaScreen() {
             </View>
           ) : null}
         </View>
+
+        <ActionButton
+          icon={<Feather color={theme.colors.primaryText} name="user-plus" size={16} />}
+          label={t("palista.newCustomerButton")}
+          onPress={() => openCustomerModal()}
+        />
+
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
-          <ActionButton
-            icon={<Feather color={theme.colors.primaryText} name="user-plus" size={16} />}
-            label={t("palista.newCustomerButton")}
-            onPress={() => openCustomerModal()}
-            style={{ flex: 1, minWidth: 150 }}
-          />
           <ActionButton
             icon={<Feather color={theme.colors.primary} name="search" size={16} />}
             label={searchVisible ? t("palista.search.hide") : t("palista.search.show")}
@@ -435,6 +457,7 @@ export default function PalistaScreen() {
             variant="secondary"
           />
         </View>
+
         {searchVisible ? (
           <InputField
             label={t("palista.search.label")}
@@ -459,107 +482,250 @@ export default function PalistaScreen() {
           </Text>
         </SurfaceCard>
       ) : filteredCustomers.length > 0 ? (
-        <Animated.View style={{ gap: theme.spacing.md, opacity: customerListOpacity }}>
+        <Animated.View style={{ gap: theme.spacing.lg, opacity: customerListOpacity }}>
           {filteredCustomers.map((customer) => {
             const overdueTone = getOverdueTone(customer.overdueLevel);
             const overdueLabel = getOverdueLabel(customer.overdueLevel);
             const daysSince = getDaysBetween(customer.lastUtangDate);
+            const isExpanded = expandedCustomerId === customer.id;
 
             return (
-              <SurfaceCard key={customer.id} style={{ gap: theme.spacing.md }}>
-                <View style={{ alignItems: "flex-start", flexDirection: "row", justifyContent: "space-between", gap: theme.spacing.md }}>
-                  <View style={{ flex: 1, gap: 6 }}>
-                    <Text
-                      style={{
-                        color: theme.colors.text,
-                        fontFamily: theme.typography.display,
-                        fontSize: 22,
-                        fontWeight: "700",
-                      }}
-                    >
-                      {customer.name}
-                    </Text>
-                    <Text
-                      style={{
-                        color: theme.colors.textMuted,
-                        fontFamily: theme.typography.body,
-                        fontSize: 14,
-                      }}
-                    >
-                      {customer.phone || t("palista.noPhone")}
-                    </Text>
-                  </View>
-                  <View style={{ alignItems: "flex-end", gap: theme.spacing.xs }}>
-                    <StatusBadge label={getTrustLabel(customer.trustScore)} tone={getTrustTone(customer.trustScore)} />
-                    <StatusBadge label={overdueLabel} tone={overdueTone} />
-                  </View>
-                </View>
+              <Pressable
+                key={customer.id}
+                onPress={() => toggleCustomerExpanded(customer.id)}
+                style={({ pressed }) => ({
+                  opacity: pressed ? 0.96 : 1,
+                })}
+              >
+                <SurfaceCard style={{ gap: theme.spacing.md, padding: theme.spacing.md }}>
+                  <View
+                    style={{
+                      alignItems: "flex-start",
+                      flexDirection: "row",
+                      gap: theme.spacing.md,
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <View style={{ flex: 1, gap: theme.spacing.sm }}>
+                      <View style={{ gap: 4 }}>
+                        <Text
+                          style={{
+                            color: theme.colors.text,
+                            fontFamily: theme.typography.display,
+                            fontSize: 20,
+                            fontWeight: "700",
+                          }}
+                        >
+                          {customer.name}
+                        </Text>
+                        <Text
+                          style={{
+                            color: theme.colors.textMuted,
+                            fontFamily: theme.typography.body,
+                            fontSize: 13,
+                          }}
+                        >
+                          {customer.phone || t("palista.noPhone")}
+                        </Text>
+                      </View>
 
-                <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                  <View style={{ gap: 4 }}>
-                    <Text
-                      style={{
-                        color: theme.colors.textSoft,
-                        fontFamily: theme.typography.body,
-                        fontSize: 12,
-                      }}
-                    >
-                      {t("palista.outstandingBalance")}
-                    </Text>
-                    <Text
-                      style={{
-                        color: theme.colors.text,
-                        fontFamily: theme.typography.display,
-                        fontSize: 26,
-                        fontWeight: "700",
-                      }}
-                    >
-                      {formatCurrencyFromCents(customer.balanceCents)}
-                    </Text>
-                  </View>
-                  <View style={{ alignItems: "flex-end", gap: 4 }}>
-                    <Text
-                      style={{
-                        color: theme.colors.textSoft,
-                        fontFamily: theme.typography.body,
-                        fontSize: 12,
-                      }}
-                    >
-                      {t("palista.lastUtang")}
-                    </Text>
-                    <Text
-                      style={{
-                        color: theme.colors.text,
-                        fontFamily: theme.typography.body,
-                        fontSize: 14,
-                        fontWeight: "700",
-                      }}
-                    >
-                      {customer.lastUtangDate ? `${daysSince} day(s)` : t("palista.noRecord")}
-                    </Text>
-                  </View>
-                </View>
+                      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.xs }}>
+                        <StatusBadge label={getTrustLabel(customer.trustScore)} tone={getTrustTone(customer.trustScore)} />
+                        <StatusBadge label={overdueLabel} tone={overdueTone} />
+                      </View>
+                    </View>
 
-                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
-                  <ActionButton
-                    label={t("palista.viewHistory")}
-                    onPress={() => void openCustomerDetail(customer)}
-                    style={{ flex: 1, minWidth: 150 }}
-                  />
-                  <ActionButton
-                    label={t("palista.refreshScore")}
-                    onPress={() => void refreshSingleTrustScore(customer.id)}
-                    style={{ flex: 1, minWidth: 150 }}
-                    variant="secondary"
-                  />
-                  <ActionButton
-                    label={t("palista.editCustomerButton")}
-                    onPress={() => openCustomerModal(customer)}
-                    style={{ flex: 1, minWidth: 150 }}
-                    variant="ghost"
-                  />
-                </View>
-              </SurfaceCard>
+                    <View style={{ alignItems: "flex-end", gap: theme.spacing.xs }}>
+                      <Text
+                        style={{
+                          color: theme.colors.textSoft,
+                          fontFamily: theme.typography.body,
+                          fontSize: 11,
+                        }}
+                      >
+                        {t("palista.outstandingBalance")}
+                      </Text>
+                      <Text
+                        style={{
+                          color: theme.colors.text,
+                          fontFamily: theme.typography.display,
+                          fontSize: 22,
+                          fontWeight: "700",
+                        }}
+                      >
+                        {formatCurrencyFromCents(customer.balanceCents)}
+                      </Text>
+                      <Feather
+                        color={theme.colors.textSoft}
+                        name={isExpanded ? "chevron-up" : "chevron-down"}
+                        size={18}
+                      />
+                    </View>
+                  </View>
+
+                  <View
+                    style={{
+                      alignItems: "center",
+                      flexDirection: "row",
+                      gap: theme.spacing.md,
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <View style={{ flex: 1, gap: 2 }}>
+                      <Text
+                        style={{
+                          color: theme.colors.textSoft,
+                          fontFamily: theme.typography.body,
+                          fontSize: 12,
+                        }}
+                      >
+                        {t("palista.lastUtang")}
+                      </Text>
+                      <Text
+                        style={{
+                          color: theme.colors.text,
+                          fontFamily: theme.typography.body,
+                          fontSize: 14,
+                          fontWeight: "700",
+                        }}
+                      >
+                        {formatDateLabel(customer.lastUtangDate)}
+                      </Text>
+                    </View>
+
+                    <View style={{ alignItems: "flex-end", gap: 2 }}>
+                      <Text
+                        style={{
+                          color: theme.colors.textSoft,
+                          fontFamily: theme.typography.body,
+                          fontSize: 12,
+                        }}
+                      >
+                        {t("palista.lastEntry")}
+                      </Text>
+                      <Text
+                        style={{
+                          color: theme.colors.text,
+                          fontFamily: theme.typography.body,
+                          fontSize: 14,
+                          fontWeight: "700",
+                        }}
+                      >
+                        {customer.lastUtangDate ? `${daysSince} day(s)` : t("palista.noRecord")}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {isExpanded ? (
+                    <View
+                      style={{
+                        borderTopColor: theme.colors.border,
+                        borderTopWidth: 1,
+                        gap: theme.spacing.sm,
+                        paddingTop: theme.spacing.md,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          color: theme.colors.textMuted,
+                          fontFamily: theme.typography.body,
+                          fontSize: 12,
+                          fontWeight: "700",
+                        }}
+                      >
+                        {t("palista.quickActions")}
+                      </Text>
+
+                      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.xs }}>
+                        <Pressable
+                          onPress={() => void openCustomerDetail(customer)}
+                          style={({ pressed }) => ({
+                            alignItems: "center",
+                            alignSelf: "flex-start",
+                            backgroundColor: theme.colors.primaryMuted,
+                            borderColor: theme.colors.primaryMuted,
+                            borderRadius: theme.radius.pill,
+                            borderWidth: 1,
+                            flexDirection: "row",
+                            gap: theme.spacing.xs,
+                            opacity: pressed ? 0.88 : 1,
+                            paddingHorizontal: 12,
+                            paddingVertical: 9,
+                          })}
+                        >
+                          <Feather color={theme.colors.primary} name="list" size={14} />
+                          <Text
+                            style={{
+                              color: theme.colors.primary,
+                              fontFamily: theme.typography.body,
+                              fontSize: 12,
+                              fontWeight: "700",
+                            }}
+                          >
+                            {t("palista.viewHistory")}
+                          </Text>
+                        </Pressable>
+                        <Pressable
+                          onPress={() => void refreshSingleTrustScore(customer.id)}
+                          style={({ pressed }) => ({
+                            alignItems: "center",
+                            alignSelf: "flex-start",
+                            backgroundColor: theme.colors.surfaceMuted,
+                            borderColor: theme.colors.border,
+                            borderRadius: theme.radius.pill,
+                            borderWidth: 1,
+                            flexDirection: "row",
+                            gap: theme.spacing.xs,
+                            opacity: pressed ? 0.88 : 1,
+                            paddingHorizontal: 12,
+                            paddingVertical: 9,
+                          })}
+                        >
+                          <Feather color={theme.colors.textMuted} name="refresh-cw" size={14} />
+                          <Text
+                            style={{
+                              color: theme.colors.text,
+                              fontFamily: theme.typography.body,
+                              fontSize: 12,
+                              fontWeight: "700",
+                            }}
+                          >
+                            {t("palista.refreshScore")}
+                          </Text>
+                        </Pressable>
+                        <Pressable
+                          onPress={() => openCustomerModal(customer)}
+                          style={({ pressed }) => ({
+                            alignItems: "center",
+                            alignSelf: "flex-start",
+                            backgroundColor: theme.colors.surface,
+                            borderColor: theme.colors.border,
+                            borderRadius: theme.radius.pill,
+                            borderWidth: 1,
+                            flexDirection: "row",
+                            gap: theme.spacing.xs,
+                            opacity: pressed ? 0.88 : 1,
+                            paddingHorizontal: 12,
+                            paddingVertical: 9,
+                          })}
+                        >
+                          <Feather color={theme.colors.textMuted} name="edit-2" size={14} />
+                          <Text
+                            style={{
+                              color: theme.colors.text,
+                              fontFamily: theme.typography.body,
+                              fontSize: 12,
+                              fontWeight: "700",
+                            }}
+                          >
+                            {t("palista.editCustomerButton")}
+                          </Text>
+                        </Pressable>
+                      </View>
+                    </View>
+                  ) : null}
+                </SurfaceCard>
+              </Pressable>
             );
           })}
         </Animated.View>
