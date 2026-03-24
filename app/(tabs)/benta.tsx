@@ -711,6 +711,7 @@ export default function BentaScreen() {
 
               return (
                 <ProductCard
+                  barcode={product.barcode}
                   category={product.category}
                   compact
                   disabled={product.stock <= 0}
@@ -721,6 +722,7 @@ export default function BentaScreen() {
                   name={product.name}
                   onPress={() => handleAddToCart(product)}
                   priceCents={product.priceCents}
+                  showInfoFlip
                   stock={product.stock}
                 />
               );
