@@ -8,10 +8,8 @@ import {
   Animated,
   Easing,
   LayoutAnimation,
-  Platform,
   Pressable,
   Text,
-  UIManager,
   View,
 } from "react-native";
 
@@ -109,12 +107,6 @@ export default function PalistaScreen() {
   const [expandedCustomerId, setExpandedCustomerId] = useState<number | null>(null);
   const hasLoadedCustomersRef = useRef(false);
   const customerListOpacity = useRef(new Animated.Value(1)).current;
-
-  useEffect(() => {
-    if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
-      UIManager.setLayoutAnimationEnabledExperimental(true);
-    }
-  }, []);
 
   const animateCustomerList = useCallback(
     (toValue: number, duration: number) => {
