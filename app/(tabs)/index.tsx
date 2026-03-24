@@ -112,6 +112,13 @@ function HomeShortcutCard({ icon, onPress, subtitle, title, tone }: HomeShortcut
   );
 }
 
+function getMillisecondsUntilNextMidnight(now = new Date()) {
+  const nextMidnight = new Date(now);
+  nextMidnight.setHours(24, 0, 0, 0);
+
+  return Math.max(1000, nextMidnight.getTime() - now.getTime());
+}
+
 export default function HomeScreen() {
   const db = useSQLiteContext();
   const { theme } = useAppTheme();
@@ -176,9 +183,11 @@ export default function HomeScreen() {
     );
   }, [t]);
 
-  const loadDashboard = useCallback(async () => {
-    setLoading(true);
-    setAiLoading(true);
+  const loadDashboard = useCallback(async (options?: { silent?: boolean }) => {
+    if (!options?.silent) {
+      setLoading(true);
+      setAiLoading(true);
+    }
 
     try {
       const [nextMetrics, nextBrief, nextVelocity, nextWeekly] = await Promise.all([
@@ -192,17 +201,35 @@ export default function HomeScreen() {
       setVelocity(nextVelocity.filter((item) => item.unitsPerDay > 0 && (item.daysUntilOutOfStock ?? Infinity) <= 7).slice(0, 5));
       setWeeklyReports(nextWeekly);
     } finally {
-      setLoading(false);
-      setAiLoading(false);
+      if (!options?.silent) {
+        setLoading(false);
+        setAiLoading(false);
+      }
     }
   }, [db, language]);
 
   useFocusEffect(
     useCallback(() => {
+      let midnightRefreshTimeout: ReturnType<typeof setTimeout> | null = null;
+
+      const scheduleMidnightRefresh = () => {
+        midnightRefreshTimeout = setTimeout(() => {
+          void loadDashboard({ silent: true });
+          scheduleMidnightRefresh();
+        }, getMillisecondsUntilNextMidnight());
+      };
+
       void loadDashboard();
       void Storage.getItem("tindahan.store-name").then((name) => {
         setStoreName(name ?? "");
       });
+      scheduleMidnightRefresh();
+
+      return () => {
+        if (midnightRefreshTimeout) {
+          clearTimeout(midnightRefreshTimeout);
+        }
+      };
     }, [loadDashboard]),
   );
 

@@ -79,28 +79,6 @@ export default function SettingsScreen() {
       title={t("home.settings.title")}
     >
       <SurfaceCard style={{ gap: theme.spacing.md, padding: theme.spacing.md }}>
-        <View style={{ gap: 4 }}>
-          <Text
-            style={{
-              color: theme.colors.text,
-              fontFamily: theme.typography.display,
-              fontSize: 24,
-              fontWeight: "700",
-            }}
-          >
-            {t("home.settings.title")}
-          </Text>
-          <Text
-            style={{
-              color: theme.colors.textMuted,
-              fontFamily: theme.typography.body,
-              fontSize: 14,
-            }}
-          >
-            {t("home.settings.subtitle")}
-          </Text>
-        </View>
-
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
           <LanguageToggle />
           <ThemeToggle />
@@ -138,7 +116,7 @@ export default function SettingsScreen() {
           </View>
 
           <InputField
-            label={t("onboarding.storeName")}
+            label={t("home.settings.store.fieldLabel")}
             onChangeText={setStoreNameDraft}
             placeholder={t("onboarding.storeName.placeholder")}
             value={storeNameDraft}
