@@ -26,6 +26,7 @@ import {
   getHomeMetrics,
   getProductByBarcode,
   listCustomersWithBalances,
+  listProductCategories,
   listProducts,
   saveProduct,
 } from "@/db/repositories";
@@ -68,11 +69,18 @@ function parseDecimalInput(value: string) {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : Number.NaN;
 }
 
+function normalizeCategoryName(value: string) {
+  return value.trim().replace(/\s+/g, " ");
+}
+
 export default function BentaScreen() {
   const db = useSQLiteContext();
   const { theme } = useAppTheme();
   const { t } = useAppLanguage();
   const [products, setProducts] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [categoriesExpanded, setCategoriesExpanded] = useState(false);
   const [customers, setCustomers] = useState<CustomerSummary[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [cashInput, setCashInput] = useState("");
@@ -143,6 +151,16 @@ export default function BentaScreen() {
   } as const;
 
   const productById = useMemo(() => new Map(products.map((product) => [product.id, product])), [products]);
+  const visibleProducts = useMemo(
+    () =>
+      selectedCategory
+        ? products.filter(
+            (product) =>
+              normalizeCategoryName(product.category ?? "").toLocaleLowerCase() === selectedCategory.toLocaleLowerCase(),
+          )
+        : products,
+    [products, selectedCategory],
+  );
   const selectedWeightValue = parseDecimalInput(weightInput);
   const weightLineTotalCents =
     selectedWeightProduct && Number.isFinite(selectedWeightValue) && selectedWeightValue > 0
@@ -159,12 +177,14 @@ export default function BentaScreen() {
     setLoading(true);
 
     try {
-      const [nextProducts, nextCustomers] = await Promise.all([
+      const [nextProducts, nextCustomers, nextCategories] = await Promise.all([
         listProducts(db, searchTerm),
         listCustomersWithBalances(db),
+        listProductCategories(db),
       ]);
       setProducts(nextProducts);
       setCustomers(nextCustomers);
+      setCategories(nextCategories);
 
       if (selectedCustomer) {
         const refreshedCustomer = nextCustomers.find((customer) => customer.id === selectedCustomer.id) ?? null;
@@ -212,6 +232,7 @@ export default function BentaScreen() {
 
   const changeCents = paymentMethod === "cash" && hasValidCash ? cashPaidCents - finalTotalCents : 0;
   const cartCountLabel = cartItems.length === 1 ? "1 item" : `${cartItems.length} items`;
+  const categoryCountLabel = categories.length === 1 ? "1 category" : `${categories.length} categories`;
   const selectedCustomerName = selectedCustomer?.name ?? "";
   const selectedCustomerBalanceText = selectedCustomer ? formatCurrencyFromCents(selectedCustomer.balanceCents) : "";
   const isEnoughCash = paymentMethod === "cash" ? hasValidCash && cashPaidCents >= finalTotalCents : true;
@@ -888,7 +909,7 @@ export default function BentaScreen() {
                   fontSize: 13,
                 }}
               >
-                {loading ? "Refreshing catalog..." : `${products.length} products ready to add.`}
+                {loading ? "Refreshing catalog..." : `${visibleProducts.length} products ready to add.`}
               </Text>
             </View>
             <StatusBadge label={cartItems.length > 0 ? `${cartCountLabel} in cart` : "Cart empty"} tone={cartItems.length > 0 ? "primary" : "neutral"} />
@@ -899,6 +920,106 @@ export default function BentaScreen() {
             placeholder="Find by name, category, or barcode"
             value={searchTerm}
           />
+          <View style={{ gap: theme.spacing.sm }}>
+            <View
+              style={{
+                alignItems: "center",
+                flexDirection: "row",
+                gap: theme.spacing.sm,
+                justifyContent: "space-between",
+              }}
+            >
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text
+                  style={{
+                    color: theme.colors.textMuted,
+                    fontFamily: theme.typography.body,
+                    fontSize: 12,
+                    fontWeight: "700",
+                  }}
+                >
+                  Categories
+                </Text>
+                <Text
+                  style={{
+                    color: theme.colors.textSoft,
+                    fontFamily: theme.typography.body,
+                    fontSize: 12,
+                  }}
+                >
+                  {selectedCategory ? `Showing ${selectedCategory}` : `Showing all products - ${categoryCountLabel}`}
+                </Text>
+              </View>
+              <Pressable
+                onPress={() => setCategoriesExpanded((current) => !current)}
+                style={({ pressed }) => ({
+                  alignItems: "center",
+                  backgroundColor: theme.colors.surface,
+                  borderColor: theme.colors.border,
+                  borderRadius: theme.radius.pill,
+                  borderWidth: 1,
+                  flexDirection: "row",
+                  gap: theme.spacing.xs,
+                  opacity: pressed ? 0.88 : 1,
+                  paddingHorizontal: theme.spacing.md,
+                  paddingVertical: 10,
+                })}
+              >
+                <Feather
+                  color={theme.colors.textMuted}
+                  name={categoriesExpanded ? "chevron-up" : "chevron-down"}
+                  size={14}
+                />
+                <Text
+                  style={{
+                    color: theme.colors.text,
+                    fontFamily: theme.typography.body,
+                    fontSize: 12,
+                    fontWeight: "700",
+                  }}
+                >
+                  {categoriesExpanded ? "Hide" : "Show"}
+                </Text>
+              </Pressable>
+            </View>
+            {categoriesExpanded ? (
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
+                {[
+                  { label: "All", value: null as string | null },
+                  ...categories.map((category) => ({ label: category, value: category })),
+                ].map((option) => {
+                  const active = selectedCategory === option.value;
+
+                  return (
+                    <Pressable
+                      key={option.label}
+                      onPress={() => setSelectedCategory(option.value)}
+                      style={({ pressed }) => ({
+                        backgroundColor: active ? theme.colors.primary : theme.colors.surface,
+                        borderColor: active ? theme.colors.primary : theme.colors.border,
+                        borderRadius: theme.radius.pill,
+                        borderWidth: 1,
+                        opacity: pressed ? 0.9 : 1,
+                        paddingHorizontal: theme.spacing.md,
+                        paddingVertical: 10,
+                      })}
+                    >
+                      <Text
+                        style={{
+                          color: active ? theme.colors.primaryText : theme.colors.text,
+                          fontFamily: theme.typography.body,
+                          fontSize: 12,
+                          fontWeight: "700",
+                        }}
+                      >
+                        {option.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            ) : null}
+          </View>
           <ActionButton
             icon={<Feather color={theme.colors.primaryText} name="camera" size={16} />}
             label="Scan Barcode"
@@ -923,36 +1044,50 @@ export default function BentaScreen() {
               </View>
             </SurfaceCard>
           ) : products.length > 0 ? (
-            products.map((product) => {
-              const availableStock = product.isWeightBased ? product.totalKgAvailable ?? 0 : product.stock;
+            visibleProducts.length > 0 ? (
+              visibleProducts.map((product) => {
+                const availableStock = product.isWeightBased ? product.totalKgAvailable ?? 0 : product.stock;
 
-              return (
-                <ProductCard
-                  actionLabel={product.isWeightBased ? "Weigh item" : "Add to cart"}
-                  barcode={product.barcode}
-                  cardPressEnabled={product.isWeightBased}
-                  category={product.category}
-                  compact
-                  disabled={availableStock <= 0}
-                  imageUri={product.imageUri}
-                  isWeightBased={product.isWeightBased}
-                  key={product.id}
-                  marginPercent={formatMarginPercent(computeProfitMargin(product.costPriceCents, product.priceCents))}
-                  minStock={product.minStock}
-                  minStockLabel={formatProductMinStockLabel(product)}
-                  name={product.name}
-                  onActionPress={() => handleAddToCart(product)}
-                  onPress={() => openQuickEditModal(product)}
-                  priceCents={product.priceCents}
-                  priceLabel={formatProductPriceLabel(product)}
-                  showInfoFlip
-                  stock={availableStock}
-                  stockLabel={formatProductStockLabel(product)}
-                  useRegularImageSizing
-                  useRegularTextSizing
-                />
-              );
-            })
+                return (
+                  <ProductCard
+                    actionLabel={product.isWeightBased ? "Weigh item" : "Add to cart"}
+                    barcode={product.barcode}
+                    cardPressEnabled={product.isWeightBased}
+                    category={product.category}
+                    compact
+                    disabled={availableStock <= 0}
+                    imageUri={product.imageUri}
+                    isWeightBased={product.isWeightBased}
+                    key={product.id}
+                    marginPercent={formatMarginPercent(computeProfitMargin(product.costPriceCents, product.priceCents))}
+                    minStock={product.minStock}
+                    minStockLabel={formatProductMinStockLabel(product)}
+                    name={product.name}
+                    onActionPress={() => handleAddToCart(product)}
+                    onPress={() => openQuickEditModal(product)}
+                    priceCents={product.priceCents}
+                    priceLabel={formatProductPriceLabel(product)}
+                    showInfoFlip
+                    stock={availableStock}
+                    stockLabel={formatProductStockLabel(product)}
+                    useRegularImageSizing
+                    useRegularTextSizing
+                  />
+                );
+              })
+            ) : (
+              <SurfaceCard style={[compactCardStyle, { width: "100%" }]}>
+                <Text
+                  style={{
+                    color: theme.colors.textMuted,
+                    fontFamily: theme.typography.body,
+                    fontSize: 14,
+                  }}
+                >
+                  No products match this search or category yet.
+                </Text>
+              </SurfaceCard>
+            )
           ) : (
             <View style={{ width: "100%" }}>
               <EmptyState

@@ -170,6 +170,7 @@ export default function ProduktoScreen() {
   const [categories, setCategories] = useState<string[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [categoriesExpanded, setCategoriesExpanded] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [form, setForm] = useState<ProductFormState>(emptyForm);
@@ -263,6 +264,16 @@ export default function ProduktoScreen() {
     };
   }, [form]);
   const shouldShowValidationMessage = modalVisible && (editingProduct !== null || form.name.trim().length > 0);
+  const visibleProducts = useMemo(
+    () =>
+      selectedCategory
+        ? products.filter(
+            (product) =>
+              normalizeCategoryName(product.category ?? "").toLocaleLowerCase() === selectedCategory.toLocaleLowerCase(),
+          )
+        : products,
+    [products, selectedCategory],
+  );
 
   const persistCategories = useCallback(async (nextCategories: string[]) => {
     const normalizedCategories = mergeCategoryLists(nextCategories);
@@ -283,20 +294,11 @@ export default function ProduktoScreen() {
 
       const nextCategories = mergeCategoryLists(dbCategories, parseStoredCategories(storedCategoriesRaw));
       setCategories(nextCategories);
-
-      setProducts(
-        selectedCategory
-          ? nextProducts.filter(
-              (product) =>
-                normalizeCategoryName(product.category ?? "").toLocaleLowerCase() ===
-                selectedCategory.toLocaleLowerCase(),
-            )
-          : nextProducts,
-      );
+      setProducts(nextProducts);
     } finally {
       setLoading(false);
     }
-  }, [db, searchTerm, selectedCategory]);
+  }, [db, searchTerm]);
 
   useFocusEffect(
     useCallback(() => {
@@ -585,77 +587,122 @@ export default function ProduktoScreen() {
               <Text
                 style={{
                   color: theme.colors.textSoft,
+                  display: "none",
                   fontFamily: theme.typography.body,
                   fontSize: 12,
                 }}
               >
                 {selectedCategory ? `Showing ${selectedCategory}` : `Showing all products • ${categoryCountLabel}`}
               </Text>
-            </View>
-            <Pressable
-              onPress={() => openCategoryModal("catalog")}
-              style={({ pressed }) => ({
-                alignItems: "center",
-                backgroundColor: theme.colors.surface,
-                borderColor: theme.colors.border,
-                borderRadius: theme.radius.pill,
-                borderWidth: 1,
-                flexDirection: "row",
-                gap: theme.spacing.xs,
-                opacity: pressed ? 0.88 : 1,
-                paddingHorizontal: theme.spacing.md,
-                paddingVertical: 10,
-              })}
-            >
-              <Feather color={theme.colors.primary} name="plus" size={14} />
               <Text
                 style={{
-                  color: theme.colors.primary,
+                  color: theme.colors.textSoft,
                   fontFamily: theme.typography.body,
                   fontSize: 12,
-                  fontWeight: "700",
                 }}
               >
-                New Category
+                {selectedCategory ? `Showing ${selectedCategory}` : `Showing all products - ${categoryCountLabel}`}
               </Text>
-            </Pressable>
-          </View>
-
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
-            {[
-              { label: "All", value: null as string | null },
-              ...categories.map((category) => ({ label: category, value: category })),
-            ].map((option) => {
-              const active = selectedCategory === option.value;
-
-              return (
-                <Pressable
-                  key={option.label}
-                  onPress={() => setSelectedCategory(option.value)}
-                  style={({ pressed }) => ({
-                    backgroundColor: active ? theme.colors.primary : theme.colors.surface,
-                    borderColor: active ? theme.colors.primary : theme.colors.border,
-                    borderRadius: theme.radius.pill,
-                    borderWidth: 1,
-                    opacity: pressed ? 0.9 : 1,
-                    paddingHorizontal: theme.spacing.md,
-                    paddingVertical: 10,
-                  })}
+            </View>
+            <View style={{ alignItems: "center", flexDirection: "row", gap: theme.spacing.sm }}>
+              <Pressable
+                onPress={() => setCategoriesExpanded((current) => !current)}
+                style={({ pressed }) => ({
+                  alignItems: "center",
+                  backgroundColor: theme.colors.surface,
+                  borderColor: theme.colors.border,
+                  borderRadius: theme.radius.pill,
+                  borderWidth: 1,
+                  flexDirection: "row",
+                  gap: theme.spacing.xs,
+                  opacity: pressed ? 0.88 : 1,
+                  paddingHorizontal: theme.spacing.md,
+                  paddingVertical: 10,
+                })}
+              >
+                <Feather
+                  color={theme.colors.textMuted}
+                  name={categoriesExpanded ? "chevron-up" : "chevron-down"}
+                  size={14}
+                />
+                <Text
+                  style={{
+                    color: theme.colors.text,
+                    fontFamily: theme.typography.body,
+                    fontSize: 12,
+                    fontWeight: "700",
+                  }}
                 >
-                  <Text
-                    style={{
-                      color: active ? theme.colors.primaryText : theme.colors.text,
-                      fontFamily: theme.typography.body,
-                      fontSize: 12,
-                      fontWeight: "700",
-                    }}
-                  >
-                    {option.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
+                  {categoriesExpanded ? "Hide" : "Show"}
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => openCategoryModal("catalog")}
+                style={({ pressed }) => ({
+                  alignItems: "center",
+                  backgroundColor: theme.colors.surface,
+                  borderColor: theme.colors.border,
+                  borderRadius: theme.radius.pill,
+                  borderWidth: 1,
+                  flexDirection: "row",
+                  gap: theme.spacing.xs,
+                  opacity: pressed ? 0.88 : 1,
+                  paddingHorizontal: theme.spacing.md,
+                  paddingVertical: 10,
+                })}
+              >
+                <Feather color={theme.colors.primary} name="plus" size={14} />
+                <Text
+                  style={{
+                    color: theme.colors.primary,
+                    fontFamily: theme.typography.body,
+                    fontSize: 12,
+                    fontWeight: "700",
+                  }}
+                >
+                  New Category
+                </Text>
+              </Pressable>
+            </View>
           </View>
+
+          {categoriesExpanded ? (
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
+              {[
+                { label: "All", value: null as string | null },
+                ...categories.map((category) => ({ label: category, value: category })),
+              ].map((option) => {
+                const active = selectedCategory === option.value;
+
+                return (
+                  <Pressable
+                    key={option.label}
+                    onPress={() => setSelectedCategory(option.value)}
+                    style={({ pressed }) => ({
+                      backgroundColor: active ? theme.colors.primary : theme.colors.surface,
+                      borderColor: active ? theme.colors.primary : theme.colors.border,
+                      borderRadius: theme.radius.pill,
+                      borderWidth: 1,
+                      opacity: pressed ? 0.9 : 1,
+                      paddingHorizontal: theme.spacing.md,
+                      paddingVertical: 10,
+                    })}
+                  >
+                    <Text
+                      style={{
+                        color: active ? theme.colors.primaryText : theme.colors.text,
+                        fontFamily: theme.typography.body,
+                        fontSize: 12,
+                        fontWeight: "700",
+                      }}
+                    >
+                      {option.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          ) : null}
         </View>
         <ActionButton
           icon={<Feather color={theme.colors.primaryText} name="plus" size={16} />}
@@ -678,31 +725,45 @@ export default function ProduktoScreen() {
             </Text>
           </SurfaceCard>
         ) : products.length > 0 ? (
-          products.map((product) => {
-            const availableStock = product.isWeightBased ? product.totalKgAvailable ?? 0 : product.stock;
+          visibleProducts.length > 0 ? (
+            visibleProducts.map((product) => {
+              const availableStock = product.isWeightBased ? product.totalKgAvailable ?? 0 : product.stock;
 
-            return (
-              <ProductCard
-                actionIconName="edit-2"
-                actionLabel="Edit"
-                cardPressEnabled={false}
-                category={product.category}
-                imageUri={product.imageUri}
-                isWeightBased={product.isWeightBased}
-                key={product.id}
-                marginPercent={formatMarginPercent(computeProfitMargin(product.costPriceCents, product.priceCents))}
-                minStock={product.minStock}
-                minStockLabel={formatProductMinStockLabel(product)}
-                name={product.name}
-                onActionPress={() => openEditModal(product)}
-                priceCents={product.priceCents}
-                priceLabel={formatProductPriceLabel(product)}
-                showInfoFlip
-                stock={availableStock}
-                stockLabel={formatProductStockLabel(product)}
-              />
-            );
-          })
+              return (
+                <ProductCard
+                  actionIconName="edit-2"
+                  actionLabel="Edit"
+                  cardPressEnabled={false}
+                  category={product.category}
+                  imageUri={product.imageUri}
+                  isWeightBased={product.isWeightBased}
+                  key={product.id}
+                  marginPercent={formatMarginPercent(computeProfitMargin(product.costPriceCents, product.priceCents))}
+                  minStock={product.minStock}
+                  minStockLabel={formatProductMinStockLabel(product)}
+                  name={product.name}
+                  onActionPress={() => openEditModal(product)}
+                  priceCents={product.priceCents}
+                  priceLabel={formatProductPriceLabel(product)}
+                  showInfoFlip
+                  stock={availableStock}
+                  stockLabel={formatProductStockLabel(product)}
+                />
+              );
+            })
+          ) : (
+            <SurfaceCard style={{ width: "100%" }}>
+              <Text
+                style={{
+                  color: theme.colors.textMuted,
+                  fontFamily: theme.typography.body,
+                  fontSize: 14,
+                }}
+              >
+                No products match this search or category yet.
+              </Text>
+            </SurfaceCard>
+          )
         ) : (
           <View style={{ width: "100%" }}>
               <EmptyState
