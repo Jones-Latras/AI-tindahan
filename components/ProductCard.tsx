@@ -13,6 +13,8 @@ import {
 import { useAppTheme } from "@/contexts/ThemeContext";
 import { formatCurrencyFromCents } from "@/utils/money";
 
+const PRODUCT_IMAGE_BACKGROUND = "#FFFFFF";
+
 type ProductCardProps = {
   name: string;
   category?: string | null;
@@ -143,7 +145,7 @@ export function ProductCard({
             resizeMode="cover"
             source={{ uri: imageUri ?? undefined }}
             style={{
-              backgroundColor: theme.colors.surfaceMuted,
+              backgroundColor: PRODUCT_IMAGE_BACKGROUND,
               height: frontImageHeight,
               width: "100%",
             }}

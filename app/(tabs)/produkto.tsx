@@ -42,6 +42,7 @@ const emptyForm: ProductFormState = {
 
 const PRODUCT_IMAGE_QUALITY = 0.72;
 const PRODUCT_CATEGORIES_KEY = "tindahan.product-categories";
+const PRODUCT_IMAGE_BACKGROUND = "#FFFFFF";
 
 type CategoryModalTarget = "catalog" | "product";
 
@@ -716,7 +717,7 @@ export default function ProduktoScreen() {
             <View
               style={{
                 alignItems: "center",
-                backgroundColor: theme.colors.surfaceMuted,
+                backgroundColor: PRODUCT_IMAGE_BACKGROUND,
                 borderRadius: theme.radius.md,
                 height: 72,
                 justifyContent: "center",
@@ -799,7 +800,7 @@ export default function ProduktoScreen() {
           <View
             style={{
               alignItems: "center",
-              backgroundColor: theme.colors.surfaceMuted,
+              backgroundColor: PRODUCT_IMAGE_BACKGROUND,
               justifyContent: "center",
               minHeight: 280,
               padding: theme.spacing.lg,
@@ -809,7 +810,7 @@ export default function ProduktoScreen() {
               <Image
                 resizeMode="cover"
                 source={{ uri: form.imageUri }}
-                style={{ backgroundColor: theme.colors.surfaceMuted, height: 280, width: "100%" }}
+                style={{ backgroundColor: PRODUCT_IMAGE_BACKGROUND, height: 280, width: "100%" }}
               />
             ) : (
               <View style={{ alignItems: "center", gap: theme.spacing.sm, maxWidth: 240 }}>
