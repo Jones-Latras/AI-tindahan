@@ -50,7 +50,10 @@ export function ProductCard({
   const hasImage = Boolean(imageUri && !imageFailed);
   const faceGap = compact ? theme.spacing.sm : theme.spacing.md;
   const facePadding = compact ? theme.spacing.md : theme.spacing.lg;
-  const fallbackCardHeight = compact ? (hasImage ? 268 : 224) : hasImage ? 328 : 268;
+  const baseCardHeight = compact ? (hasImage ? 320 : 264) : hasImage ? 360 : 292;
+  const estimatedBackNameLines = Math.max(2, Math.ceil(name.trim().length / (compact ? 16 : 20)));
+  const extraBackNameHeight = Math.max(0, estimatedBackNameLines - 2) * (compact ? 18 : 22);
+  const fallbackCardHeight = baseCardHeight + extraBackNameHeight;
 
   useEffect(() => {
     setImageFailed(false);
@@ -176,10 +179,10 @@ export function ProductCard({
         </Text>
         <Text
           style={{
-            color: theme.colors.textMuted,
-            fontFamily: theme.typography.body,
-            fontSize: compact ? 13 : 14,
-            fontWeight: "600",
+            color: showInfoFlip ? theme.colors.primary : theme.colors.textMuted,
+            fontFamily: showInfoFlip ? theme.typography.display : theme.typography.body,
+            fontSize: showInfoFlip ? (compact ? 22 : 24) : compact ? 13 : 14,
+            fontWeight: "700",
           }}
         >
           {formatCurrencyFromCents(priceCents)}
@@ -233,18 +236,6 @@ export function ProductCard({
         </View>
       ) : null}
 
-      {showInfoFlip ? (
-        <Text
-          style={{
-            color: theme.colors.textSoft,
-            fontFamily: theme.typography.body,
-            fontSize: 11,
-            lineHeight: 16,
-          }}
-        >
-          Tap card to add. Use the info button for full details.
-        </Text>
-      ) : null}
     </>
   );
 
@@ -329,62 +320,65 @@ export function ProductCard({
           transform: [{ perspective: 1200 }, { rotateY: backRotation }],
         }}
       >
-        <View style={{ flex: 1, gap: faceGap, paddingTop: compact ? 10 : 14 }}>
-          <View style={{ gap: theme.spacing.xs, paddingRight: compact ? 34 : 40 }}>
-            <Text
-              style={{
-                color: theme.colors.textSoft,
-                fontFamily: theme.typography.body,
-                fontSize: 11,
-                fontWeight: "700",
-                letterSpacing: 0.4,
-                textTransform: "uppercase",
-              }}
-            >
-              Product Info
-            </Text>
-            <Text
-              style={{
-                color: theme.colors.text,
-                fontFamily: theme.typography.display,
-                fontSize: compact ? 18 : 20,
-                fontWeight: "700",
-              }}
-            >
-              {name}
-            </Text>
-          </View>
-
-          <View style={{ gap: compact ? 8 : 10 }}>
-            {detailRows.map((detail) => (
-              <View
-                key={detail.label}
-                style={{ flexDirection: "row", justifyContent: "space-between", gap: theme.spacing.md }}
+        <View style={{ flex: 1, justifyContent: "space-between", paddingTop: compact ? 10 : 14 }}>
+          <View style={{ gap: compact ? theme.spacing.sm : faceGap }}>
+            <View style={{ gap: theme.spacing.xs, paddingRight: compact ? 34 : 40 }}>
+              <Text
+                style={{
+                  color: theme.colors.textSoft,
+                  fontFamily: theme.typography.body,
+                  fontSize: 11,
+                  fontWeight: "700",
+                  letterSpacing: 0.4,
+                  textTransform: "uppercase",
+                }}
               >
-                <Text
-                  style={{
-                    color: theme.colors.textMuted,
-                    fontFamily: theme.typography.body,
-                    fontSize: 12,
-                  }}
+                Product Info
+              </Text>
+              <Text
+                style={{
+                  color: theme.colors.text,
+                  fontFamily: theme.typography.display,
+                  fontSize: compact ? 16 : 20,
+                  fontWeight: "700",
+                  lineHeight: compact ? 20 : 24,
+                }}
+              >
+                {name}
+              </Text>
+            </View>
+
+            <View style={{ gap: compact ? 6 : 10 }}>
+              {detailRows.map((detail) => (
+                <View
+                  key={detail.label}
+                  style={{ flexDirection: "row", justifyContent: "space-between", gap: theme.spacing.md }}
                 >
-                  {detail.label}
-                </Text>
-                <Text
-                  numberOfLines={1}
-                  style={{
-                    color: detail.tone,
-                    flex: 1,
-                    fontFamily: theme.typography.body,
-                    fontSize: 12,
-                    fontWeight: "700",
-                    textAlign: "right",
-                  }}
-                >
-                  {detail.value}
-                </Text>
-              </View>
-            ))}
+                  <Text
+                    style={{
+                      color: theme.colors.textMuted,
+                      fontFamily: theme.typography.body,
+                      fontSize: compact ? 11 : 12,
+                    }}
+                  >
+                    {detail.label}
+                  </Text>
+                  <Text
+                    numberOfLines={1}
+                    style={{
+                      color: detail.tone,
+                      flex: 1,
+                      fontFamily: theme.typography.body,
+                      fontSize: compact ? 11 : 12,
+                      fontWeight: "700",
+                      textAlign: "right",
+                    }}
+                  >
+                    {detail.value}
+                  </Text>
+                </View>
+              ))}
+            </View>
           </View>
 
           <Pressable
@@ -392,14 +386,16 @@ export function ProductCard({
             onPress={handleBackAddToCart}
             style={({ pressed }) => ({
               alignItems: "center",
-              alignSelf: "flex-start",
+              alignSelf: "stretch",
               backgroundColor: disabled ? theme.colors.surfaceMuted : theme.colors.primary,
               borderRadius: theme.radius.pill,
               flexDirection: "row",
               gap: theme.spacing.xs,
+              justifyContent: "center",
               opacity: pressed ? 0.88 : 1,
-              paddingHorizontal: compact ? 12 : 14,
-              paddingVertical: compact ? 8 : 9,
+              marginTop: compact ? theme.spacing.sm : theme.spacing.md,
+              paddingHorizontal: compact ? 10 : 14,
+              paddingVertical: compact ? 7 : 9,
             })}
           >
             <Feather
@@ -411,24 +407,13 @@ export function ProductCard({
               style={{
                 color: disabled ? theme.colors.textSoft : theme.colors.primaryText,
                 fontFamily: theme.typography.body,
-                fontSize: 12,
+                fontSize: compact ? 11 : 12,
                 fontWeight: "700",
               }}
             >
               {disabled ? "Out of stock" : "Add to cart"}
             </Text>
           </Pressable>
-
-          <Text
-            style={{
-              color: theme.colors.textSoft,
-              fontFamily: theme.typography.body,
-              fontSize: 11,
-              lineHeight: 16,
-            }}
-          >
-            Tap the info button again to flip back, then tap the front side to add this product to cart.
-          </Text>
         </View>
 
         <Pressable
