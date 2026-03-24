@@ -375,7 +375,7 @@ export default function PalistaScreen() {
   }, [db, refreshCustomers, t]);
 
   return (
-    <Screen subtitle={t("palista.subtitle")} title={t("palista.title")}>
+    <Screen title={t("palista.title")}>
       <SurfaceCard style={{ gap: theme.spacing.md }}>
         <View style={{ alignItems: "center", flexDirection: "row", justifyContent: "space-between", gap: theme.spacing.md }}>
           <Text

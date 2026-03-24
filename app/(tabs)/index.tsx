@@ -129,12 +129,14 @@ export default function HomeScreen() {
   const [velocity, setVelocity] = useState<ProductVelocity[]>([]);
   const [weeklyReports, setWeeklyReports] = useState<WeeklyPaymentReport[]>([]);
   const [storeName, setStoreName] = useState("");
+  const [storeNameDraft, setStoreNameDraft] = useState("");
   const [loading, setLoading] = useState(true);
   const [aiLoading, setAiLoading] = useState(true);
   const [chatVisible, setChatVisible] = useState(false);
   const [chatInput, setChatInput] = useState("");
   const [sendingChat, setSendingChat] = useState(false);
   const [seeding, setSeeding] = useState(false);
+  const [savingStoreName, setSavingStoreName] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [lastSync, setLastSync] = useState<string | null>(null);
   const [activePanel, setActivePanel] = useState<HomePanel | null>(null);
@@ -197,6 +199,10 @@ export default function HomeScreen() {
     return items;
   }, [supabaseReady, t]);
   const activeShortcut = shortcutItems.find((item) => item.key === activePanel) ?? null;
+  const normalizedStoreName = storeName.trim().replace(/\s+/g, " ");
+  const normalizedStoreNameDraft = storeNameDraft.trim().replace(/\s+/g, " ");
+  const canSaveStoreName =
+    normalizedStoreNameDraft.length >= 2 && normalizedStoreNameDraft.toLocaleLowerCase() !== normalizedStoreName.toLocaleLowerCase();
 
   useEffect(() => {
     setMessages((current) =>
@@ -231,11 +237,36 @@ export default function HomeScreen() {
     useCallback(() => {
       void loadDashboard();
       void Storage.getItem("tindahan.store-name").then((name) => {
-        if (name) setStoreName(name);
+        const nextStoreName = name ?? "";
+        setStoreName(nextStoreName);
+        setStoreNameDraft(nextStoreName);
       });
       void getLastSyncTime().then(setLastSync);
     }, [loadDashboard]),
   );
+
+  const handleSaveStoreName = useCallback(async () => {
+    if (normalizedStoreNameDraft.length < 2) {
+      Alert.alert(t("home.settings.store.invalidTitle"), t("home.settings.store.invalidMessage"));
+      return;
+    }
+
+    setSavingStoreName(true);
+
+    try {
+      await Storage.setItem("tindahan.store-name", normalizedStoreNameDraft);
+      setStoreName(normalizedStoreNameDraft);
+      setStoreNameDraft(normalizedStoreNameDraft);
+      Alert.alert(t("home.settings.store.savedTitle"), t("home.settings.store.savedMessage"));
+    } catch (error) {
+      Alert.alert(
+        t("home.settings.store.failedTitle"),
+        error instanceof Error ? error.message : t("home.settings.store.failedMessage"),
+      );
+    } finally {
+      setSavingStoreName(false);
+    }
+  }, [normalizedStoreNameDraft, t]);
 
   const handleSendChat = useCallback(async () => {
     const userText = chatInput.trim();
@@ -821,6 +852,52 @@ export default function HomeScreen() {
         <LanguageToggle />
         <ThemeToggle />
       </View>
+
+      <View
+        style={{
+          backgroundColor: theme.colors.surfaceMuted,
+          borderRadius: theme.radius.md,
+          gap: theme.spacing.sm,
+          padding: theme.spacing.md,
+        }}
+      >
+        <View style={{ gap: 4 }}>
+          <Text
+            style={{
+              color: theme.colors.text,
+              fontFamily: theme.typography.body,
+              fontSize: 15,
+              fontWeight: "700",
+            }}
+          >
+            {t("home.settings.store.title")}
+          </Text>
+          <Text
+            style={{
+              color: theme.colors.textMuted,
+              fontFamily: theme.typography.body,
+              fontSize: 13,
+              lineHeight: 19,
+            }}
+          >
+            {t("home.settings.store.subtitle")}
+          </Text>
+        </View>
+
+        <InputField
+          label={t("onboarding.storeName")}
+          onChangeText={setStoreNameDraft}
+          placeholder={t("onboarding.storeName.placeholder")}
+          value={storeNameDraft}
+        />
+
+        <ActionButton
+          disabled={!canSaveStoreName || savingStoreName}
+          label={savingStoreName ? t("home.settings.store.saving") : t("home.settings.store.save")}
+          onPress={() => void handleSaveStoreName()}
+          variant="secondary"
+        />
+      </View>
     </SurfaceCard>
   );
 
@@ -891,7 +968,6 @@ export default function HomeScreen() {
             </Text>
           </Pressable>
         }
-        subtitle={t("home.subtitle")}
         title={storeName || "TindaHan AI"}
       >
         {aiLoading ? (

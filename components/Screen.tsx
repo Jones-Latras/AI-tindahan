@@ -1,6 +1,8 @@
+import { useEffect, useMemo, useState } from "react";
 import { ScrollView, Text, View, type StyleProp, type ViewStyle } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { useAppLanguage } from "@/contexts/LanguageContext";
 import { useAppTheme } from "@/contexts/ThemeContext";
 
 type ScreenProps = {
@@ -11,6 +13,75 @@ type ScreenProps = {
   children: React.ReactNode;
   contentContainerStyle?: StyleProp<ViewStyle>;
 };
+
+function LiveDateTime() {
+  const { theme } = useAppTheme();
+  const { language } = useAppLanguage();
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setNow(new Date());
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, []);
+
+  const locale = language === "english" ? "en-PH" : "fil-PH";
+  const dateLabel = useMemo(
+    () =>
+      new Intl.DateTimeFormat(locale, {
+        day: "numeric",
+        month: "short",
+        weekday: "short",
+        year: "numeric",
+      }).format(now),
+    [locale, now],
+  );
+  const timeLabel = useMemo(
+    () =>
+      new Intl.DateTimeFormat(locale, {
+        hour: "numeric",
+        minute: "2-digit",
+        second: "2-digit",
+      }).format(now),
+    [locale, now],
+  );
+
+  return (
+    <View
+      style={{
+        backgroundColor: theme.colors.surface,
+        borderColor: theme.colors.border,
+        borderRadius: theme.radius.lg,
+        borderWidth: 1,
+        gap: 4,
+        paddingHorizontal: theme.spacing.md,
+        paddingVertical: theme.spacing.sm,
+      }}
+    >
+      <Text
+        style={{
+          color: theme.colors.text,
+          fontFamily: theme.typography.display,
+          fontSize: 18,
+          fontWeight: "700",
+        }}
+      >
+        {timeLabel}
+      </Text>
+      <Text
+        style={{
+          color: theme.colors.textMuted,
+          fontFamily: theme.typography.body,
+          fontSize: 12,
+        }}
+      >
+        {dateLabel}
+      </Text>
+    </View>
+  );
+}
 
 export function Screen({
   title,
@@ -69,7 +140,19 @@ export function Screen({
               </Text>
             ) : null}
           </View>
-          {rightSlot}
+          <View
+            style={{
+              alignSelf: "stretch",
+              backgroundColor: theme.colors.border,
+              marginRight: theme.spacing.md,
+              opacity: 0.45,
+              width: 1,
+            }}
+          />
+          <View style={{ alignItems: "flex-end", gap: theme.spacing.sm }}>
+            <LiveDateTime />
+            {rightSlot}
+          </View>
         </View>
         {children}
       </ScrollView>

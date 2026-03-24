@@ -556,7 +556,7 @@ export default function ProduktoScreen() {
   const categoryCountLabel = categories.length === 1 ? "1 saved category" : `${categories.length} saved categories`;
 
   return (
-    <Screen subtitle={t("produkto.subtitle")} title={t("produkto.title")}>
+    <Screen title={t("produkto.title")}>
       <SurfaceCard style={{ gap: theme.spacing.md }}>
         <InputField
           label="Search catalog"

@@ -199,7 +199,7 @@ export default function BentaScreen() {
     useCallback(() => {
       void loadScreenData();
       void Storage.getItem("tindahan.store-name").then((name) => {
-        if (name) setStoreName(name);
+        setStoreName(name ?? "");
       });
     }, [loadScreenData]),
   );
@@ -886,7 +886,6 @@ export default function BentaScreen() {
             </Animated.View>
           </>
         }
-        subtitle={t("benta.subtitle")}
         title={t("benta.title")}
       >
         <SurfaceCard style={compactCardStyle}>
