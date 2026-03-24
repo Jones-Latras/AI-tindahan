@@ -5,28 +5,22 @@ import Storage from "expo-sqlite/kv-store";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from "react-native";
 
-import { seedStoreData } from "@/scripts/seed-store";
-
 import { ActionButton } from "@/components/ActionButton";
 import { AutoSwipeSuggestionCarousel } from "@/components/AutoSwipeSuggestionCarousel";
 import { EmptyState } from "@/components/EmptyState";
 import { InputField } from "@/components/InputField";
-import { LanguageToggle } from "@/components/LanguageToggle";
 import { ModalSheet } from "@/components/ModalSheet";
 import { Screen } from "@/components/Screen";
 import { StatCard } from "@/components/StatCard";
 import { StatusBadge } from "@/components/StatusBadge";
 import { SurfaceCard } from "@/components/SurfaceCard";
 import { useAppLanguage } from "@/contexts/LanguageContext";
-import { ThemeToggle } from "@/components/ThemeToggle";
 import { useAppTheme } from "@/contexts/ThemeContext";
 import { getHomeMetrics, getProductSalesVelocity, getWeeklyPaymentBreakdown } from "@/db/repositories";
 import { chatWithAlingAi, getOrCreateHomeAiBrief, isGeminiReady } from "@/services/ai";
 import type { ChatMessage, HomeAiBrief, HomeMetrics, ProductVelocity, WeeklyPaymentReport } from "@/types/models";
 import { formatCurrencyFromCents } from "@/utils/money";
 import { formatWeightKg } from "@/utils/pricing";
-import { isSupabaseReady } from "@/utils/supabase";
-import { getLastSyncTime, restoreFromCloud, syncToCloud } from "@/utils/sync";
 
 function createChatMessage(role: ChatMessage["role"], text: string): ChatMessage {
   return {
@@ -37,7 +31,7 @@ function createChatMessage(role: ChatMessage["role"], text: string): ChatMessage
   };
 }
 
-type HomePanel = "analytics" | "inventory" | "credit" | "cloud" | "dev";
+type HomePanel = "analytics" | "inventory" | "credit";
 
 type HomeShortcutCardProps = {
   icon: keyof typeof Feather.glyphMap;
@@ -123,22 +117,16 @@ export default function HomeScreen() {
   const { theme } = useAppTheme();
   const { language, t } = useAppLanguage();
   const geminiReady = isGeminiReady();
-  const supabaseReady = isSupabaseReady();
   const [metrics, setMetrics] = useState<HomeMetrics | null>(null);
   const [brief, setBrief] = useState<HomeAiBrief | null>(null);
   const [velocity, setVelocity] = useState<ProductVelocity[]>([]);
   const [weeklyReports, setWeeklyReports] = useState<WeeklyPaymentReport[]>([]);
   const [storeName, setStoreName] = useState("");
-  const [storeNameDraft, setStoreNameDraft] = useState("");
   const [loading, setLoading] = useState(true);
   const [aiLoading, setAiLoading] = useState(true);
   const [chatVisible, setChatVisible] = useState(false);
   const [chatInput, setChatInput] = useState("");
   const [sendingChat, setSendingChat] = useState(false);
-  const [seeding, setSeeding] = useState(false);
-  const [savingStoreName, setSavingStoreName] = useState(false);
-  const [syncing, setSyncing] = useState(false);
-  const [lastSync, setLastSync] = useState<string | null>(null);
   const [activePanel, setActivePanel] = useState<HomePanel | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>(() => [createChatMessage("assistant", t("home.aiWelcome"))]);
   const compactCardStyle = {
@@ -176,33 +164,9 @@ export default function HomeScreen() {
       },
     ];
 
-    if (supabaseReady) {
-      items.push({
-        icon: "cloud",
-        key: "cloud",
-        subtitle: t("home.shortcuts.cloud.subtitle"),
-        title: t("home.shortcuts.cloud.title"),
-        tone: "accent",
-      });
-    }
-
-    if (__DEV__) {
-      items.push({
-        icon: "tool",
-        key: "dev",
-        subtitle: t("home.shortcuts.dev.subtitle"),
-        title: t("home.shortcuts.dev.title"),
-        tone: "neutral",
-      });
-    }
-
     return items;
-  }, [supabaseReady, t]);
+  }, [t]);
   const activeShortcut = shortcutItems.find((item) => item.key === activePanel) ?? null;
-  const normalizedStoreName = storeName.trim().replace(/\s+/g, " ");
-  const normalizedStoreNameDraft = storeNameDraft.trim().replace(/\s+/g, " ");
-  const canSaveStoreName =
-    normalizedStoreNameDraft.length >= 2 && normalizedStoreNameDraft.toLocaleLowerCase() !== normalizedStoreName.toLocaleLowerCase();
 
   useEffect(() => {
     setMessages((current) =>
@@ -237,36 +201,10 @@ export default function HomeScreen() {
     useCallback(() => {
       void loadDashboard();
       void Storage.getItem("tindahan.store-name").then((name) => {
-        const nextStoreName = name ?? "";
-        setStoreName(nextStoreName);
-        setStoreNameDraft(nextStoreName);
+        setStoreName(name ?? "");
       });
-      void getLastSyncTime().then(setLastSync);
     }, [loadDashboard]),
   );
-
-  const handleSaveStoreName = useCallback(async () => {
-    if (normalizedStoreNameDraft.length < 2) {
-      Alert.alert(t("home.settings.store.invalidTitle"), t("home.settings.store.invalidMessage"));
-      return;
-    }
-
-    setSavingStoreName(true);
-
-    try {
-      await Storage.setItem("tindahan.store-name", normalizedStoreNameDraft);
-      setStoreName(normalizedStoreNameDraft);
-      setStoreNameDraft(normalizedStoreNameDraft);
-      Alert.alert(t("home.settings.store.savedTitle"), t("home.settings.store.savedMessage"));
-    } catch (error) {
-      Alert.alert(
-        t("home.settings.store.failedTitle"),
-        error instanceof Error ? error.message : t("home.settings.store.failedMessage"),
-      );
-    } finally {
-      setSavingStoreName(false);
-    }
-  }, [normalizedStoreNameDraft, t]);
 
   const handleSendChat = useCallback(async () => {
     const userText = chatInput.trim();
@@ -699,208 +637,6 @@ export default function HomeScreen() {
     );
   };
 
-  const renderCloudPanel = () => {
-    if (!supabaseReady) {
-      return null;
-    }
-
-    return (
-      <SurfaceCard style={compactCardStyle}>
-        <View style={{ gap: 4 }}>
-          <Text
-            style={{
-              color: theme.colors.text,
-              fontFamily: theme.typography.display,
-              fontSize: 24,
-              fontWeight: "700",
-            }}
-          >
-            {t("home.cloud.title")}
-          </Text>
-          <Text
-            style={{
-              color: theme.colors.textMuted,
-              fontFamily: theme.typography.body,
-              fontSize: 14,
-            }}
-          >
-            {lastSync ? t("home.cloud.lastBackup", { time: lastSync }) : t("home.cloud.none")}
-          </Text>
-        </View>
-        <ActionButton
-          disabled={syncing}
-          label={syncing ? "Syncing..." : t("home.cloud.backupNow")}
-          onPress={async () => {
-            setSyncing(true);
-            try {
-              const msg = await syncToCloud(db);
-              Alert.alert(t("home.cloud.backupTitle"), msg);
-              setLastSync(await getLastSyncTime());
-            } catch (err) {
-              Alert.alert(t("home.cloud.backupFailed"), String(err));
-            } finally {
-              setSyncing(false);
-            }
-          }}
-        />
-        <ActionButton
-          disabled={syncing}
-          label={t("home.cloud.restore")}
-          onPress={() => {
-            Alert.alert(
-              t("home.cloud.restoreTitle"),
-              t("home.cloud.restoreMessage"),
-              [
-                { text: t("home.cloud.cancel"), style: "cancel" },
-                {
-                  text: t("home.cloud.confirmRestore"),
-                  style: "destructive",
-                  onPress: async () => {
-                    setSyncing(true);
-                    try {
-                      const msg = await restoreFromCloud(db);
-                      Alert.alert(t("home.cloud.restoreResult"), msg);
-                      void loadDashboard();
-                      setLastSync(await getLastSyncTime());
-                    } catch (err) {
-                      Alert.alert(t("home.cloud.restoreFailed"), String(err));
-                    } finally {
-                      setSyncing(false);
-                    }
-                  },
-                },
-              ],
-            );
-          }}
-          variant="secondary"
-        />
-      </SurfaceCard>
-    );
-  };
-
-  const renderDevPanel = () => {
-    if (!__DEV__) {
-      return null;
-    }
-
-    return (
-      <SurfaceCard
-        style={{
-          borderColor: theme.colors.warning,
-          borderWidth: 1,
-          gap: theme.spacing.sm,
-        }}
-      >
-        <Text
-          style={{
-            color: theme.colors.warning,
-            fontFamily: theme.typography.body,
-            fontSize: 13,
-            fontWeight: "700",
-          }}
-        >
-          {t("home.dev.title")}
-        </Text>
-        <ActionButton
-          disabled={seeding}
-          label={seeding ? "Seeding..." : t("home.dev.seed")}
-          onPress={async () => {
-            setSeeding(true);
-            try {
-              const result = await seedStoreData(db);
-              Alert.alert(result.skipped ? t("home.dev.skipped") : t("home.dev.done"), result.message);
-              if (!result.skipped) {
-                void loadDashboard();
-              }
-            } catch (err) {
-              Alert.alert(t("home.dev.error"), String(err));
-            } finally {
-              setSeeding(false);
-            }
-          }}
-          variant="secondary"
-        />
-      </SurfaceCard>
-    );
-  };
-
-  const renderSettingsCard = () => (
-    <SurfaceCard style={compactCardStyle}>
-      <View style={{ gap: 4 }}>
-        <Text
-          style={{
-            color: theme.colors.text,
-            fontFamily: theme.typography.display,
-            fontSize: 24,
-            fontWeight: "700",
-          }}
-        >
-          {t("home.settings.title")}
-        </Text>
-        <Text
-          style={{
-            color: theme.colors.textMuted,
-            fontFamily: theme.typography.body,
-            fontSize: 14,
-          }}
-        >
-          {t("home.settings.subtitle")}
-        </Text>
-      </View>
-
-      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
-        <LanguageToggle />
-        <ThemeToggle />
-      </View>
-
-      <View
-        style={{
-          backgroundColor: theme.colors.surfaceMuted,
-          borderRadius: theme.radius.md,
-          gap: theme.spacing.sm,
-          padding: theme.spacing.md,
-        }}
-      >
-        <View style={{ gap: 4 }}>
-          <Text
-            style={{
-              color: theme.colors.text,
-              fontFamily: theme.typography.body,
-              fontSize: 15,
-              fontWeight: "700",
-            }}
-          >
-            {t("home.settings.store.title")}
-          </Text>
-          <Text
-            style={{
-              color: theme.colors.textMuted,
-              fontFamily: theme.typography.body,
-              fontSize: 13,
-              lineHeight: 19,
-            }}
-          >
-            {t("home.settings.store.subtitle")}
-          </Text>
-        </View>
-
-        <InputField
-          label={t("onboarding.storeName")}
-          onChangeText={setStoreNameDraft}
-          placeholder={t("onboarding.storeName.placeholder")}
-          value={storeNameDraft}
-        />
-
-        <ActionButton
-          disabled={!canSaveStoreName || savingStoreName}
-          label={savingStoreName ? t("home.settings.store.saving") : t("home.settings.store.save")}
-          onPress={() => void handleSaveStoreName()}
-          variant="secondary"
-        />
-      </View>
-    </SurfaceCard>
-  );
-
   const renderActivePanelContent = () => {
     if (activePanel === "analytics") {
       return renderAnalyticsPanel();
@@ -912,14 +648,6 @@ export default function HomeScreen() {
 
     if (activePanel === "credit") {
       return renderCreditPanel();
-    }
-
-    if (activePanel === "cloud") {
-      return renderCloudPanel();
-    }
-
-    if (activePanel === "dev") {
-      return renderDevPanel();
     }
 
     return null;
@@ -1135,8 +863,6 @@ export default function HomeScreen() {
             </View>
           </SurfaceCard>
         ) : null}
-
-        {renderSettingsCard()}
       </Screen>
 
       <ModalSheet
