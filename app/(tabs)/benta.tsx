@@ -5,7 +5,7 @@ import { useSQLiteContext } from "expo-sqlite";
 import Storage from "expo-sqlite/kv-store";
 import * as Sharing from "expo-sharing";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Alert, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Pressable, Text, View } from "react-native";
 import { captureRef } from "react-native-view-shot";
 
 import { ActionButton } from "@/components/ActionButton";
@@ -45,6 +45,7 @@ export default function BentaScreen() {
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [processingCheckout, setProcessingCheckout] = useState(false);
+  const [cartSheetVisible, setCartSheetVisible] = useState(false);
   const [customerPickerVisible, setCustomerPickerVisible] = useState(false);
   const [scannerVisible, setScannerVisible] = useState(false);
   const [scannerBusy, setScannerBusy] = useState(false);
@@ -77,6 +78,10 @@ export default function BentaScreen() {
   const totalCents = useCartStore((state) =>
     state.items.reduce((runningTotal, item) => runningTotal + item.priceCents * item.quantity, 0),
   );
+  const compactCardStyle = {
+    gap: theme.spacing.sm,
+    padding: theme.spacing.md,
+  } as const;
 
   const productById = useMemo(() => new Map(products.map((product) => [product.id, product])), [products]);
 
@@ -128,6 +133,9 @@ export default function BentaScreen() {
   const finalTotalCents = Math.max(0, totalCents - discountCents);
 
   const changeCents = paymentMethod === "cash" && hasValidCash ? cashPaidCents - finalTotalCents : 0;
+  const cartCountLabel = cartItems.length === 1 ? "1 item" : `${cartItems.length} items`;
+  const selectedCustomerName = selectedCustomer?.name ?? "";
+  const selectedCustomerBalanceText = selectedCustomer ? formatCurrencyFromCents(selectedCustomer.balanceCents) : "";
   const isEnoughCash = paymentMethod === "cash" ? hasValidCash && cashPaidCents >= finalTotalCents : true;
   const requiresCustomer = paymentMethod === "utang";
   const isCheckoutReady =
@@ -247,6 +255,7 @@ export default function BentaScreen() {
       setLastReceipt(receiptData);
 
       clearCart();
+      setCartSheetVisible(false);
       setCashInput("");
       setPaymentMethod("cash");
       setSelectedCustomer(null);
@@ -327,8 +336,123 @@ export default function BentaScreen() {
 
   return (
     <>
-      <Screen subtitle="Fast checkout with barcode scanning, digital payments, and safe local persistence." title="Benta">
-        <SurfaceCard style={{ gap: theme.spacing.md }}>
+      <Screen
+        contentContainerStyle={{
+          gap: theme.spacing.md,
+          paddingBottom: 136,
+          paddingTop: theme.spacing.md,
+        }}
+        overlay={
+          <Pressable
+            onPress={() => setCartSheetVisible(true)}
+            style={({ pressed }) => ({
+              backgroundColor: theme.colors.card,
+              borderColor: cartItems.length > 0 ? theme.colors.primary : theme.colors.border,
+              borderRadius: theme.radius.md,
+              borderWidth: 1,
+              bottom: 86,
+              left: theme.spacing.lg,
+              opacity: pressed ? 0.96 : 1,
+              padding: theme.spacing.md,
+              position: "absolute",
+              right: theme.spacing.lg,
+              shadowColor: theme.colors.shadow,
+              shadowOffset: { width: 0, height: 8 },
+              shadowOpacity: 1,
+              shadowRadius: 18,
+              elevation: 3,
+            })}
+          >
+            <View style={{ alignItems: "center", flexDirection: "row", gap: theme.spacing.md }}>
+              <View
+                style={{
+                  alignItems: "center",
+                  backgroundColor: cartItems.length > 0 ? theme.colors.primaryMuted : theme.colors.surfaceMuted,
+                  borderRadius: theme.radius.pill,
+                  height: 42,
+                  justifyContent: "center",
+                  width: 42,
+                }}
+              >
+                <Feather
+                  color={cartItems.length > 0 ? theme.colors.primary : theme.colors.textSoft}
+                  name="shopping-cart"
+                  size={18}
+                />
+              </View>
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text
+                  style={{
+                    color: theme.colors.text,
+                    fontFamily: theme.typography.body,
+                    fontSize: 14,
+                    fontWeight: "700",
+                  }}
+                >
+                  {cartItems.length > 0 ? "Cart ready" : "Cart is empty"}
+                </Text>
+                <Text
+                  style={{
+                    color: theme.colors.textMuted,
+                    fontFamily: theme.typography.body,
+                    fontSize: 12,
+                  }}
+                >
+                  {cartItems.length > 0
+                    ? `${cartCountLabel} - ${formatCurrencyFromCents(finalTotalCents)}`
+                    : "Tap products now, then open cart anytime."}
+                </Text>
+              </View>
+              <View
+                style={{
+                  backgroundColor: theme.colors.primary,
+                  borderRadius: theme.radius.pill,
+                  paddingHorizontal: theme.spacing.md,
+                  paddingVertical: 10,
+                }}
+              >
+                <Text
+                  style={{
+                    color: theme.colors.primaryText,
+                    fontFamily: theme.typography.body,
+                    fontSize: 12,
+                    fontWeight: "700",
+                  }}
+                >
+                  View Cart
+                </Text>
+              </View>
+            </View>
+          </Pressable>
+        }
+        subtitle="Tap products fast, then open the cart anytime from the sticky bar."
+        title="Benta"
+      >
+        <SurfaceCard style={compactCardStyle}>
+          <View style={{ alignItems: "center", flexDirection: "row", justifyContent: "space-between", gap: theme.spacing.sm }}>
+            <View style={{ flex: 1, gap: 4 }}>
+              <Text
+                style={{
+                  color: theme.colors.text,
+                  fontFamily: theme.typography.display,
+                  fontSize: 22,
+                  fontWeight: "700",
+                }}
+              >
+                Add Products
+              </Text>
+              <Text
+                style={{
+                  color: theme.colors.textMuted,
+                  fontFamily: theme.typography.body,
+                  fontSize: 13,
+                }}
+              >
+                {loading ? "Refreshing catalog..." : `${products.length} products ready to add.`}
+              </Text>
+            </View>
+            <StatusBadge label={cartItems.length > 0 ? `${cartCountLabel} in cart` : "Cart empty"} tone={cartItems.length > 0 ? "primary" : "neutral"} />
+          </View>
           <InputField
             label="Search products"
             onChangeText={setSearchTerm}
@@ -342,9 +466,9 @@ export default function BentaScreen() {
           />
         </SurfaceCard>
 
-        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.md }}>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
           {loading ? (
-            <SurfaceCard style={{ width: "100%" }}>
+            <SurfaceCard style={[compactCardStyle, { width: "100%" }]}>
               <View style={{ alignItems: "center", flexDirection: "row", gap: theme.spacing.sm }}>
                 <ActivityIndicator color={theme.colors.primary} />
                 <Text
@@ -368,6 +492,7 @@ export default function BentaScreen() {
               return (
                 <ProductCard
                   category={product.category}
+                  compact
                   disabled={product.stock <= 0}
                   key={product.id}
                   marginPercent={marginPercent}
@@ -390,7 +515,8 @@ export default function BentaScreen() {
           )}
         </View>
 
-        <SurfaceCard style={{ gap: theme.spacing.md }}>
+        {false ? (
+          <SurfaceCard style={{ gap: theme.spacing.md }}>
           <View style={{ gap: 4 }}>
             <Text
               style={{
@@ -623,7 +749,7 @@ export default function BentaScreen() {
                         fontWeight: "700",
                       }}
                     >
-                      {selectedCustomer.name}
+                      {selectedCustomerName}
                     </Text>
                     <Text
                       style={{
@@ -632,7 +758,7 @@ export default function BentaScreen() {
                         fontSize: 13,
                       }}
                     >
-                      Current balance: {formatCurrencyFromCents(selectedCustomer.balanceCents)}
+                      Current balance: {selectedCustomerBalanceText}
                     </Text>
                   </SurfaceCard>
                 ) : null}
@@ -722,8 +848,341 @@ export default function BentaScreen() {
               onPress={() => void handleCheckout()}
             />
           </View>
-        </SurfaceCard>
+          </SurfaceCard>
+        ) : null}
       </Screen>
+
+      <ModalSheet
+        footer={
+          <ActionButton
+            disabled={processingCheckout || !isCheckoutReady}
+            label={processingCheckout ? "Saving sale..." : "I-checkout"}
+            onPress={() => void handleCheckout()}
+          />
+        }
+        onClose={() => setCartSheetVisible(false)}
+        subtitle={cartItems.length > 0 ? `${cartCountLabel} ready for checkout.` : "Tap products from the catalog to start a sale."}
+        title="Cart & Checkout"
+        visible={cartSheetVisible}
+      >
+        {cartItems.length > 0 ? (
+          <>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
+              <StatusBadge label={cartCountLabel} tone="primary" />
+              <StatusBadge label={`Total ${formatCurrencyFromCents(finalTotalCents)}`} tone="success" />
+            </View>
+
+            {cartItems.map((item) => (
+              <CartItem
+                compact
+                key={item.id}
+                maxQuantity={item.stock}
+                name={item.name}
+                onDecrease={() => updateQuantity(item.id, item.quantity - 1)}
+                onIncrease={() => updateQuantity(item.id, item.quantity + 1)}
+                onRemove={() => removeItem(item.id)}
+                priceCents={item.priceCents}
+                quantity={item.quantity}
+              />
+            ))}
+
+            <View
+              style={{
+                backgroundColor: theme.colors.surface,
+                borderColor: theme.colors.border,
+                borderRadius: theme.radius.md,
+                borderWidth: 1,
+                gap: theme.spacing.sm,
+                padding: theme.spacing.md,
+              }}
+            >
+              <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                <Text
+                  style={{
+                    color: discountCents > 0 ? theme.colors.textMuted : theme.colors.text,
+                    fontFamily: theme.typography.display,
+                    fontSize: discountCents > 0 ? 18 : 26,
+                    fontWeight: "700",
+                    textDecorationLine: discountCents > 0 ? "line-through" : "none",
+                  }}
+                >
+                  {formatCurrencyFromCents(totalCents)}
+                </Text>
+                <Text
+                  style={{
+                    color: theme.colors.textMuted,
+                    fontFamily: theme.typography.body,
+                    fontSize: 13,
+                    fontWeight: "600",
+                  }}
+                >
+                  Subtotal
+                </Text>
+              </View>
+
+              {discountCents > 0 ? (
+                <View style={{ alignItems: "center", flexDirection: "row", justifyContent: "space-between" }}>
+                  <Text
+                    style={{
+                      color: theme.colors.success,
+                      fontFamily: theme.typography.body,
+                      fontSize: 13,
+                      fontWeight: "700",
+                    }}
+                  >
+                    Tawad ({tawadType === "percent" ? `${tawadInput}%` : formatCurrencyFromCents(discountCents)} off)
+                  </Text>
+                  <Text
+                    style={{
+                      color: theme.colors.success,
+                      fontFamily: theme.typography.display,
+                      fontSize: 26,
+                      fontWeight: "700",
+                    }}
+                  >
+                    {formatCurrencyFromCents(finalTotalCents)}
+                  </Text>
+                </View>
+              ) : null}
+
+              <View style={{ gap: theme.spacing.sm }}>
+                <View style={{ alignItems: "center", flexDirection: "row", justifyContent: "space-between" }}>
+                  <Text
+                    style={{
+                      color: theme.colors.textMuted,
+                      fontFamily: theme.typography.body,
+                      fontSize: 13,
+                      fontWeight: "700",
+                    }}
+                  >
+                    Tawad (Discount)
+                  </Text>
+                  <ActionButton
+                    label={tawadActive ? "Remove" : "Add Tawad"}
+                    onPress={() => {
+                      setTawadActive(!tawadActive);
+                      if (tawadActive) {
+                        setTawadInput("");
+                        setTawadType("fixed");
+                      }
+                    }}
+                    style={{ paddingHorizontal: 14, paddingVertical: 8 }}
+                    variant={tawadActive ? "ghost" : "secondary"}
+                  />
+                </View>
+
+                {tawadActive ? (
+                  <View style={{ gap: theme.spacing.sm }}>
+                    <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
+                      <ActionButton
+                        label="Fixed PHP"
+                        onPress={() => {
+                          setTawadType("fixed");
+                          setTawadInput("");
+                        }}
+                        style={{ flex: 1 }}
+                        variant={tawadType === "fixed" ? "primary" : "ghost"}
+                      />
+                      <ActionButton
+                        label="Percent %"
+                        onPress={() => {
+                          setTawadType("percent");
+                          setTawadInput("");
+                        }}
+                        style={{ flex: 1 }}
+                        variant={tawadType === "percent" ? "primary" : "ghost"}
+                      />
+                    </View>
+                    <InputField
+                      keyboardType="decimal-pad"
+                      label={tawadType === "fixed" ? "Discount amount (PHP)" : "Discount percent (%)"}
+                      onChangeText={setTawadInput}
+                      placeholder={tawadType === "fixed" ? "0.00" : "10"}
+                      value={tawadInput}
+                    />
+                    {tawadType === "percent" ? (
+                      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
+                        {QUICK_DISCOUNT_PERCENTS.map((pct) => (
+                          <ActionButton
+                            key={pct}
+                            label={`${pct}%`}
+                            onPress={() => setTawadInput(String(pct))}
+                            style={{ flex: 1, minWidth: 60 }}
+                            variant="ghost"
+                          />
+                        ))}
+                      </View>
+                    ) : null}
+                  </View>
+                ) : null}
+              </View>
+
+              <View style={{ gap: theme.spacing.sm }}>
+                <Text
+                  style={{
+                    color: theme.colors.textMuted,
+                    fontFamily: theme.typography.body,
+                    fontSize: 13,
+                    fontWeight: "700",
+                  }}
+                >
+                  Payment method
+                </Text>
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
+                  {PAYMENT_METHODS.map((method) => (
+                    <ActionButton
+                      key={method.key}
+                      label={method.label}
+                      onPress={() => {
+                        setPaymentMethod(method.key);
+                        if (method.key !== "utang") {
+                          setSelectedCustomer(null);
+                        }
+                      }}
+                      style={{ flex: 1, minWidth: 120 }}
+                      variant={paymentMethod === method.key ? "primary" : "ghost"}
+                    />
+                  ))}
+                </View>
+              </View>
+
+              {paymentMethod === "cash" ? (
+                <>
+                  <InputField
+                    keyboardType="decimal-pad"
+                    label="Cash received"
+                    onChangeText={setCashInput}
+                    placeholder="0.00"
+                    value={cashInput}
+                  />
+
+                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
+                    {QUICK_PAY_VALUES.map((value) => (
+                      <ActionButton
+                        key={value}
+                        label={formatCurrencyFromCents(value)}
+                        onPress={() => setCashInput(centsToDisplayValue(value))}
+                        style={{ flex: 1, minWidth: 120 }}
+                        variant="ghost"
+                      />
+                    ))}
+                  </View>
+                </>
+              ) : paymentMethod === "utang" ? (
+                <View style={{ gap: theme.spacing.sm }}>
+                  {selectedCustomer ? (
+                    <SurfaceCard style={{ gap: theme.spacing.sm, padding: theme.spacing.md }}>
+                      <StatusBadge label="Linked Customer" tone="warning" />
+                      <Text
+                        style={{
+                          color: theme.colors.text,
+                          fontFamily: theme.typography.body,
+                          fontSize: 15,
+                          fontWeight: "700",
+                        }}
+                      >
+                        {selectedCustomer.name}
+                      </Text>
+                      <Text
+                        style={{
+                          color: theme.colors.textMuted,
+                          fontFamily: theme.typography.body,
+                          fontSize: 13,
+                        }}
+                      >
+                        Current balance: {formatCurrencyFromCents(selectedCustomer.balanceCents)}
+                      </Text>
+                    </SurfaceCard>
+                  ) : null}
+
+                  <ActionButton
+                    label={selectedCustomer ? "Change Customer" : "Select Customer"}
+                    onPress={() => setCustomerPickerVisible(true)}
+                    variant="secondary"
+                  />
+                  {customers.length === 0 ? (
+                    <Text
+                      style={{
+                        color: theme.colors.textMuted,
+                        fontFamily: theme.typography.body,
+                        fontSize: 13,
+                      }}
+                    >
+                      Add a customer in Palista first before saving an utang sale.
+                    </Text>
+                  ) : null}
+                </View>
+              ) : (
+                <View
+                  style={{
+                    backgroundColor: theme.colors.primaryMuted,
+                    borderRadius: theme.radius.sm,
+                    padding: theme.spacing.md,
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: theme.colors.primary,
+                      fontFamily: theme.typography.body,
+                      fontSize: 14,
+                      fontWeight: "700",
+                    }}
+                  >
+                    No cash input needed. This sale will be saved under {paymentMethod.toUpperCase()}.
+                  </Text>
+                </View>
+              )}
+
+              <View
+                style={{
+                  backgroundColor:
+                    paymentMethod === "cash"
+                      ? isEnoughCash
+                        ? theme.colors.successMuted
+                        : theme.colors.dangerMuted
+                      : paymentMethod === "utang" && !selectedCustomer
+                        ? theme.colors.warningMuted
+                        : theme.colors.successMuted,
+                  borderRadius: theme.radius.sm,
+                  padding: theme.spacing.md,
+                }}
+              >
+                <Text
+                  style={{
+                    color:
+                      paymentMethod === "cash"
+                        ? isEnoughCash
+                          ? theme.colors.success
+                          : theme.colors.danger
+                        : paymentMethod === "utang" && !selectedCustomer
+                          ? theme.colors.warning
+                          : theme.colors.success,
+                    fontFamily: theme.typography.body,
+                    fontSize: 14,
+                    fontWeight: "700",
+                  }}
+                >
+                  {paymentMethod === "cash"
+                    ? isEnoughCash
+                      ? `Sukli: ${formatCurrencyFromCents(changeCents)}`
+                      : "Kulang pa ang cash para ma-checkout."
+                    : paymentMethod === "utang"
+                      ? selectedCustomer
+                        ? "This sale will be added to the selected customer's utang ledger."
+                        : "Pick a customer before saving this utang sale."
+                      : `Digital payment ready via ${paymentMethod.toUpperCase()}.`}
+                </Text>
+              </View>
+            </View>
+          </>
+        ) : (
+          <EmptyState
+            icon="shopping-cart"
+            message="Tap any product card and your active sale will appear here instantly."
+            title="Cart Is Empty"
+          />
+        )}
+      </ModalSheet>
 
       <ModalSheet
         footer={<ActionButton label="Close" onPress={() => setCustomerPickerVisible(false)} variant="ghost" />}

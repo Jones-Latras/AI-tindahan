@@ -9,6 +9,7 @@ type CartItemProps = {
   priceCents: number;
   quantity: number;
   maxQuantity: number;
+  compact?: boolean;
   onDecrease: () => void;
   onIncrease: () => void;
   onRemove: () => void;
@@ -19,6 +20,7 @@ export function CartItem({
   priceCents,
   quantity,
   maxQuantity,
+  compact = false,
   onDecrease,
   onIncrease,
   onRemove,
@@ -34,9 +36,9 @@ export function CartItem({
         borderRadius: theme.radius.sm,
         borderWidth: 1,
         flexDirection: "row",
-        gap: theme.spacing.md,
+        gap: compact ? theme.spacing.sm : theme.spacing.md,
         justifyContent: "space-between",
-        padding: theme.spacing.md,
+        padding: compact ? theme.spacing.sm : theme.spacing.md,
       }}
     >
       <View style={{ flex: 1, gap: 4 }}>
@@ -44,7 +46,7 @@ export function CartItem({
           style={{
             color: theme.colors.text,
             fontFamily: theme.typography.body,
-            fontSize: 15,
+            fontSize: compact ? 14 : 15,
             fontWeight: "700",
           }}
         >
@@ -54,23 +56,23 @@ export function CartItem({
           style={{
             color: theme.colors.textMuted,
             fontFamily: theme.typography.body,
-            fontSize: 13,
+            fontSize: compact ? 12 : 13,
           }}
         >
           {formatCurrencyFromCents(priceCents)} each
         </Text>
       </View>
 
-      <View style={{ alignItems: "center", flexDirection: "row", gap: 10 }}>
+      <View style={{ alignItems: "center", flexDirection: "row", gap: compact ? 8 : 10 }}>
         <Pressable
           onPress={onDecrease}
           style={{
             alignItems: "center",
             backgroundColor: theme.colors.surfaceMuted,
             borderRadius: theme.radius.pill,
-            height: 34,
+            height: compact ? 30 : 34,
             justifyContent: "center",
-            width: 34,
+            width: compact ? 30 : 34,
           }}
         >
           <Feather color={theme.colors.text} name="minus" size={14} />
@@ -79,7 +81,7 @@ export function CartItem({
           style={{
             color: theme.colors.text,
             fontFamily: theme.typography.body,
-            fontSize: 15,
+            fontSize: compact ? 14 : 15,
             fontWeight: "700",
             minWidth: 24,
             textAlign: "center",
@@ -94,9 +96,9 @@ export function CartItem({
             alignItems: "center",
             backgroundColor: quantity >= maxQuantity ? theme.colors.surfaceMuted : theme.colors.primaryMuted,
             borderRadius: theme.radius.pill,
-            height: 34,
+            height: compact ? 30 : 34,
             justifyContent: "center",
-            width: 34,
+            width: compact ? 30 : 34,
           }}
         >
           <Feather

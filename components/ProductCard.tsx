@@ -12,6 +12,7 @@ type ProductCardProps = {
   minStock: number;
   marginPercent: string;
   disabled?: boolean;
+  compact?: boolean;
   onPress?: () => void;
 };
 
@@ -23,6 +24,7 @@ export function ProductCard({
   minStock,
   marginPercent,
   disabled = false,
+  compact = false,
   onPress,
 }: ProductCardProps) {
   const { theme } = useAppTheme();
@@ -38,10 +40,10 @@ export function ProductCard({
         borderRadius: theme.radius.md,
         borderWidth: 1,
         flex: 1,
-        gap: theme.spacing.md,
+        gap: compact ? theme.spacing.sm : theme.spacing.md,
         minWidth: "47%",
         opacity: disabled ? 0.55 : pressed ? 0.92 : 1,
-        padding: theme.spacing.lg,
+        padding: compact ? theme.spacing.md : theme.spacing.lg,
       })}
     >
       <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
@@ -49,31 +51,31 @@ export function ProductCard({
           style={{
             backgroundColor: theme.colors.primaryMuted,
             borderRadius: theme.radius.pill,
-            paddingHorizontal: 10,
-            paddingVertical: 6,
+            paddingHorizontal: compact ? 8 : 10,
+            paddingVertical: compact ? 5 : 6,
           }}
         >
           <Text
             style={{
               color: theme.colors.primary,
               fontFamily: theme.typography.body,
-              fontSize: 12,
+              fontSize: compact ? 11 : 12,
               fontWeight: "700",
             }}
           >
             {category || "General"}
           </Text>
         </View>
-        <Feather color={theme.colors.textSoft} name="plus-circle" size={18} />
+        <Feather color={theme.colors.textSoft} name="plus-circle" size={compact ? 16 : 18} />
       </View>
 
-      <View style={{ gap: 8 }}>
+      <View style={{ gap: compact ? 6 : 8 }}>
         <Text
           numberOfLines={2}
           style={{
             color: theme.colors.text,
             fontFamily: theme.typography.display,
-            fontSize: 20,
+            fontSize: compact ? 18 : 20,
             fontWeight: "700",
           }}
         >
@@ -83,7 +85,7 @@ export function ProductCard({
           style={{
             color: theme.colors.textMuted,
             fontFamily: theme.typography.body,
-            fontSize: 14,
+            fontSize: compact ? 13 : 14,
             fontWeight: "600",
           }}
         >
@@ -91,7 +93,7 @@ export function ProductCard({
         </Text>
       </View>
 
-      <View style={{ gap: 10 }}>
+      <View style={{ gap: compact ? 8 : 10 }}>
         <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
           <Text
             style={{
@@ -138,4 +140,3 @@ export function ProductCard({
     </Pressable>
   );
 }
-
