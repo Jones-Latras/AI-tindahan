@@ -711,7 +711,9 @@ export default function BentaScreen() {
 
               return (
                 <ProductCard
+                  actionLabel="Add to cart"
                   barcode={product.barcode}
+                  cardPressEnabled={false}
                   category={product.category}
                   compact
                   disabled={product.stock <= 0}
@@ -720,10 +722,12 @@ export default function BentaScreen() {
                   marginPercent={marginPercent}
                   minStock={product.minStock}
                   name={product.name}
-                  onPress={() => handleAddToCart(product)}
+                  onActionPress={() => handleAddToCart(product)}
                   priceCents={product.priceCents}
                   showInfoFlip
                   stock={product.stock}
+                  useRegularImageSizing
+                  useRegularTextSizing
                 />
               );
             })
