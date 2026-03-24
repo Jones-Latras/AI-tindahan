@@ -1,8 +1,9 @@
 import { Feather } from "@expo/vector-icons";
+import * as ImagePicker from "expo-image-picker";
 import { useFocusEffect } from "expo-router";
 import { useSQLiteContext } from "expo-sqlite";
 import { useCallback, useEffect, useState } from "react";
-import { Alert, Text, View } from "react-native";
+import { Alert, Image, Pressable, Text, View } from "react-native";
 
 import { ActionButton } from "@/components/ActionButton";
 import { EmptyState } from "@/components/EmptyState";
@@ -23,6 +24,7 @@ type ProductFormState = {
   stock: string;
   category: string;
   barcode: string;
+  imageUri: string;
   minStock: string;
 };
 
@@ -33,8 +35,15 @@ const emptyForm: ProductFormState = {
   stock: "0",
   category: "",
   barcode: "",
+  imageUri: "",
   minStock: "5",
 };
+
+const PRODUCT_IMAGE_QUALITY = 0.72;
+
+function isCloudImageUri(uri: string) {
+  return /^https?:\/\//i.test(uri.trim());
+}
 
 export default function ProduktoScreen() {
   const db = useSQLiteContext();
@@ -46,6 +55,10 @@ export default function ProduktoScreen() {
   const [form, setForm] = useState<ProductFormState>(emptyForm);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [pickingImage, setPickingImage] = useState(false);
+  const [photoSheetVisible, setPhotoSheetVisible] = useState(false);
+  const [mediaPermission, requestMediaPermission] = ImagePicker.useMediaLibraryPermissions();
+  const [cameraPermission, requestCameraPermission] = ImagePicker.useCameraPermissions();
 
   const loadProducts = useCallback(async () => {
     setLoading(true);
@@ -75,6 +88,7 @@ export default function ProduktoScreen() {
   const openCreateModal = useCallback(() => {
     setEditingProduct(null);
     setForm(emptyForm);
+    setPhotoSheetVisible(false);
     setModalVisible(true);
   }, []);
 
@@ -87,8 +101,10 @@ export default function ProduktoScreen() {
       stock: String(product.stock),
       category: product.category ?? "",
       barcode: product.barcode ?? "",
+      imageUri: product.imageUri ?? "",
       minStock: String(product.minStock),
     });
+    setPhotoSheetVisible(false);
     setModalVisible(true);
   }, []);
 
@@ -120,11 +136,13 @@ export default function ProduktoScreen() {
           stock,
           category: form.category,
           barcode: form.barcode,
+          imageUri: form.imageUri,
           minStock,
         },
         editingProduct?.id,
       );
 
+      setPhotoSheetVisible(false);
       setModalVisible(false);
       setEditingProduct(null);
       setForm(emptyForm);
@@ -156,6 +174,7 @@ export default function ProduktoScreen() {
           onPress: async () => {
             try {
               await deleteProduct(db, editingProduct.id);
+              setPhotoSheetVisible(false);
               setModalVisible(false);
               setEditingProduct(null);
               setForm(emptyForm);
@@ -171,6 +190,63 @@ export default function ProduktoScreen() {
       ],
     );
   }, [db, editingProduct, loadProducts]);
+
+  const handlePickImage = useCallback(
+    async (source: "camera" | "library") => {
+      if (pickingImage) {
+        return;
+      }
+
+      try {
+        setPickingImage(true);
+
+        if (source === "camera") {
+          if (!cameraPermission?.granted) {
+            const permission = await requestCameraPermission();
+            if (!permission.granted) {
+              Alert.alert("Camera needed", "Allow camera access so you can take product photos.");
+              return;
+            }
+          }
+        } else if (!mediaPermission?.granted) {
+          const permission = await requestMediaPermission();
+          if (!permission.granted) {
+            Alert.alert("Photos needed", "Allow photo library access so you can choose product images.");
+            return;
+          }
+        }
+
+        const result =
+          source === "camera"
+            ? await ImagePicker.launchCameraAsync({
+                allowsEditing: true,
+                aspect: [4, 3],
+                mediaTypes: ["images"],
+                quality: PRODUCT_IMAGE_QUALITY,
+              })
+            : await ImagePicker.launchImageLibraryAsync({
+                allowsEditing: true,
+                aspect: [4, 3],
+                mediaTypes: ["images"],
+                quality: PRODUCT_IMAGE_QUALITY,
+              });
+
+        if (result.canceled || !result.assets?.[0]?.uri) {
+          return;
+        }
+
+        setForm((current) => ({ ...current, imageUri: result.assets[0].uri }));
+      } catch (error) {
+        Alert.alert("Image failed", error instanceof Error ? error.message : "Could not open the image picker.");
+      } finally {
+        setPickingImage(false);
+      }
+    },
+    [cameraPermission?.granted, mediaPermission?.granted, pickingImage, requestCameraPermission, requestMediaPermission],
+  );
+
+  const hasImage = form.imageUri.trim().length > 0;
+  const imageAlreadyBackedUp = hasImage && isCloudImageUri(form.imageUri);
 
   return (
     <Screen subtitle="Secure CRUD for your product catalog, with low-stock context built in." title="Produkto">
@@ -211,6 +287,7 @@ export default function ProduktoScreen() {
             return (
               <ProductCard
                 category={product.category}
+                imageUri={product.imageUri}
                 key={product.id}
                 marginPercent={marginPercent}
                 minStock={product.minStock}
@@ -245,7 +322,10 @@ export default function ProduktoScreen() {
             ) : null}
           </View>
         }
-        onClose={() => setModalVisible(false)}
+        onClose={() => {
+          setPhotoSheetVisible(false);
+          setModalVisible(false);
+        }}
         subtitle="Keep names clear, prices accurate, and stock values realistic so checkout stays reliable."
         title={editingProduct ? "Edit Product" : "New Product"}
         visible={modalVisible}
@@ -308,8 +388,295 @@ export default function ProduktoScreen() {
           placeholder="Optional"
           value={form.barcode}
         />
+        <View style={{ gap: theme.spacing.sm }}>
+          <Text
+            style={{
+              color: theme.colors.textMuted,
+              fontFamily: theme.typography.body,
+              fontSize: 12,
+              fontWeight: "700",
+            }}
+          >
+            Product image
+          </Text>
+          <Pressable
+            onPress={() => setPhotoSheetVisible(true)}
+            style={({ pressed }) => ({
+              backgroundColor: theme.colors.surface,
+              borderColor: theme.colors.border,
+              borderRadius: theme.radius.md,
+              borderWidth: 1,
+              flexDirection: "row",
+              gap: theme.spacing.md,
+              opacity: pressed ? 0.9 : 1,
+              padding: theme.spacing.md,
+            })}
+          >
+            <View
+              style={{
+                alignItems: "center",
+                backgroundColor: theme.colors.surfaceMuted,
+                borderRadius: theme.radius.md,
+                height: 72,
+                justifyContent: "center",
+                overflow: "hidden",
+                width: 72,
+              }}
+            >
+              {hasImage ? (
+                <Image
+                  resizeMode="cover"
+                  source={{ uri: form.imageUri }}
+                  style={{ height: "100%", width: "100%" }}
+                />
+              ) : (
+                <Feather color={theme.colors.primary} name="image" size={20} />
+              )}
+            </View>
+
+            <View style={{ flex: 1, gap: theme.spacing.xs, justifyContent: "center" }}>
+              <Text
+                style={{
+                  color: theme.colors.text,
+                  fontFamily: theme.typography.body,
+                  fontSize: 15,
+                  fontWeight: "700",
+                }}
+              >
+                {hasImage ? "Replace product photo" : "Add product photo"}
+              </Text>
+              <Text
+                style={{
+                  color: theme.colors.textMuted,
+                  fontFamily: theme.typography.body,
+                  fontSize: 13,
+                  lineHeight: 19,
+                }}
+              >
+                {hasImage
+                  ? imageAlreadyBackedUp
+                    ? "This image is already in cloud backup. Replacing it uploads a new lighter copy next time you back up."
+                    : "Saved locally and ready for cloud backup. Tap to replace, remove, or review the photo."
+                  : "Open the photo sheet to take or choose a clean product image. The picker saves a lighter copy before backup."}
+              </Text>
+            </View>
+
+            <View style={{ justifyContent: "center" }}>
+              <Feather color={theme.colors.textMuted} name="chevron-right" size={18} />
+            </View>
+          </Pressable>
+        </View>
+      </ModalSheet>
+
+      <ModalSheet
+        contentContainerStyle={{ paddingBottom: theme.spacing.sm }}
+        footer={
+          <ActionButton
+            label="Done"
+            onPress={() => setPhotoSheetVisible(false)}
+          />
+        }
+        fullHeight
+        onClose={() => setPhotoSheetVisible(false)}
+        subtitle={
+          hasImage
+            ? "Swap the current product photo without cluttering the main form. New picks stay lighter and upload during your next cloud backup."
+            : "Add a clean product shot here. The picker opens the built-in crop tool, then saves a lighter image before backup."
+        }
+        title={hasImage ? "Replace Product Photo" : "Add Product Photo"}
+        visible={photoSheetVisible}
+      >
+        <View
+          style={{
+            backgroundColor: theme.colors.surface,
+            borderColor: theme.colors.border,
+            borderRadius: theme.radius.lg,
+            borderWidth: 1,
+            overflow: "hidden",
+          }}
+        >
+          <View
+            style={{
+              alignItems: "center",
+              backgroundColor: theme.colors.surfaceMuted,
+              justifyContent: "center",
+              minHeight: 280,
+              padding: theme.spacing.lg,
+            }}
+          >
+            {hasImage ? (
+              <Image
+                resizeMode="cover"
+                source={{ uri: form.imageUri }}
+                style={{ backgroundColor: theme.colors.surfaceMuted, height: 280, width: "100%" }}
+              />
+            ) : (
+              <View style={{ alignItems: "center", gap: theme.spacing.sm, maxWidth: 240 }}>
+                <View
+                  style={{
+                    alignItems: "center",
+                    backgroundColor: theme.colors.primaryMuted,
+                    borderRadius: theme.radius.pill,
+                    height: 56,
+                    justifyContent: "center",
+                    width: 56,
+                  }}
+                >
+                  <Feather color={theme.colors.primary} name="camera" size={24} />
+                </View>
+                <Text
+                  style={{
+                    color: theme.colors.text,
+                    fontFamily: theme.typography.body,
+                    fontSize: 16,
+                    fontWeight: "700",
+                    textAlign: "center",
+                  }}
+                >
+                  No photo selected yet
+                </Text>
+                <Text
+                  style={{
+                    color: theme.colors.textMuted,
+                    fontFamily: theme.typography.body,
+                    fontSize: 13,
+                    lineHeight: 19,
+                    textAlign: "center",
+                  }}
+                >
+                  Add one now so product cards feel easier to scan in both Produkto and Benta.
+                </Text>
+              </View>
+            )}
+          </View>
+
+          <View
+            style={{
+              borderTopColor: theme.colors.border,
+              borderTopWidth: 1,
+              gap: theme.spacing.xs,
+              padding: theme.spacing.md,
+            }}
+          >
+            <Text
+              style={{
+                color: theme.colors.text,
+                fontFamily: theme.typography.body,
+                fontSize: 14,
+                fontWeight: "700",
+              }}
+            >
+              {hasImage
+                ? imageAlreadyBackedUp
+                  ? "Cloud copy ready"
+                  : "Saved locally, waiting for backup"
+                : "Auto-compresses before backup"}
+            </Text>
+            <Text
+              style={{
+                color: theme.colors.textMuted,
+                fontFamily: theme.typography.body,
+                fontSize: 13,
+                lineHeight: 19,
+              }}
+            >
+              {hasImage
+                ? imageAlreadyBackedUp
+                  ? "This image already points to Supabase Storage."
+                  : "The next time you tap backup, this photo will upload to Supabase Storage automatically."
+                : "The picker keeps the saved image lighter so backup stays practical on the free plan."}
+            </Text>
+          </View>
+        </View>
+
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
+          <ActionButton
+            disabled={pickingImage}
+            icon={<Feather color={theme.colors.primaryText} name="camera" size={16} />}
+            label={pickingImage ? "Opening..." : hasImage ? "Take New Photo" : "Take Photo"}
+            onPress={() => void handlePickImage("camera")}
+            style={{ flex: 1, minWidth: 150 }}
+          />
+          <ActionButton
+            disabled={pickingImage}
+            icon={<Feather color={theme.colors.primary} name="image" size={16} />}
+            label={pickingImage ? "Opening..." : hasImage ? "Choose New Photo" : "Choose Photo"}
+            onPress={() => void handlePickImage("library")}
+            style={{ flex: 1, minWidth: 150 }}
+            variant="secondary"
+          />
+          {hasImage ? (
+            <ActionButton
+              icon={<Feather color={theme.colors.danger} name="trash-2" size={16} />}
+              label="Remove Current Photo"
+              onPress={() => setForm((current) => ({ ...current, imageUri: "" }))}
+              style={{ width: "100%" }}
+              variant="ghost"
+            />
+          ) : null}
+        </View>
+
+        <SurfaceCard style={{ gap: theme.spacing.sm }}>
+          <Text
+            style={{
+              color: theme.colors.text,
+              fontFamily: theme.typography.body,
+              fontSize: 15,
+              fontWeight: "700",
+            }}
+          >
+            Crop hints
+          </Text>
+
+          {[
+            {
+              icon: "box",
+              text: "Center the product and let the crop frame breathe so labels stay readable.",
+            },
+            {
+              icon: "sun",
+              text: "Use even lighting and avoid dark shelves or strong shadows when possible.",
+            },
+            {
+              icon: "sliders",
+              text: "Keep the background simple. One clear item photo works better than a busy scene.",
+            },
+          ].map((tip) => (
+            <View
+              key={tip.text}
+              style={{
+                alignItems: "flex-start",
+                flexDirection: "row",
+                gap: theme.spacing.sm,
+              }}
+            >
+              <View
+                style={{
+                  alignItems: "center",
+                  backgroundColor: theme.colors.primaryMuted,
+                  borderRadius: theme.radius.pill,
+                  height: 28,
+                  justifyContent: "center",
+                  width: 28,
+                }}
+              >
+                <Feather color={theme.colors.primary} name={tip.icon as "box" | "sun" | "sliders"} size={14} />
+              </View>
+              <Text
+                style={{
+                  color: theme.colors.textMuted,
+                  flex: 1,
+                  fontFamily: theme.typography.body,
+                  fontSize: 13,
+                  lineHeight: 19,
+                }}
+              >
+                {tip.text}
+              </Text>
+            </View>
+          ))}
+        </SurfaceCard>
       </ModalSheet>
     </Screen>
   );
 }
-

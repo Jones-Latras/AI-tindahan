@@ -1,5 +1,5 @@
 import { Feather } from "@expo/vector-icons";
-import { Modal, Pressable, ScrollView, Text, View } from "react-native";
+import { Modal, Pressable, ScrollView, Text, View, type StyleProp, type ViewStyle } from "react-native";
 
 import { useAppTheme } from "@/contexts/ThemeContext";
 
@@ -10,6 +10,8 @@ type ModalSheetProps = {
   onClose: () => void;
   children: React.ReactNode;
   footer?: React.ReactNode;
+  fullHeight?: boolean;
+  contentContainerStyle?: StyleProp<ViewStyle>;
 };
 
 export function ModalSheet({
@@ -19,6 +21,8 @@ export function ModalSheet({
   onClose,
   children,
   footer,
+  fullHeight = false,
+  contentContainerStyle,
 }: ModalSheetProps) {
   const { theme } = useAppTheme();
 
@@ -37,7 +41,7 @@ export function ModalSheet({
             borderTopLeftRadius: theme.radius.lg,
             borderTopRightRadius: theme.radius.lg,
             gap: theme.spacing.lg,
-            maxHeight: "88%",
+            maxHeight: fullHeight ? "96%" : "88%",
             paddingBottom: theme.spacing.lg,
             paddingHorizontal: theme.spacing.lg,
             paddingTop: theme.spacing.lg,
@@ -90,7 +94,10 @@ export function ModalSheet({
           </View>
 
           <ScrollView
-            contentContainerStyle={{ gap: theme.spacing.md }}
+            contentContainerStyle={[
+              { gap: theme.spacing.md },
+              contentContainerStyle,
+            ]}
             showsVerticalScrollIndicator={false}
           >
             {children}

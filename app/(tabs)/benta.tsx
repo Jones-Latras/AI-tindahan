@@ -5,7 +5,7 @@ import { useSQLiteContext } from "expo-sqlite";
 import Storage from "expo-sqlite/kv-store";
 import * as Sharing from "expo-sharing";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Alert, Pressable, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Animated, Easing, Pressable, Text, View } from "react-native";
 import { captureRef } from "react-native-view-shot";
 
 import { ActionButton } from "@/components/ActionButton";
@@ -34,6 +34,13 @@ const PAYMENT_METHODS: Array<{ key: PaymentMethod; label: string }> = [
   { key: "utang", label: "Utang" },
 ];
 
+type CartFeedback = {
+  title: string;
+  message: string;
+  tone: "success" | "warning";
+  icon: "check-circle" | "alert-triangle";
+};
+
 export default function BentaScreen() {
   const db = useSQLiteContext();
   const { theme } = useAppTheme();
@@ -54,6 +61,7 @@ export default function BentaScreen() {
   const [tawadType, setTawadType] = useState<"fixed" | "percent">("fixed");
   const [milestoneAmount, setMilestoneAmount] = useState(0);
   const [milestoneVisible, setMilestoneVisible] = useState(false);
+  const [cartFeedback, setCartFeedback] = useState<CartFeedback | null>(null);
   const [lastReceipt, setLastReceipt] = useState<{
     saleId: number;
     items: Array<{ name: string; quantity: number; priceCents: number }>;
@@ -67,6 +75,11 @@ export default function BentaScreen() {
   } | null>(null);
   const [storeName, setStoreName] = useState("");
   const receiptRef = useRef<View>(null);
+  const cartPulseScale = useRef(new Animated.Value(1)).current;
+  const cartPulseLift = useRef(new Animated.Value(0)).current;
+  const cartFeedbackOpacity = useRef(new Animated.Value(0)).current;
+  const cartFeedbackTranslateY = useRef(new Animated.Value(10)).current;
+  const cartFeedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
 
@@ -122,6 +135,14 @@ export default function BentaScreen() {
     return () => clearTimeout(timeout);
   }, [loadScreenData]);
 
+  useEffect(() => {
+    return () => {
+      if (cartFeedbackTimeoutRef.current) {
+        clearTimeout(cartFeedbackTimeoutRef.current);
+      }
+    };
+  }, []);
+
   const cashPaidCents = parseCurrencyToCents(cashInput);
   const hasValidCash = Number.isFinite(cashPaidCents);
 
@@ -141,10 +162,109 @@ export default function BentaScreen() {
   const isCheckoutReady =
     cartItems.length > 0 && isEnoughCash && (!requiresCustomer || Boolean(selectedCustomer));
 
+  const triggerCartFeedback = useCallback((feedback: CartFeedback) => {
+    if (cartFeedbackTimeoutRef.current) {
+      clearTimeout(cartFeedbackTimeoutRef.current);
+    }
+
+    setCartFeedback(feedback);
+
+    cartPulseScale.stopAnimation();
+    cartPulseLift.stopAnimation();
+    cartFeedbackOpacity.stopAnimation();
+    cartFeedbackTranslateY.stopAnimation();
+
+    cartPulseScale.setValue(1);
+    cartPulseLift.setValue(0);
+    cartFeedbackOpacity.setValue(0);
+    cartFeedbackTranslateY.setValue(10);
+
+    Animated.parallel([
+      Animated.sequence([
+        Animated.parallel([
+          Animated.spring(cartPulseScale, {
+            damping: 10,
+            mass: 0.7,
+            stiffness: 220,
+            toValue: 1.035,
+            useNativeDriver: true,
+          }),
+          Animated.timing(cartPulseLift, {
+            duration: 140,
+            easing: Easing.out(Easing.cubic),
+            toValue: -4,
+            useNativeDriver: true,
+          }),
+        ]),
+        Animated.parallel([
+          Animated.timing(cartPulseScale, {
+            duration: 180,
+            easing: Easing.out(Easing.cubic),
+            toValue: 1,
+            useNativeDriver: true,
+          }),
+          Animated.timing(cartPulseLift, {
+            duration: 180,
+            easing: Easing.out(Easing.cubic),
+            toValue: 0,
+            useNativeDriver: true,
+          }),
+        ]),
+      ]),
+      Animated.parallel([
+        Animated.timing(cartFeedbackOpacity, {
+          duration: 180,
+          easing: Easing.out(Easing.cubic),
+          toValue: 1,
+          useNativeDriver: true,
+        }),
+        Animated.timing(cartFeedbackTranslateY, {
+          duration: 180,
+          easing: Easing.out(Easing.cubic),
+          toValue: 0,
+          useNativeDriver: true,
+        }),
+      ]),
+    ]).start();
+
+    cartFeedbackTimeoutRef.current = setTimeout(() => {
+      Animated.parallel([
+        Animated.timing(cartFeedbackOpacity, {
+          duration: 180,
+          easing: Easing.in(Easing.cubic),
+          toValue: 0,
+          useNativeDriver: true,
+        }),
+        Animated.timing(cartFeedbackTranslateY, {
+          duration: 180,
+          easing: Easing.in(Easing.cubic),
+          toValue: 8,
+          useNativeDriver: true,
+        }),
+      ]).start(({ finished }) => {
+        if (finished) {
+          setCartFeedback(null);
+        }
+      });
+    }, 1500);
+  }, [cartFeedbackOpacity, cartFeedbackTranslateY, cartPulseLift, cartPulseScale]);
+
   const handleAddToCart = useCallback(
     (product: Product) => {
       if (product.stock <= 0) {
         Alert.alert("Out of stock", `${product.name} is currently out of stock.`);
+        return;
+      }
+
+      const existingItem = cartItems.find((item) => item.id === product.id);
+
+      if (existingItem && existingItem.quantity >= product.stock) {
+        triggerCartFeedback({
+          icon: "alert-triangle",
+          message: `${product.name} is already at the max available quantity.`,
+          title: "Cart is full for this item",
+          tone: "warning",
+        });
         return;
       }
 
@@ -154,8 +274,20 @@ export default function BentaScreen() {
         priceCents: product.priceCents,
         stock: product.stock,
       });
+
+      const nextQuantity = existingItem ? Math.min(existingItem.quantity + 1, product.stock) : 1;
+
+      triggerCartFeedback({
+        icon: "check-circle",
+        message:
+          nextQuantity > 1
+            ? `${product.name} is now x${nextQuantity} in the cart.`
+            : `${product.name} is ready in the cart.`,
+        title: existingItem ? "Cart updated" : "Added to cart",
+        tone: "success",
+      });
     },
-    [addItem],
+    [addItem, cartItems, triggerCartFeedback],
   );
 
   const handleOpenScanner = useCallback(async () => {
@@ -343,87 +475,175 @@ export default function BentaScreen() {
           paddingTop: theme.spacing.md,
         }}
         overlay={
-          <Pressable
-            onPress={() => setCartSheetVisible(true)}
-            style={({ pressed }) => ({
-              backgroundColor: theme.colors.card,
-              borderColor: cartItems.length > 0 ? theme.colors.primary : theme.colors.border,
-              borderRadius: theme.radius.md,
-              borderWidth: 1,
-              bottom: theme.spacing.sm,
-              left: theme.spacing.lg,
-              opacity: pressed ? 0.96 : 1,
-              padding: theme.spacing.md,
-              position: "absolute",
-              right: theme.spacing.lg,
-              shadowColor: theme.colors.shadow,
-              shadowOffset: { width: 0, height: 8 },
-              shadowOpacity: 1,
-              shadowRadius: 18,
-              elevation: 3,
-            })}
-          >
-            <View style={{ alignItems: "center", flexDirection: "row", gap: theme.spacing.md }}>
-              <View
+          <>
+            {cartFeedback ? (
+              <Animated.View
+                pointerEvents="none"
                 style={{
-                  alignItems: "center",
-                  backgroundColor: cartItems.length > 0 ? theme.colors.primaryMuted : theme.colors.surfaceMuted,
-                  borderRadius: theme.radius.pill,
-                  height: 42,
-                  justifyContent: "center",
-                  width: 42,
+                  bottom: 88,
+                  left: theme.spacing.lg,
+                  opacity: cartFeedbackOpacity,
+                  position: "absolute",
+                  right: theme.spacing.lg,
+                  transform: [{ translateY: cartFeedbackTranslateY }],
                 }}
               >
-                <Feather
-                  color={cartItems.length > 0 ? theme.colors.primary : theme.colors.textSoft}
-                  name="shopping-cart"
-                  size={18}
-                />
-              </View>
-              <View style={{ flex: 1, gap: 2 }}>
-                <Text
+                <View
                   style={{
-                    color: theme.colors.text,
-                    fontFamily: theme.typography.body,
-                    fontSize: 14,
-                    fontWeight: "700",
+                    backgroundColor: theme.colors.card,
+                    borderColor:
+                      cartFeedback.tone === "success" ? theme.colors.success : theme.colors.warning,
+                    borderRadius: theme.radius.md,
+                    borderWidth: 1,
+                    flexDirection: "row",
+                    gap: theme.spacing.md,
+                    paddingHorizontal: theme.spacing.md,
+                    paddingVertical: theme.spacing.sm,
+                    shadowColor: theme.colors.shadow,
+                    shadowOffset: { width: 0, height: 6 },
+                    shadowOpacity: 1,
+                    shadowRadius: 14,
+                    elevation: 3,
                   }}
                 >
-                  {cartItems.length > 0 ? "Cart ready" : "Cart is empty"}
-                </Text>
-                <Text
-                  style={{
-                    color: theme.colors.textMuted,
-                    fontFamily: theme.typography.body,
-                    fontSize: 12,
-                  }}
-                >
-                  {cartItems.length > 0
-                    ? `${cartCountLabel} - ${formatCurrencyFromCents(finalTotalCents)}`
-                    : "Tap products now, then open cart anytime."}
-                </Text>
-              </View>
-              <View
-                style={{
-                  backgroundColor: theme.colors.primary,
-                  borderRadius: theme.radius.pill,
-                  paddingHorizontal: theme.spacing.md,
-                  paddingVertical: 10,
-                }}
+                  <View
+                    style={{
+                      alignItems: "center",
+                      backgroundColor:
+                        cartFeedback.tone === "success"
+                          ? theme.colors.successMuted
+                          : theme.colors.warningMuted,
+                      borderRadius: theme.radius.pill,
+                      height: 36,
+                      justifyContent: "center",
+                      width: 36,
+                    }}
+                  >
+                    <Feather
+                      color={
+                        cartFeedback.tone === "success"
+                          ? theme.colors.success
+                          : theme.colors.warning
+                      }
+                      name={cartFeedback.icon}
+                      size={16}
+                    />
+                  </View>
+                  <View style={{ flex: 1, gap: 2 }}>
+                    <Text
+                      style={{
+                        color: theme.colors.text,
+                        fontFamily: theme.typography.body,
+                        fontSize: 13,
+                        fontWeight: "700",
+                      }}
+                    >
+                      {cartFeedback.title}
+                    </Text>
+                    <Text
+                      numberOfLines={2}
+                      style={{
+                        color: theme.colors.textMuted,
+                        fontFamily: theme.typography.body,
+                        fontSize: 12,
+                        lineHeight: 17,
+                      }}
+                    >
+                      {cartFeedback.message}
+                    </Text>
+                  </View>
+                </View>
+              </Animated.View>
+            ) : null}
+
+            <Animated.View
+              style={{
+                bottom: theme.spacing.sm,
+                left: theme.spacing.lg,
+                position: "absolute",
+                right: theme.spacing.lg,
+                transform: [{ translateY: cartPulseLift }, { scale: cartPulseScale }],
+              }}
+            >
+              <Pressable
+                onPress={() => setCartSheetVisible(true)}
+                style={({ pressed }) => ({
+                  backgroundColor: theme.colors.card,
+                  borderColor: cartItems.length > 0 ? theme.colors.primary : theme.colors.border,
+                  borderRadius: theme.radius.md,
+                  borderWidth: 1,
+                  opacity: pressed ? 0.96 : 1,
+                  padding: theme.spacing.md,
+                  shadowColor: theme.colors.shadow,
+                  shadowOffset: { width: 0, height: 8 },
+                  shadowOpacity: 1,
+                  shadowRadius: 18,
+                  elevation: 3,
+                })}
               >
-                <Text
-                  style={{
-                    color: theme.colors.primaryText,
-                    fontFamily: theme.typography.body,
-                    fontSize: 12,
-                    fontWeight: "700",
-                  }}
-                >
-                  View Cart
-                </Text>
-              </View>
-            </View>
-          </Pressable>
+                <View style={{ alignItems: "center", flexDirection: "row", gap: theme.spacing.md }}>
+                  <View
+                    style={{
+                      alignItems: "center",
+                      backgroundColor: cartItems.length > 0 ? theme.colors.primaryMuted : theme.colors.surfaceMuted,
+                      borderRadius: theme.radius.pill,
+                      height: 42,
+                      justifyContent: "center",
+                      width: 42,
+                    }}
+                  >
+                    <Feather
+                      color={cartItems.length > 0 ? theme.colors.primary : theme.colors.textSoft}
+                      name="shopping-cart"
+                      size={18}
+                    />
+                  </View>
+                  <View style={{ flex: 1, gap: 2 }}>
+                    <Text
+                      style={{
+                        color: theme.colors.text,
+                        fontFamily: theme.typography.body,
+                        fontSize: 14,
+                        fontWeight: "700",
+                      }}
+                    >
+                      {cartItems.length > 0 ? "Cart ready" : "Cart is empty"}
+                    </Text>
+                    <Text
+                      style={{
+                        color: theme.colors.textMuted,
+                        fontFamily: theme.typography.body,
+                        fontSize: 12,
+                      }}
+                    >
+                      {cartItems.length > 0
+                        ? `${cartCountLabel} - ${formatCurrencyFromCents(finalTotalCents)}`
+                        : "Tap products now, then open cart anytime."}
+                    </Text>
+                  </View>
+                  <View
+                    style={{
+                      backgroundColor: theme.colors.primary,
+                      borderRadius: theme.radius.pill,
+                      paddingHorizontal: theme.spacing.md,
+                      paddingVertical: 10,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: theme.colors.primaryText,
+                        fontFamily: theme.typography.body,
+                        fontSize: 12,
+                        fontWeight: "700",
+                      }}
+                    >
+                      View Cart
+                    </Text>
+                  </View>
+                </View>
+              </Pressable>
+            </Animated.View>
+          </>
         }
         subtitle="Tap products fast, then open the cart anytime from the sticky bar."
         title="Benta"
@@ -494,6 +714,7 @@ export default function BentaScreen() {
                   category={product.category}
                   compact
                   disabled={product.stock <= 0}
+                  imageUri={product.imageUri}
                   key={product.id}
                   marginPercent={marginPercent}
                   minStock={product.minStock}

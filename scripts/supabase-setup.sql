@@ -9,9 +9,12 @@ CREATE TABLE IF NOT EXISTS products (
   stock INTEGER NOT NULL DEFAULT 0,
   category TEXT,
   barcode TEXT,
+  image_uri TEXT,
   min_stock INTEGER NOT NULL DEFAULT 5,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+ALTER TABLE products ADD COLUMN IF NOT EXISTS image_uri TEXT;
 
 CREATE TABLE IF NOT EXISTS customers (
   id BIGINT PRIMARY KEY,
@@ -52,15 +55,52 @@ CREATE TABLE IF NOT EXISTS utang (
   paid_at TIMESTAMPTZ
 );
 
--- Enable Row Level Security (allow all for anon key — single-user app)
+-- Enable Row Level Security (allow all for anon key -- single-user app)
 ALTER TABLE products ENABLE ROW LEVEL SECURITY;
 ALTER TABLE customers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sales ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sale_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE utang ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Allow all" ON products;
+DROP POLICY IF EXISTS "Allow all" ON customers;
+DROP POLICY IF EXISTS "Allow all" ON sales;
+DROP POLICY IF EXISTS "Allow all" ON sale_items;
+DROP POLICY IF EXISTS "Allow all" ON utang;
+
 CREATE POLICY "Allow all" ON products FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all" ON customers FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all" ON sales FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all" ON sale_items FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all" ON utang FOR ALL USING (true) WITH CHECK (true);
+
+-- Public bucket for compressed product photos stored during cloud backup.
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES (
+  'product-images',
+  'product-images',
+  true,
+  5242880,
+  ARRAY['image/jpeg', 'image/png', 'image/webp']
+)
+ON CONFLICT (id) DO UPDATE
+SET public = EXCLUDED.public,
+    file_size_limit = EXCLUDED.file_size_limit,
+    allowed_mime_types = EXCLUDED.allowed_mime_types;
+
+DROP POLICY IF EXISTS "Product images are public" ON storage.objects;
+DROP POLICY IF EXISTS "Product images can be uploaded" ON storage.objects;
+DROP POLICY IF EXISTS "Product images can be updated" ON storage.objects;
+
+CREATE POLICY "Product images are public"
+ON storage.objects FOR SELECT
+USING (bucket_id = 'product-images');
+
+CREATE POLICY "Product images can be uploaded"
+ON storage.objects FOR INSERT
+WITH CHECK (bucket_id = 'product-images');
+
+CREATE POLICY "Product images can be updated"
+ON storage.objects FOR UPDATE
+USING (bucket_id = 'product-images')
+WITH CHECK (bucket_id = 'product-images');

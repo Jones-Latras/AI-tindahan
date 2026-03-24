@@ -14,6 +14,13 @@
       "expo-router",
       "expo-sqlite",
       [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow TindaHan AI to access your product photos",
+          "cameraPermission": "Allow TindaHan AI to take product photos"
+        }
+      ],
+      [
         "expo-camera",
         {
           "cameraPermission": "Allow TindaHan AI to scan product barcodes",

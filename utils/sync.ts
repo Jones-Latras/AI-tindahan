@@ -9,9 +9,88 @@
 import type { SQLiteDatabase } from "expo-sqlite";
 import Storage from "expo-sqlite/kv-store";
 
-import { isSupabaseReady, supabaseSelectAll, supabaseUpsert } from "./supabase";
+import {
+  isSupabaseReady,
+  supabaseSelectAll,
+  supabaseUploadStorageObject,
+  supabaseUpsert,
+} from "./supabase";
 
 const LAST_SYNC_KEY = "tindahan.last-sync";
+const PRODUCT_IMAGE_BUCKET = "product-images";
+
+type PendingProductImageRow = {
+  id: number;
+  name: string;
+  image_uri: string | null;
+};
+
+function isRemoteImageUri(uri: string) {
+  return /^https?:\/\//i.test(uri.trim());
+}
+
+function getProductImageUploadFormat(uri: string) {
+  const normalizedUri = uri.split("?")[0]?.toLowerCase() ?? "";
+
+  if (normalizedUri.endsWith(".png")) {
+    return { contentType: "image/png", extension: "png" };
+  }
+
+  if (normalizedUri.endsWith(".webp")) {
+    return { contentType: "image/webp", extension: "webp" };
+  }
+
+  return { contentType: "image/jpeg", extension: "jpg" };
+}
+
+function buildProductImagePath(productId: number, extension: string) {
+  const suffix = Math.random().toString(36).slice(2, 8);
+  return `products/${productId}/${Date.now()}-${suffix}.${extension}`;
+}
+
+async function uploadPendingProductImages(db: SQLiteDatabase) {
+  const pendingImages = await db.getAllAsync<PendingProductImageRow>(
+    `
+      SELECT id, name, image_uri
+      FROM products
+      WHERE image_uri IS NOT NULL
+        AND TRIM(image_uri) <> ''
+    `,
+  );
+
+  for (const product of pendingImages) {
+    const imageUri = product.image_uri?.trim();
+
+    if (!imageUri || isRemoteImageUri(imageUri)) {
+      continue;
+    }
+
+    let fileBytes: ArrayBuffer;
+
+    try {
+      const response = await fetch(imageUri);
+      if (!response.ok) {
+        throw new Error(`Could not read the local file (${response.status}).`);
+      }
+
+      fileBytes = await response.arrayBuffer();
+    } catch {
+      throw new Error(
+        `The saved photo for "${product.name}" is no longer available on this device. Replace or remove it, then try backing up again.`,
+      );
+    }
+
+    const { contentType, extension } = getProductImageUploadFormat(imageUri);
+    const publicUrl = await supabaseUploadStorageObject(
+      PRODUCT_IMAGE_BUCKET,
+      buildProductImagePath(product.id, extension),
+      fileBytes,
+      contentType,
+    );
+
+    await db.runAsync("UPDATE products SET image_uri = ?, synced = 0 WHERE id = ?", publicUrl, product.id);
+  }
+}
 
 // ---------- sync to cloud ----------
 
@@ -22,9 +101,11 @@ export async function syncToCloud(db: SQLiteDatabase): Promise<string> {
 
   let pushed = 0;
 
+  await uploadPendingProductImages(db);
+
   // Sync products
   const products = await db.getAllAsync<Record<string, unknown>>(
-    "SELECT id, name, price_cents, cost_price_cents, stock, category, barcode, min_stock, created_at FROM products WHERE synced = 0",
+    "SELECT id, name, price_cents, cost_price_cents, stock, category, barcode, image_uri, min_stock, created_at FROM products WHERE synced = 0",
   );
   if (products.length > 0) {
     await supabaseUpsert("products", products);
@@ -110,10 +191,10 @@ export async function restoreFromCloud(db: SQLiteDatabase): Promise<string> {
     for (const p of products) {
       const row = p as Record<string, unknown>;
       await db.runAsync(
-        `INSERT OR REPLACE INTO products (id, name, price_cents, cost_price_cents, stock, category, barcode, min_stock, created_at, synced)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+        `INSERT OR REPLACE INTO products (id, name, price_cents, cost_price_cents, stock, category, barcode, image_uri, min_stock, created_at, synced)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
         row.id as number, row.name as string, row.price_cents as number, row.cost_price_cents as number,
-        row.stock as number, row.category as string | null, row.barcode as string | null,
+        row.stock as number, row.category as string | null, row.barcode as string | null, row.image_uri as string | null,
         row.min_stock as number, row.created_at as string,
       );
       restored++;

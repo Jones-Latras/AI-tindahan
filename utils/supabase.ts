@@ -1,17 +1,18 @@
 /**
  * Lightweight Supabase REST client using fetch.
- * We only need upsert + select — no realtime, no auth, no storage.
+ * We only need upsert + select + simple storage uploads -- no realtime, no auth.
  * This avoids the Metro bundler issue with @supabase/realtime-js.
  */
 
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL ?? "";
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? "";
 
+const REST_URL = `${supabaseUrl}/rest/v1`;
+const STORAGE_URL = `${supabaseUrl}/storage/v1`;
+
 export function isSupabaseReady() {
   return Boolean(supabaseUrl && supabaseAnonKey);
 }
-
-const REST_URL = `${supabaseUrl}/rest/v1`;
 
 const headers = () => ({
   apikey: supabaseAnonKey,
@@ -19,6 +20,20 @@ const headers = () => ({
   "Content-Type": "application/json",
   Prefer: "return=minimal",
 });
+
+const storageHeaders = (contentType?: string) => ({
+  apikey: supabaseAnonKey,
+  Authorization: `Bearer ${supabaseAnonKey}`,
+  ...(contentType ? { "Content-Type": contentType } : {}),
+});
+
+function encodeStoragePath(path: string) {
+  return path
+    .split("/")
+    .filter(Boolean)
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+}
 
 /**
  * Upsert rows into a Supabase table (uses PostgREST).
@@ -67,4 +82,33 @@ export async function supabaseSelectAll<T = Record<string, unknown>>(
   }
 
   return (await response.json()) as T[];
+}
+
+export function getSupabaseStoragePublicUrl(bucket: string, path: string) {
+  return `${STORAGE_URL}/object/public/${encodeURIComponent(bucket)}/${encodeStoragePath(path)}`;
+}
+
+export async function supabaseUploadStorageObject(
+  bucket: string,
+  path: string,
+  fileBytes: ArrayBuffer,
+  contentType: string,
+): Promise<string> {
+  const response = await fetch(
+    `${STORAGE_URL}/object/${encodeURIComponent(bucket)}/${encodeStoragePath(path)}`,
+    {
+      method: "POST",
+      headers: storageHeaders(contentType),
+      body: fileBytes,
+    },
+  );
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(
+      `Supabase storage upload failed (${response.status}). Make sure the "${bucket}" bucket exists and has upload policies. ${body}`,
+    );
+  }
+
+  return getSupabaseStoragePublicUrl(bucket, path);
 }

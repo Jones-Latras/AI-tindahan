@@ -28,6 +28,7 @@ type ProductRow = {
   stock: number;
   category: string | null;
   barcode: string | null;
+  image_uri: string | null;
   min_stock: number;
   created_at: string;
 };
@@ -96,6 +97,7 @@ function mapProduct(row: ProductRow): Product {
     stock: row.stock,
     category: row.category,
     barcode: row.barcode,
+    imageUri: row.image_uri,
     minStock: row.min_stock,
     createdAt: row.created_at,
   };
@@ -129,6 +131,7 @@ export type ProductInput = {
   stock: number;
   category: string;
   barcode: string;
+  imageUri?: string;
   minStock: number;
 };
 
@@ -204,6 +207,7 @@ export async function saveProduct(db: SQLiteDatabase, input: ProductInput, produ
   const name = sanitizeText(input.name, 80);
   const category = sanitizeOptionalText(input.category, 40);
   const barcode = sanitizeOptionalText(input.barcode, 48);
+  const imageUri = sanitizeOptionalText(input.imageUri ?? "", 2048);
 
   if (name.length < 2) {
     throw new Error("Product name must be at least 2 characters.");
@@ -222,7 +226,7 @@ export async function saveProduct(db: SQLiteDatabase, input: ProductInput, produ
     await db.runAsync(
       `
         UPDATE products
-        SET name = ?, price_cents = ?, cost_price_cents = ?, stock = ?, category = ?, barcode = ?, min_stock = ?
+        SET name = ?, price_cents = ?, cost_price_cents = ?, stock = ?, category = ?, barcode = ?, image_uri = ?, min_stock = ?, synced = 0
         WHERE id = ?
       `,
       name,
@@ -231,6 +235,7 @@ export async function saveProduct(db: SQLiteDatabase, input: ProductInput, produ
       input.stock,
       category,
       barcode,
+      imageUri,
       input.minStock,
       productId,
     );
@@ -239,8 +244,8 @@ export async function saveProduct(db: SQLiteDatabase, input: ProductInput, produ
 
   const result = await db.runAsync(
     `
-      INSERT INTO products (name, price_cents, cost_price_cents, stock, category, barcode, min_stock)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO products (name, price_cents, cost_price_cents, stock, category, barcode, image_uri, min_stock)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `,
     name,
     input.priceCents,
@@ -248,6 +253,7 @@ export async function saveProduct(db: SQLiteDatabase, input: ProductInput, produ
     input.stock,
     category,
     barcode,
+    imageUri,
     input.minStock,
   );
 
@@ -784,7 +790,7 @@ export async function checkoutSale(db: SQLiteDatabase, input: CheckoutInput) {
       await txn.runAsync(
         `
           UPDATE products
-          SET stock = stock - ?
+          SET stock = stock - ?, synced = 0
           WHERE id = ?
         `,
         item.quantity,

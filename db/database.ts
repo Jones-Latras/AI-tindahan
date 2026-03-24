@@ -1,7 +1,7 @@
 import type { SQLiteDatabase } from "expo-sqlite";
 
 export const DATABASE_NAME = "tindahan-ai.db";
-export const DATABASE_VERSION = 4;
+export const DATABASE_VERSION = 5;
 
 export async function migrateDbIfNeeded(db: SQLiteDatabase) {
   await db.execAsync("PRAGMA journal_mode = WAL;");
@@ -26,6 +26,7 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
         stock INTEGER NOT NULL DEFAULT 0 CHECK(stock >= 0),
         category TEXT,
         barcode TEXT UNIQUE,
+        image_uri TEXT,
         min_stock INTEGER NOT NULL DEFAULT 5 CHECK(min_stock >= 0),
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         synced INTEGER NOT NULL DEFAULT 0
@@ -113,6 +114,14 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
     `);
 
     currentVersion = 4;
+  }
+
+  if (currentVersion === 4) {
+    await db.execAsync(`
+      ALTER TABLE products ADD COLUMN image_uri TEXT;
+    `);
+
+    currentVersion = 5;
   }
 
   await db.execAsync(`PRAGMA user_version = ${currentVersion};`);

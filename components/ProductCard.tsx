@@ -1,5 +1,6 @@
 import { Feather } from "@expo/vector-icons";
-import { Pressable, Text, View } from "react-native";
+import { useEffect, useState } from "react";
+import { Image, Pressable, Text, View } from "react-native";
 
 import { useAppTheme } from "@/contexts/ThemeContext";
 import { formatCurrencyFromCents } from "@/utils/money";
@@ -11,6 +12,7 @@ type ProductCardProps = {
   stock: number;
   minStock: number;
   marginPercent: string;
+  imageUri?: string | null;
   disabled?: boolean;
   compact?: boolean;
   onPress?: () => void;
@@ -23,12 +25,19 @@ export function ProductCard({
   stock,
   minStock,
   marginPercent,
+  imageUri,
   disabled = false,
   compact = false,
   onPress,
 }: ProductCardProps) {
   const { theme } = useAppTheme();
   const isLowStock = stock <= minStock;
+  const [imageFailed, setImageFailed] = useState(false);
+  const hasImage = Boolean(imageUri && !imageFailed);
+
+  useEffect(() => {
+    setImageFailed(false);
+  }, [imageUri]);
 
   return (
     <Pressable
@@ -46,6 +55,26 @@ export function ProductCard({
         padding: compact ? theme.spacing.md : theme.spacing.lg,
       })}
     >
+      {hasImage ? (
+        <View
+          style={{
+            borderRadius: theme.radius.sm,
+            overflow: "hidden",
+          }}
+        >
+          <Image
+            onError={() => setImageFailed(true)}
+            resizeMode="cover"
+            source={{ uri: imageUri ?? undefined }}
+            style={{
+              backgroundColor: theme.colors.surfaceMuted,
+              height: compact ? 88 : 116,
+              width: "100%",
+            }}
+          />
+        </View>
+      ) : null}
+
       <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
         <View
           style={{
