@@ -147,6 +147,7 @@ export type UtangInput = {
 export type CheckoutInput = {
   items: SaleItemInput[];
   totalCents: number;
+  discountCents: number;
   cashPaidCents: number;
   paymentMethod: PaymentMethod;
   customerId?: number | null;
@@ -753,12 +754,13 @@ export async function checkoutSale(db: SQLiteDatabase, input: CheckoutInput) {
 
     const saleResult = await txn.runAsync(
       `
-        INSERT INTO sales (total_cents, cash_paid_cents, change_given_cents, payment_method, customer_id)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO sales (total_cents, cash_paid_cents, change_given_cents, discount_cents, payment_method, customer_id)
+        VALUES (?, ?, ?, ?, ?, ?)
       `,
       input.totalCents,
       cashPaidCents,
       changeGivenCents,
+      input.discountCents,
       input.paymentMethod,
       input.customerId ?? null,
     );

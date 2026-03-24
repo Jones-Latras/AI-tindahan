@@ -2,6 +2,7 @@ import { Feather } from "@expo/vector-icons";
 import { CameraView, useCameraPermissions, type BarcodeScanningResult } from "expo-camera";
 import { useFocusEffect } from "expo-router";
 import { useSQLiteContext } from "expo-sqlite";
+import Storage from "expo-sqlite/kv-store";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Alert, Text, View } from "react-native";
 
@@ -9,18 +10,20 @@ import { ActionButton } from "@/components/ActionButton";
 import { CartItem } from "@/components/CartItem";
 import { EmptyState } from "@/components/EmptyState";
 import { InputField } from "@/components/InputField";
+import { MilestoneCelebration } from "@/components/MilestoneCelebration";
 import { ModalSheet } from "@/components/ModalSheet";
 import { ProductCard } from "@/components/ProductCard";
 import { Screen } from "@/components/Screen";
 import { StatusBadge } from "@/components/StatusBadge";
 import { SurfaceCard } from "@/components/SurfaceCard";
 import { useAppTheme } from "@/contexts/ThemeContext";
-import { checkoutSale, getProductByBarcode, listCustomersWithBalances, listProducts } from "@/db/repositories";
+import { checkoutSale, getHomeMetrics, getProductByBarcode, listCustomersWithBalances, listProducts } from "@/db/repositories";
 import { useCartStore } from "@/store/useCartStore";
 import type { CustomerSummary, PaymentMethod, Product } from "@/types/models";
 import { centsToDisplayValue, formatCurrencyFromCents, parseCurrencyToCents } from "@/utils/money";
 
 const QUICK_PAY_VALUES = [5000, 10000, 20000, 50000];
+const QUICK_DISCOUNT_PERCENTS = [5, 10, 15, 20];
 const PAYMENT_METHODS: Array<{ key: PaymentMethod; label: string }> = [
   { key: "cash", label: "Cash" },
   { key: "gcash", label: "GCash" },
@@ -42,6 +45,11 @@ export default function BentaScreen() {
   const [customerPickerVisible, setCustomerPickerVisible] = useState(false);
   const [scannerVisible, setScannerVisible] = useState(false);
   const [scannerBusy, setScannerBusy] = useState(false);
+  const [tawadActive, setTawadActive] = useState(false);
+  const [tawadInput, setTawadInput] = useState("");
+  const [tawadType, setTawadType] = useState<"fixed" | "percent">("fixed");
+  const [milestoneAmount, setMilestoneAmount] = useState(0);
+  const [milestoneVisible, setMilestoneVisible] = useState(false);
 
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
 
@@ -92,8 +100,16 @@ export default function BentaScreen() {
 
   const cashPaidCents = parseCurrencyToCents(cashInput);
   const hasValidCash = Number.isFinite(cashPaidCents);
-  const changeCents = paymentMethod === "cash" && hasValidCash ? cashPaidCents - totalCents : 0;
-  const isEnoughCash = paymentMethod === "cash" ? hasValidCash && cashPaidCents >= totalCents : true;
+
+  const discountCents = tawadActive
+    ? tawadType === "percent"
+      ? Math.round((totalCents * Math.min(Number.parseFloat(tawadInput) || 0, 100)) / 100)
+      : parseCurrencyToCents(tawadInput) || 0
+    : 0;
+  const finalTotalCents = Math.max(0, totalCents - discountCents);
+
+  const changeCents = paymentMethod === "cash" && hasValidCash ? cashPaidCents - finalTotalCents : 0;
+  const isEnoughCash = paymentMethod === "cash" ? hasValidCash && cashPaidCents >= finalTotalCents : true;
   const requiresCustomer = paymentMethod === "utang";
   const isCheckoutReady =
     cartItems.length > 0 && isEnoughCash && (!requiresCustomer || Boolean(selectedCustomer));
@@ -190,7 +206,8 @@ export default function BentaScreen() {
     try {
       const saleId = await checkoutSale(db, {
         items: payloadItems,
-        totalCents,
+        totalCents: finalTotalCents,
+        discountCents,
         cashPaidCents: paymentMethod === "cash" && hasValidCash ? cashPaidCents : 0,
         paymentMethod,
         customerId: selectedCustomer?.id ?? null,
@@ -201,6 +218,9 @@ export default function BentaScreen() {
       setCashInput("");
       setPaymentMethod("cash");
       setSelectedCustomer(null);
+      setTawadActive(false);
+      setTawadInput("");
+      setTawadType("fixed");
       await loadScreenData();
 
       const successSuffix =
@@ -211,6 +231,28 @@ export default function BentaScreen() {
             : `Saved as ${paymentMethod.toUpperCase()} payment.`;
 
       Alert.alert("Sale completed", `Transaction #${saleId} saved successfully. ${successSuffix}`);
+
+      // Check for daily sales milestones
+      const MILESTONES = [500000, 200000, 100000, 50000];
+      const todayKey = new Date().toISOString().slice(0, 10);
+      const triggeredRaw = await Storage.getItem(`tindahan.milestones.${todayKey}`);
+      const triggered = new Set<number>(triggeredRaw ? JSON.parse(triggeredRaw) as number[] : []);
+
+      const homeMetrics = await getHomeMetrics(db);
+      const dailyTotal = homeMetrics.todaySalesCents;
+
+      for (const milestone of MILESTONES) {
+        if (dailyTotal >= milestone && !triggered.has(milestone)) {
+          triggered.add(milestone);
+          await Storage.setItem(
+            `tindahan.milestones.${todayKey}`,
+            JSON.stringify([...triggered]),
+          );
+          setMilestoneAmount(milestone);
+          setMilestoneVisible(true);
+          break;
+        }
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Checkout failed. Please try again.";
       Alert.alert("Checkout failed", message);
@@ -360,18 +402,110 @@ export default function BentaScreen() {
                   fontWeight: "600",
                 }}
               >
-                Total
+                Subtotal
               </Text>
               <Text
                 style={{
-                  color: theme.colors.text,
+                  color: discountCents > 0 ? theme.colors.textMuted : theme.colors.text,
                   fontFamily: theme.typography.display,
-                  fontSize: 28,
+                  fontSize: discountCents > 0 ? 18 : 28,
                   fontWeight: "700",
+                  textDecorationLine: discountCents > 0 ? "line-through" : "none",
                 }}
               >
                 {formatCurrencyFromCents(totalCents)}
               </Text>
+            </View>
+
+            {discountCents > 0 ? (
+              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                <Text
+                  style={{
+                    color: theme.colors.success,
+                    fontFamily: theme.typography.body,
+                    fontSize: 14,
+                    fontWeight: "700",
+                  }}
+                >
+                  Tawad ({tawadType === "percent" ? `${tawadInput}%` : formatCurrencyFromCents(discountCents)} off)
+                </Text>
+                <Text
+                  style={{
+                    color: theme.colors.success,
+                    fontFamily: theme.typography.display,
+                    fontSize: 28,
+                    fontWeight: "700",
+                  }}
+                >
+                  {formatCurrencyFromCents(finalTotalCents)}
+                </Text>
+              </View>
+            ) : null}
+
+            <View style={{ gap: theme.spacing.sm }}>
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                <Text
+                  style={{
+                    color: theme.colors.textMuted,
+                    fontFamily: theme.typography.body,
+                    fontSize: 13,
+                    fontWeight: "700",
+                  }}
+                >
+                  Tawad (Discount)
+                </Text>
+                <ActionButton
+                  label={tawadActive ? "Remove" : "Add Tawad"}
+                  onPress={() => {
+                    setTawadActive(!tawadActive);
+                    if (tawadActive) {
+                      setTawadInput("");
+                      setTawadType("fixed");
+                    }
+                  }}
+                  style={{ paddingHorizontal: 14, paddingVertical: 8 }}
+                  variant={tawadActive ? "ghost" : "secondary"}
+                />
+              </View>
+
+              {tawadActive ? (
+                <View style={{ gap: theme.spacing.sm }}>
+                  <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
+                    <ActionButton
+                      label="Fixed ₱"
+                      onPress={() => { setTawadType("fixed"); setTawadInput(""); }}
+                      style={{ flex: 1 }}
+                      variant={tawadType === "fixed" ? "primary" : "ghost"}
+                    />
+                    <ActionButton
+                      label="Percent %"
+                      onPress={() => { setTawadType("percent"); setTawadInput(""); }}
+                      style={{ flex: 1 }}
+                      variant={tawadType === "percent" ? "primary" : "ghost"}
+                    />
+                  </View>
+                  <InputField
+                    keyboardType="decimal-pad"
+                    label={tawadType === "fixed" ? "Discount amount (₱)" : "Discount percent (%)"}
+                    onChangeText={setTawadInput}
+                    placeholder={tawadType === "fixed" ? "0.00" : "10"}
+                    value={tawadInput}
+                  />
+                  {tawadType === "percent" ? (
+                    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
+                      {QUICK_DISCOUNT_PERCENTS.map((pct) => (
+                        <ActionButton
+                          key={pct}
+                          label={`${pct}%`}
+                          onPress={() => setTawadInput(String(pct))}
+                          style={{ flex: 1, minWidth: 60 }}
+                          variant="ghost"
+                        />
+                      ))}
+                    </View>
+                  ) : null}
+                </View>
+              ) : null}
             </View>
 
             <View style={{ gap: theme.spacing.sm }}>
@@ -653,6 +787,12 @@ export default function BentaScreen() {
           )}
         </View>
       </ModalSheet>
+
+      <MilestoneCelebration
+        amountCents={milestoneAmount}
+        onDismiss={() => setMilestoneVisible(false)}
+        visible={milestoneVisible}
+      />
     </>
   );
 }

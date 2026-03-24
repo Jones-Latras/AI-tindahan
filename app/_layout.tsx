@@ -1,16 +1,34 @@
+import Storage from "expo-sqlite/kv-store";
 import { Stack } from "expo-router";
 import { SQLiteProvider } from "expo-sqlite";
 import { StatusBar } from "expo-status-bar";
+import { useEffect, useState } from "react";
 import { ActivityIndicator, Text, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { ThemeProvider, useAppTheme } from "@/contexts/ThemeContext";
 import { DATABASE_NAME, migrateDbIfNeeded } from "@/db/database";
+import { ONBOARDED_KEY } from "@/app/onboarding";
 
 function AppShell() {
   const { isReady, mode, theme } = useAppTheme();
+  const [hasOnboarded, setHasOnboarded] = useState<boolean | null>(null);
 
-  if (!isReady) {
+  useEffect(() => {
+    let mounted = true;
+
+    async function checkOnboarded() {
+      const value = await Storage.getItem(ONBOARDED_KEY);
+      if (mounted) {
+        setHasOnboarded(value === "true");
+      }
+    }
+
+    checkOnboarded();
+    return () => { mounted = false; };
+  }, []);
+
+  if (!isReady || hasOnboarded === null) {
     return (
       <View
         style={{
@@ -45,7 +63,11 @@ function AppShell() {
             headerShown: false,
           }}
         >
-          <Stack.Screen name="(tabs)" />
+          {hasOnboarded ? (
+            <Stack.Screen name="(tabs)" />
+          ) : (
+            <Stack.Screen name="onboarding" />
+          )}
         </Stack>
       </SQLiteProvider>
     </SafeAreaProvider>

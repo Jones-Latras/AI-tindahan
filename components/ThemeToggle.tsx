@@ -46,7 +46,7 @@ export function ThemeToggle() {
           fontWeight: "700",
         }}
       >
-        {mode === "dark" ? "Dark Mode" : "Light Mode"}
+        {mode === "dark" ? "Gabi" : "Umaga"}
       </Text>
     </Pressable>
   );

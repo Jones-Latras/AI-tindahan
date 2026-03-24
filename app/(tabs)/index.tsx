@@ -1,6 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useSQLiteContext } from "expo-sqlite";
+import Storage from "expo-sqlite/kv-store";
 import { useCallback, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from "react-native";
 
@@ -38,6 +39,7 @@ export default function HomeScreen() {
   const [brief, setBrief] = useState<HomeAiBrief | null>(null);
   const [velocity, setVelocity] = useState<ProductVelocity[]>([]);
   const [weeklyReports, setWeeklyReports] = useState<WeeklyPaymentReport[]>([]);
+  const [storeName, setStoreName] = useState("");
   const [loading, setLoading] = useState(true);
   const [aiLoading, setAiLoading] = useState(true);
   const [chatVisible, setChatVisible] = useState(false);
@@ -75,6 +77,9 @@ export default function HomeScreen() {
   useFocusEffect(
     useCallback(() => {
       void loadDashboard();
+      void Storage.getItem("tindahan.store-name").then((name) => {
+        if (name) setStoreName(name);
+      });
     }, [loadDashboard]),
   );
 
@@ -138,7 +143,7 @@ export default function HomeScreen() {
         }
         rightSlot={<ThemeToggle />}
         subtitle="Offline-first operations with an optional Gemini-powered assistant layered on top."
-        title="TindaHan AI"
+        title={storeName || "TindaHan AI"}
       >
         <SurfaceCard
           style={{

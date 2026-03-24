@@ -1,7 +1,7 @@
 import type { SQLiteDatabase } from "expo-sqlite";
 
 export const DATABASE_NAME = "tindahan-ai.db";
-export const DATABASE_VERSION = 2;
+export const DATABASE_VERSION = 3;
 
 export async function migrateDbIfNeeded(db: SQLiteDatabase) {
   await db.execAsync("PRAGMA journal_mode = WAL;");
@@ -35,6 +35,7 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
         total_cents INTEGER NOT NULL CHECK(total_cents >= 0),
         cash_paid_cents INTEGER NOT NULL CHECK(cash_paid_cents >= 0),
         change_given_cents INTEGER NOT NULL CHECK(change_given_cents >= 0),
+        discount_cents INTEGER NOT NULL DEFAULT 0 CHECK(discount_cents >= 0),
         payment_method TEXT NOT NULL DEFAULT 'cash' CHECK(payment_method IN ('cash', 'gcash', 'maya', 'utang')),
         customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL,
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -87,6 +88,14 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
     `);
 
     currentVersion = 2;
+  }
+
+  if (currentVersion === 2) {
+    await db.execAsync(`
+      ALTER TABLE sales ADD COLUMN discount_cents INTEGER NOT NULL DEFAULT 0;
+    `);
+
+    currentVersion = 3;
   }
 
   await db.execAsync(`PRAGMA user_version = ${currentVersion};`);
