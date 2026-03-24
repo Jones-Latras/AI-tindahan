@@ -33,6 +33,10 @@ type ProductRow = {
   created_at: string;
 };
 
+type CategoryRow = {
+  category: string | null;
+};
+
 type CustomerBalanceRow = {
   id: number;
   name: string;
@@ -181,6 +185,22 @@ export async function listProducts(db: SQLiteDatabase, searchTerm = "") {
       );
 
   return rows.map(mapProduct);
+}
+
+export async function listProductCategories(db: SQLiteDatabase) {
+  const rows = await db.getAllAsync<CategoryRow>(
+    `
+      SELECT DISTINCT TRIM(category) AS category
+      FROM products
+      WHERE category IS NOT NULL
+        AND TRIM(category) <> ''
+      ORDER BY category COLLATE NOCASE ASC
+    `,
+  );
+
+  return rows
+    .map((row) => row.category?.trim() ?? "")
+    .filter((category) => category.length > 0);
 }
 
 export async function getProductByBarcode(db: SQLiteDatabase, barcode: string) {

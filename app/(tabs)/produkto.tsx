@@ -2,6 +2,7 @@ import { Feather } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { useFocusEffect } from "expo-router";
 import { useSQLiteContext } from "expo-sqlite";
+import Storage from "expo-sqlite/kv-store";
 import { useCallback, useEffect, useState } from "react";
 import { Alert, Image, Pressable, Text, View } from "react-native";
 
@@ -13,7 +14,7 @@ import { ProductCard } from "@/components/ProductCard";
 import { Screen } from "@/components/Screen";
 import { SurfaceCard } from "@/components/SurfaceCard";
 import { useAppTheme } from "@/contexts/ThemeContext";
-import { deleteProduct, listProducts, saveProduct } from "@/db/repositories";
+import { deleteProduct, listProductCategories, listProducts, saveProduct } from "@/db/repositories";
 import type { Product } from "@/types/models";
 import { centsToDisplayValue, parseCurrencyToCents } from "@/utils/money";
 
@@ -40,16 +41,63 @@ const emptyForm: ProductFormState = {
 };
 
 const PRODUCT_IMAGE_QUALITY = 0.72;
+const PRODUCT_CATEGORIES_KEY = "tindahan.product-categories";
+
+type CategoryModalTarget = "catalog" | "product";
 
 function isCloudImageUri(uri: string) {
   return /^https?:\/\//i.test(uri.trim());
+}
+
+function normalizeCategoryName(value: string) {
+  return value.trim().replace(/\s+/g, " ");
+}
+
+function mergeCategoryLists(...lists: string[][]) {
+  const merged = new Map<string, string>();
+
+  for (const list of lists) {
+    for (const rawCategory of list) {
+      const category = normalizeCategoryName(rawCategory);
+
+      if (!category) {
+        continue;
+      }
+
+      const key = category.toLocaleLowerCase();
+      if (!merged.has(key)) {
+        merged.set(key, category);
+      }
+    }
+  }
+
+  return [...merged.values()].sort((left, right) => left.localeCompare(right));
+}
+
+function parseStoredCategories(rawValue: string | null) {
+  if (!rawValue) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(rawValue) as unknown;
+    return Array.isArray(parsed)
+      ? parsed
+          .map((entry) => (typeof entry === "string" ? normalizeCategoryName(entry) : ""))
+          .filter((entry) => entry.length > 0)
+      : [];
+  } catch {
+    return [];
+  }
 }
 
 export default function ProduktoScreen() {
   const db = useSQLiteContext();
   const { theme } = useAppTheme();
   const [products, setProducts] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [form, setForm] = useState<ProductFormState>(emptyForm);
@@ -57,19 +105,45 @@ export default function ProduktoScreen() {
   const [saving, setSaving] = useState(false);
   const [pickingImage, setPickingImage] = useState(false);
   const [photoSheetVisible, setPhotoSheetVisible] = useState(false);
+  const [categoryModalVisible, setCategoryModalVisible] = useState(false);
+  const [categoryDraft, setCategoryDraft] = useState("");
+  const [categoryModalTarget, setCategoryModalTarget] = useState<CategoryModalTarget>("catalog");
   const [mediaPermission, requestMediaPermission] = ImagePicker.useMediaLibraryPermissions();
   const [cameraPermission, requestCameraPermission] = ImagePicker.useCameraPermissions();
+
+  const persistCategories = useCallback(async (nextCategories: string[]) => {
+    const normalizedCategories = mergeCategoryLists(nextCategories);
+    setCategories(normalizedCategories);
+    await Storage.setItem(PRODUCT_CATEGORIES_KEY, JSON.stringify(normalizedCategories));
+    return normalizedCategories;
+  }, []);
 
   const loadProducts = useCallback(async () => {
     setLoading(true);
 
     try {
-      const nextProducts = await listProducts(db, searchTerm);
-      setProducts(nextProducts);
+      const [nextProducts, dbCategories, storedCategoriesRaw] = await Promise.all([
+        listProducts(db, searchTerm),
+        listProductCategories(db),
+        Storage.getItem(PRODUCT_CATEGORIES_KEY),
+      ]);
+
+      const nextCategories = mergeCategoryLists(dbCategories, parseStoredCategories(storedCategoriesRaw));
+      setCategories(nextCategories);
+
+      setProducts(
+        selectedCategory
+          ? nextProducts.filter(
+              (product) =>
+                normalizeCategoryName(product.category ?? "").toLocaleLowerCase() ===
+                selectedCategory.toLocaleLowerCase(),
+            )
+          : nextProducts,
+      );
     } finally {
       setLoading(false);
     }
-  }, [db, searchTerm]);
+  }, [db, searchTerm, selectedCategory]);
 
   useFocusEffect(
     useCallback(() => {
@@ -89,6 +163,7 @@ export default function ProduktoScreen() {
     setEditingProduct(null);
     setForm(emptyForm);
     setPhotoSheetVisible(false);
+    setCategoryModalVisible(false);
     setModalVisible(true);
   }, []);
 
@@ -105,14 +180,49 @@ export default function ProduktoScreen() {
       minStock: String(product.minStock),
     });
     setPhotoSheetVisible(false);
+    setCategoryModalVisible(false);
     setModalVisible(true);
   }, []);
+
+  const openCategoryModal = useCallback(
+    (target: CategoryModalTarget) => {
+      setCategoryModalTarget(target);
+      setCategoryDraft(target === "product" ? form.category : "");
+      setCategoryModalVisible(true);
+    },
+    [form.category],
+  );
+
+  const handleCreateCategory = useCallback(async () => {
+    const nextCategory = normalizeCategoryName(categoryDraft);
+
+    if (nextCategory.length < 2) {
+      Alert.alert("Category too short", "Use at least 2 characters so the category is easy to recognize.");
+      return;
+    }
+
+    const existingCategory =
+      categories.find((category) => category.toLocaleLowerCase() === nextCategory.toLocaleLowerCase()) ??
+      nextCategory;
+
+    await persistCategories(mergeCategoryLists(categories, [existingCategory]));
+
+    if (categoryModalTarget === "product") {
+      setForm((current) => ({ ...current, category: existingCategory }));
+    } else {
+      setSelectedCategory(existingCategory);
+    }
+
+    setCategoryDraft("");
+    setCategoryModalVisible(false);
+  }, [categories, categoryDraft, categoryModalTarget, persistCategories]);
 
   const handleSave = useCallback(async () => {
     const priceCents = parseCurrencyToCents(form.price);
     const costPriceCents = parseCurrencyToCents(form.costPrice);
     const stock = Number.parseInt(form.stock, 10);
     const minStock = Number.parseInt(form.minStock, 10);
+    const normalizedCategory = normalizeCategoryName(form.category);
 
     if (!Number.isFinite(priceCents) || !Number.isFinite(costPriceCents)) {
       Alert.alert("Invalid amount", "Enter valid peso amounts for the selling and cost prices.");
@@ -127,6 +237,10 @@ export default function ProduktoScreen() {
     setSaving(true);
 
     try {
+      if (normalizedCategory) {
+        await persistCategories(mergeCategoryLists(categories, [normalizedCategory]));
+      }
+
       await saveProduct(
         db,
         {
@@ -134,7 +248,7 @@ export default function ProduktoScreen() {
           priceCents,
           costPriceCents,
           stock,
-          category: form.category,
+          category: normalizedCategory,
           barcode: form.barcode,
           imageUri: form.imageUri,
           minStock,
@@ -143,6 +257,7 @@ export default function ProduktoScreen() {
       );
 
       setPhotoSheetVisible(false);
+      setCategoryModalVisible(false);
       setModalVisible(false);
       setEditingProduct(null);
       setForm(emptyForm);
@@ -156,7 +271,7 @@ export default function ProduktoScreen() {
     } finally {
       setSaving(false);
     }
-  }, [db, editingProduct?.id, form, loadProducts]);
+  }, [categories, db, editingProduct?.id, form, loadProducts, persistCategories]);
 
   const handleDelete = useCallback(() => {
     if (!editingProduct) {
@@ -175,6 +290,7 @@ export default function ProduktoScreen() {
             try {
               await deleteProduct(db, editingProduct.id);
               setPhotoSheetVisible(false);
+              setCategoryModalVisible(false);
               setModalVisible(false);
               setEditingProduct(null);
               setForm(emptyForm);
@@ -247,6 +363,7 @@ export default function ProduktoScreen() {
 
   const hasImage = form.imageUri.trim().length > 0;
   const imageAlreadyBackedUp = hasImage && isCloudImageUri(form.imageUri);
+  const categoryCountLabel = categories.length === 1 ? "1 saved category" : `${categories.length} saved categories`;
 
   return (
     <Screen subtitle="Secure CRUD for your product catalog, with low-stock context built in." title="Produkto">
@@ -257,6 +374,101 @@ export default function ProduktoScreen() {
           placeholder="Search by product or category"
           value={searchTerm}
         />
+        <View style={{ gap: theme.spacing.sm }}>
+          <View
+            style={{
+              alignItems: "center",
+              flexDirection: "row",
+              gap: theme.spacing.sm,
+              justifyContent: "space-between",
+            }}
+          >
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text
+                style={{
+                  color: theme.colors.textMuted,
+                  fontFamily: theme.typography.body,
+                  fontSize: 12,
+                  fontWeight: "700",
+                }}
+              >
+                Categories
+              </Text>
+              <Text
+                style={{
+                  color: theme.colors.textSoft,
+                  fontFamily: theme.typography.body,
+                  fontSize: 12,
+                }}
+              >
+                {selectedCategory ? `Showing ${selectedCategory}` : `Showing all products • ${categoryCountLabel}`}
+              </Text>
+            </View>
+            <Pressable
+              onPress={() => openCategoryModal("catalog")}
+              style={({ pressed }) => ({
+                alignItems: "center",
+                backgroundColor: theme.colors.surface,
+                borderColor: theme.colors.border,
+                borderRadius: theme.radius.pill,
+                borderWidth: 1,
+                flexDirection: "row",
+                gap: theme.spacing.xs,
+                opacity: pressed ? 0.88 : 1,
+                paddingHorizontal: theme.spacing.md,
+                paddingVertical: 10,
+              })}
+            >
+              <Feather color={theme.colors.primary} name="plus" size={14} />
+              <Text
+                style={{
+                  color: theme.colors.primary,
+                  fontFamily: theme.typography.body,
+                  fontSize: 12,
+                  fontWeight: "700",
+                }}
+              >
+                New Category
+              </Text>
+            </Pressable>
+          </View>
+
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
+            {[
+              { label: "All", value: null as string | null },
+              ...categories.map((category) => ({ label: category, value: category })),
+            ].map((option) => {
+              const active = selectedCategory === option.value;
+
+              return (
+                <Pressable
+                  key={option.label}
+                  onPress={() => setSelectedCategory(option.value)}
+                  style={({ pressed }) => ({
+                    backgroundColor: active ? theme.colors.primary : theme.colors.surface,
+                    borderColor: active ? theme.colors.primary : theme.colors.border,
+                    borderRadius: theme.radius.pill,
+                    borderWidth: 1,
+                    opacity: pressed ? 0.9 : 1,
+                    paddingHorizontal: theme.spacing.md,
+                    paddingVertical: 10,
+                  })}
+                >
+                  <Text
+                    style={{
+                      color: active ? theme.colors.primaryText : theme.colors.text,
+                      fontFamily: theme.typography.body,
+                      fontSize: 12,
+                      fontWeight: "700",
+                    }}
+                  >
+                    {option.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
         <ActionButton
           icon={<Feather color={theme.colors.primaryText} name="plus" size={16} />}
           label="Magdagdag ng Produkto"
@@ -324,6 +536,7 @@ export default function ProduktoScreen() {
         }
         onClose={() => {
           setPhotoSheetVisible(false);
+          setCategoryModalVisible(false);
           setModalVisible(false);
         }}
         subtitle="Keep names clear, prices accurate, and stock values realistic so checkout stays reliable."
@@ -382,6 +595,94 @@ export default function ProduktoScreen() {
           placeholder="Snacks, Drinks, Household"
           value={form.category}
         />
+        <View style={{ gap: theme.spacing.sm }}>
+          <View
+            style={{
+              alignItems: "center",
+              flexDirection: "row",
+              gap: theme.spacing.sm,
+              justifyContent: "space-between",
+            }}
+          >
+            <Text
+              style={{
+                color: theme.colors.textMuted,
+                fontFamily: theme.typography.body,
+                fontSize: 12,
+                fontWeight: "700",
+              }}
+            >
+              Quick category picks
+            </Text>
+            <Pressable
+              onPress={() => openCategoryModal("product")}
+              style={({ pressed }) => ({
+                alignItems: "center",
+                flexDirection: "row",
+                gap: theme.spacing.xs,
+                opacity: pressed ? 0.84 : 1,
+              })}
+            >
+              <Feather color={theme.colors.primary} name="plus-circle" size={14} />
+              <Text
+                style={{
+                  color: theme.colors.primary,
+                  fontFamily: theme.typography.body,
+                  fontSize: 12,
+                  fontWeight: "700",
+                }}
+              >
+                Add new
+              </Text>
+            </Pressable>
+          </View>
+
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
+            {categories.length > 0 ? (
+              categories.map((category) => {
+                const active =
+                  normalizeCategoryName(form.category).toLocaleLowerCase() === category.toLocaleLowerCase();
+
+                return (
+                  <Pressable
+                    key={category}
+                    onPress={() => setForm((current) => ({ ...current, category }))}
+                    style={({ pressed }) => ({
+                      backgroundColor: active ? theme.colors.primaryMuted : theme.colors.surface,
+                      borderColor: active ? theme.colors.primary : theme.colors.border,
+                      borderRadius: theme.radius.pill,
+                      borderWidth: 1,
+                      opacity: pressed ? 0.9 : 1,
+                      paddingHorizontal: theme.spacing.md,
+                      paddingVertical: 10,
+                    })}
+                  >
+                    <Text
+                      style={{
+                        color: active ? theme.colors.primary : theme.colors.text,
+                        fontFamily: theme.typography.body,
+                        fontSize: 12,
+                        fontWeight: "700",
+                      }}
+                    >
+                      {category}
+                    </Text>
+                  </Pressable>
+                );
+              })
+            ) : (
+              <Text
+                style={{
+                  color: theme.colors.textSoft,
+                  fontFamily: theme.typography.body,
+                  fontSize: 12,
+                }}
+              >
+                No saved categories yet. Add one to reuse it quickly.
+              </Text>
+            )}
+          </View>
+        </View>
         <InputField
           label="Barcode"
           onChangeText={(value) => setForm((current) => ({ ...current, barcode: value }))}
@@ -675,6 +976,84 @@ export default function ProduktoScreen() {
               </Text>
             </View>
           ))}
+        </SurfaceCard>
+      </ModalSheet>
+
+      <ModalSheet
+        footer={
+          <View style={{ gap: theme.spacing.sm }}>
+            <ActionButton
+              label={categoryModalTarget === "product" ? "Save And Use Category" : "Create Category"}
+              onPress={() => void handleCreateCategory()}
+            />
+          </View>
+        }
+        onClose={() => setCategoryModalVisible(false)}
+        subtitle={
+          categoryModalTarget === "product"
+            ? "Create a reusable category and apply it to the product you are editing."
+            : "Create category buttons so the catalog is easier to filter and browse."
+        }
+        title="New Category"
+        visible={categoryModalVisible}
+      >
+        <InputField
+          label="Category name"
+          onChangeText={setCategoryDraft}
+          placeholder="Example: Drinks"
+          value={categoryDraft}
+        />
+        <SurfaceCard style={{ gap: theme.spacing.sm }}>
+          <Text
+            style={{
+              color: theme.colors.text,
+              fontFamily: theme.typography.body,
+              fontSize: 14,
+              fontWeight: "700",
+            }}
+          >
+            Saved categories
+          </Text>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
+            {categories.length > 0 ? (
+              categories.map((category) => (
+                <Pressable
+                  key={category}
+                  onPress={() => setCategoryDraft(category)}
+                  style={({ pressed }) => ({
+                    backgroundColor: theme.colors.surface,
+                    borderColor: theme.colors.border,
+                    borderRadius: theme.radius.pill,
+                    borderWidth: 1,
+                    opacity: pressed ? 0.9 : 1,
+                    paddingHorizontal: theme.spacing.md,
+                    paddingVertical: 10,
+                  })}
+                >
+                  <Text
+                    style={{
+                      color: theme.colors.text,
+                      fontFamily: theme.typography.body,
+                      fontSize: 12,
+                      fontWeight: "700",
+                    }}
+                  >
+                    {category}
+                  </Text>
+                </Pressable>
+              ))
+            ) : (
+              <Text
+                style={{
+                  color: theme.colors.textSoft,
+                  fontFamily: theme.typography.body,
+                  fontSize: 12,
+                }}
+              >
+                No categories yet. Your first one will appear as a quick button in Produkto.
+              </Text>
+            )}
+          </View>
         </SurfaceCard>
       </ModalSheet>
     </Screen>
