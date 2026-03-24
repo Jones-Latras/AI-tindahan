@@ -24,6 +24,7 @@ import { getHomeMetrics, getProductSalesVelocity, getWeeklyPaymentBreakdown } fr
 import { chatWithAlingAi, getOrCreateHomeAiBrief, isGeminiReady } from "@/services/ai";
 import type { ChatMessage, HomeAiBrief, HomeMetrics, ProductVelocity, WeeklyPaymentReport } from "@/types/models";
 import { formatCurrencyFromCents } from "@/utils/money";
+import { formatWeightKg } from "@/utils/pricing";
 import { isSupabaseReady } from "@/utils/supabase";
 import { getLastSyncTime, restoreFromCloud, syncToCloud } from "@/utils/sync";
 
@@ -498,7 +499,7 @@ export default function HomeScreen() {
                       fontSize: 13,
                     }}
                   >
-                    {item.unitsPerDay} units/day
+                    {item.unitsPerDay} {item.isWeightBased ? "kg" : "units"}/day
                   </Text>
                 </View>
                 <StatusBadge
@@ -574,10 +575,17 @@ export default function HomeScreen() {
                       fontSize: 13,
                     }}
                   >
-                    Reorder point: {product.minStock} units
+                    Reorder point: {product.isWeightBased ? `${formatWeightKg(product.minStock)} kg` : `${product.minStock} units`}
                   </Text>
                 </View>
-                <StatusBadge label={`${product.stock} left`} tone="warning" />
+                <StatusBadge
+                  label={
+                    product.isWeightBased
+                      ? `${formatWeightKg(product.totalKgAvailable ?? 0)} kg left`
+                      : `${product.stock} left`
+                  }
+                  tone="warning"
+                />
               </View>
             ))
           ) : (

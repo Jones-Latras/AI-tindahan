@@ -1,6 +1,10 @@
 import type { SQLiteDatabase } from "expo-sqlite";
 
 import { getDaysBetween, getOverdueLevel } from "@/utils/date";
+import {
+  computeTransactionTotal,
+  resolveWeightBasedPricing,
+} from "@/utils/pricing";
 import { sanitizeOptionalText, sanitizePhone, sanitizeText } from "@/utils/validation";
 import type {
   CustomerRiskProfile,
@@ -9,6 +13,8 @@ import type {
   PaymentBreakdown,
   PaymentMethod,
   Product,
+  ProductPricingMode,
+  ProductPricingStrategy,
   ProductVelocity,
   RiskCustomerAlert,
   SaleItemInput,
@@ -30,6 +36,16 @@ type ProductRow = {
   barcode: string | null;
   image_uri: string | null;
   min_stock: number;
+  is_weight_based: number;
+  pricing_mode: ProductPricingMode;
+  pricing_strategy: ProductPricingStrategy;
+  total_kg_available: number | null;
+  cost_price_total_cents: number | null;
+  selling_price_total_cents: number | null;
+  cost_price_per_kg_cents: number | null;
+  selling_price_per_kg_cents: number | null;
+  target_margin_percent: number | null;
+  computed_price_per_kg_cents: number | null;
   created_at: string;
 };
 
@@ -81,6 +97,7 @@ type ProductVelocityRow = {
   name: string;
   current_stock: number;
   units_sold: number;
+  is_weight_based: number;
 };
 
 type CustomerRiskRow = {
@@ -104,6 +121,16 @@ function mapProduct(row: ProductRow): Product {
     imageUri: row.image_uri,
     minStock: row.min_stock,
     createdAt: row.created_at,
+    isWeightBased: Boolean(row.is_weight_based),
+    pricingMode: row.pricing_mode,
+    pricingStrategy: row.pricing_strategy,
+    totalKgAvailable: row.total_kg_available,
+    costPriceTotalCents: row.cost_price_total_cents,
+    sellingPriceTotalCents: row.selling_price_total_cents,
+    costPricePerKgCents: row.cost_price_per_kg_cents,
+    sellingPricePerKgCents: row.selling_price_per_kg_cents,
+    targetMarginPercent: row.target_margin_percent,
+    computedPricePerKgCents: row.computed_price_per_kg_cents,
   };
 }
 
@@ -128,6 +155,12 @@ function assertWholeNumber(value: number, label: string) {
   }
 }
 
+function assertNonNegativeNumber(value: number, label: string) {
+  if (!Number.isFinite(value) || value < 0) {
+    throw new Error(`${label} must be a non-negative number.`);
+  }
+}
+
 export type ProductInput = {
   name: string;
   priceCents: number;
@@ -137,6 +170,16 @@ export type ProductInput = {
   barcode: string;
   imageUri?: string;
   minStock: number;
+  isWeightBased?: boolean;
+  pricingMode?: ProductPricingMode;
+  pricingStrategy?: ProductPricingStrategy;
+  totalKgAvailable?: number | null;
+  costPriceTotalCents?: number | null;
+  sellingPriceTotalCents?: number | null;
+  costPricePerKgCents?: number | null;
+  sellingPricePerKgCents?: number | null;
+  targetMarginPercent?: number | null;
+  computedPricePerKgCents?: number | null;
 };
 
 export type CustomerInput = {
@@ -228,35 +271,105 @@ export async function saveProduct(db: SQLiteDatabase, input: ProductInput, produ
   const category = sanitizeOptionalText(input.category, 40);
   const barcode = sanitizeOptionalText(input.barcode, 48);
   const imageUri = sanitizeOptionalText(input.imageUri ?? "", 2048);
+  const isWeightBased = Boolean(input.isWeightBased);
+  const pricingMode: ProductPricingMode = isWeightBased ? input.pricingMode ?? "direct" : "direct";
+  const pricingStrategy: ProductPricingStrategy = isWeightBased ? input.pricingStrategy ?? "manual" : "manual";
 
   if (name.length < 2) {
     throw new Error("Product name must be at least 2 characters.");
   }
 
-  assertMoney(input.priceCents, "Price");
-  assertMoney(input.costPriceCents, "Cost price");
-  assertWholeNumber(input.stock, "Stock");
-  assertWholeNumber(input.minStock, "Minimum stock");
+  let priceCents = input.priceCents;
+  let costPriceCents = input.costPriceCents;
+  let stock = input.stock;
+  let minStock = input.minStock;
+  let totalKgAvailable: number | null = null;
+  let costPriceTotalCents: number | null = null;
+  let sellingPriceTotalCents: number | null = null;
+  let costPricePerKgCents: number | null = null;
+  let sellingPricePerKgCents: number | null = null;
+  let targetMarginPercent: number | null = null;
+  let computedPricePerKgCents: number | null = null;
 
-  if (input.costPriceCents > input.priceCents) {
-    throw new Error("Cost price cannot be higher than the selling price.");
+  if (isWeightBased) {
+    assertNonNegativeNumber(minStock, "Minimum stock");
+
+    const resolvedPricing = resolveWeightBasedPricing({
+      pricingMode,
+      pricingStrategy,
+      totalKgAvailable: input.totalKgAvailable ?? 0,
+      costPriceTotalCents: input.costPriceTotalCents,
+      sellingPriceTotalCents: input.sellingPriceTotalCents,
+      costPricePerKgCents: input.costPricePerKgCents ?? input.costPriceCents,
+      sellingPricePerKgCents: input.sellingPricePerKgCents ?? input.priceCents,
+      targetMarginPercent: input.targetMarginPercent,
+    });
+
+    priceCents = resolvedPricing.sellingPricePerKgCents;
+    costPriceCents = resolvedPricing.costPricePerKgCents;
+    stock = 0;
+    totalKgAvailable = resolvedPricing.totalKgAvailable;
+    costPriceTotalCents = resolvedPricing.costPriceTotalCents;
+    sellingPriceTotalCents = resolvedPricing.sellingPriceTotalCents;
+    costPricePerKgCents = resolvedPricing.costPricePerKgCents;
+    sellingPricePerKgCents = resolvedPricing.sellingPricePerKgCents;
+    targetMarginPercent = resolvedPricing.targetMarginPercent;
+    computedPricePerKgCents = resolvedPricing.computedPricePerKgCents;
+  } else {
+    assertMoney(priceCents, "Price");
+    assertMoney(costPriceCents, "Cost price");
+    assertWholeNumber(stock, "Stock");
+    assertWholeNumber(minStock, "Minimum stock");
+
+    if (costPriceCents >= priceCents) {
+      throw new Error("Selling price must be greater than cost price.");
+    }
   }
 
   if (productId) {
     await db.runAsync(
       `
         UPDATE products
-        SET name = ?, price_cents = ?, cost_price_cents = ?, stock = ?, category = ?, barcode = ?, image_uri = ?, min_stock = ?, synced = 0
+        SET
+          name = ?,
+          price_cents = ?,
+          cost_price_cents = ?,
+          stock = ?,
+          category = ?,
+          barcode = ?,
+          image_uri = ?,
+          min_stock = ?,
+          is_weight_based = ?,
+          pricing_mode = ?,
+          pricing_strategy = ?,
+          total_kg_available = ?,
+          cost_price_total_cents = ?,
+          selling_price_total_cents = ?,
+          cost_price_per_kg_cents = ?,
+          selling_price_per_kg_cents = ?,
+          target_margin_percent = ?,
+          computed_price_per_kg_cents = ?,
+          synced = 0
         WHERE id = ?
       `,
       name,
-      input.priceCents,
-      input.costPriceCents,
-      input.stock,
+      priceCents,
+      costPriceCents,
+      stock,
       category,
       barcode,
       imageUri,
-      input.minStock,
+      minStock,
+      isWeightBased ? 1 : 0,
+      pricingMode,
+      pricingStrategy,
+      totalKgAvailable,
+      costPriceTotalCents,
+      sellingPriceTotalCents,
+      costPricePerKgCents,
+      sellingPricePerKgCents,
+      targetMarginPercent,
+      computedPricePerKgCents,
       productId,
     );
     return productId;
@@ -264,17 +377,46 @@ export async function saveProduct(db: SQLiteDatabase, input: ProductInput, produ
 
   const result = await db.runAsync(
     `
-      INSERT INTO products (name, price_cents, cost_price_cents, stock, category, barcode, image_uri, min_stock)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO products (
+        name,
+        price_cents,
+        cost_price_cents,
+        stock,
+        category,
+        barcode,
+        image_uri,
+        min_stock,
+        is_weight_based,
+        pricing_mode,
+        pricing_strategy,
+        total_kg_available,
+        cost_price_total_cents,
+        selling_price_total_cents,
+        cost_price_per_kg_cents,
+        selling_price_per_kg_cents,
+        target_margin_percent,
+        computed_price_per_kg_cents
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
     name,
-    input.priceCents,
-    input.costPriceCents,
-    input.stock,
+    priceCents,
+    costPriceCents,
+    stock,
     category,
     barcode,
     imageUri,
-    input.minStock,
+    minStock,
+    isWeightBased ? 1 : 0,
+    pricingMode,
+    pricingStrategy,
+    totalKgAvailable,
+    costPriceTotalCents,
+    sellingPriceTotalCents,
+    costPricePerKgCents,
+    sellingPricePerKgCents,
+    targetMarginPercent,
+    computedPricePerKgCents,
   );
 
   return Number(result.lastInsertRowId);
@@ -298,7 +440,7 @@ export async function getHomeMetrics(db: SQLiteDatabase): Promise<HomeMetrics> {
   const profitRow = await db.getFirstAsync<{ today_profit_cents: number | null }>(
     `
       SELECT
-        COALESCE(SUM((si.unit_price_cents - si.unit_cost_cents) * si.quantity), 0) AS today_profit_cents
+        COALESCE(SUM(si.line_total_cents - si.line_cost_total_cents), 0) AS today_profit_cents
       FROM sale_items si
       INNER JOIN sales s ON s.id = si.sale_id
       WHERE DATE(s.created_at, 'localtime') = DATE('now', 'localtime')
@@ -330,8 +472,17 @@ export async function getHomeMetrics(db: SQLiteDatabase): Promise<HomeMetrics> {
     `
       SELECT *
       FROM products
-      WHERE stock <= min_stock
-      ORDER BY stock ASC, name ASC
+      WHERE
+        CASE
+          WHEN is_weight_based = 1 THEN COALESCE(total_kg_available, 0)
+          ELSE stock
+        END <= min_stock
+      ORDER BY
+        CASE
+          WHEN is_weight_based = 1 THEN COALESCE(total_kg_available, 0)
+          ELSE stock
+        END ASC,
+        name ASC
       LIMIT 5
     `,
   );
@@ -390,8 +541,16 @@ export async function getSalesInsightContext(db: SQLiteDatabase): Promise<SalesI
       SELECT
         p.id,
         p.name,
-        COALESCE(SUM(si.quantity), 0) AS quantity_sold,
-        COALESCE(SUM(si.unit_price_cents * si.quantity), 0) AS revenue_cents
+        COALESCE(
+          SUM(
+            CASE
+              WHEN si.is_weight_based = 1 THEN COALESCE(si.weight_kg, 0)
+              ELSE si.quantity
+            END
+          ),
+          0
+        ) AS quantity_sold,
+        COALESCE(SUM(si.line_total_cents), 0) AS revenue_cents
       FROM sale_items si
       INNER JOIN sales s ON s.id = si.sale_id
       INNER JOIN products p ON p.id = si.product_id
@@ -428,13 +587,29 @@ export async function getProductSalesVelocity(db: SQLiteDatabase): Promise<Produ
       SELECT
         p.id,
         p.name,
-        p.stock AS current_stock,
-        COALESCE(SUM(CASE WHEN s.id IS NOT NULL THEN si.quantity ELSE 0 END), 0) AS units_sold
+        p.is_weight_based,
+        CASE
+          WHEN p.is_weight_based = 1 THEN COALESCE(p.total_kg_available, 0)
+          ELSE p.stock
+        END AS current_stock,
+        COALESCE(
+          SUM(
+            CASE
+              WHEN s.id IS NOT NULL THEN
+                CASE
+                  WHEN si.is_weight_based = 1 THEN COALESCE(si.weight_kg, 0)
+                  ELSE si.quantity
+                END
+              ELSE 0
+            END
+          ),
+          0
+        ) AS units_sold
       FROM products p
       LEFT JOIN sale_items si ON si.product_id = p.id
       LEFT JOIN sales s ON s.id = si.sale_id
         AND DATE(s.created_at, 'localtime') >= DATE('now', '-13 days', 'localtime')
-      GROUP BY p.id, p.name, p.stock
+      GROUP BY p.id, p.name, p.is_weight_based, p.stock, p.total_kg_available
       ORDER BY units_sold DESC, p.name ASC
     `,
   );
@@ -449,6 +624,7 @@ export async function getProductSalesVelocity(db: SQLiteDatabase): Promise<Produ
       unitsPerDay,
       currentStock: row.current_stock,
       daysUntilOutOfStock,
+      isWeightBased: Boolean(row.is_weight_based),
     };
   });
 }
@@ -464,7 +640,14 @@ export async function getStoreAiContext(db: SQLiteDatabase): Promise<StoreAiCont
       INNER JOIN products p ON p.id = si.product_id
       WHERE DATE(s.created_at, 'localtime') >= DATE('now', '-29 days', 'localtime')
       GROUP BY p.id, p.name
-      ORDER BY SUM(si.quantity) DESC, p.name ASC
+      ORDER BY
+        SUM(
+          CASE
+            WHEN si.is_weight_based = 1 THEN COALESCE(si.weight_kg, 0)
+            ELSE si.quantity
+          END
+        ) DESC,
+        p.name ASC
       LIMIT 5
     `,
   );
@@ -717,6 +900,7 @@ export async function applyUtangPayment(db: SQLiteDatabase, utangId: number, pay
 
 export async function checkoutSale(db: SQLiteDatabase, input: CheckoutInput) {
   assertMoney(input.totalCents, "Sale total");
+  assertMoney(input.discountCents, "Discount");
   assertMoney(input.cashPaidCents, "Cash paid");
 
   if (input.items.length === 0) {
@@ -736,7 +920,11 @@ export async function checkoutSale(db: SQLiteDatabase, input: CheckoutInput) {
     name: sanitizeText(item.name, 80),
     priceCents: item.priceCents,
     costPriceCents: item.costPriceCents,
-    quantity: item.quantity,
+    quantity: item.isWeightBased ? 1 : item.quantity,
+    isWeightBased: item.isWeightBased,
+    weightKg: item.isWeightBased ? item.weightKg ?? item.quantity : null,
+    lineTotalCents: item.lineTotalCents,
+    lineCostTotalCents: item.lineCostTotalCents,
   }));
 
   safeItems.forEach((item) => {
@@ -747,8 +935,35 @@ export async function checkoutSale(db: SQLiteDatabase, input: CheckoutInput) {
     assertMoney(item.priceCents, "Item price");
     assertMoney(item.costPriceCents, "Item cost");
 
-    if (!Number.isInteger(item.quantity) || item.quantity <= 0) {
-      throw new Error("Cart quantities must be whole numbers.");
+    assertMoney(item.lineTotalCents, "Line total");
+    assertMoney(item.lineCostTotalCents, "Line cost total");
+
+    if (item.isWeightBased) {
+      assertNonNegativeNumber(item.weightKg ?? Number.NaN, "Weight");
+
+      if ((item.weightKg ?? 0) <= 0) {
+        throw new Error("Weight-based items must have a weight greater than zero.");
+      }
+
+      if (item.lineTotalCents !== computeTransactionTotal(item.weightKg ?? 0, item.priceCents)) {
+        throw new Error(`Weight-based total is invalid for ${item.name}.`);
+      }
+
+      if (item.lineCostTotalCents !== computeTransactionTotal(item.weightKg ?? 0, item.costPriceCents)) {
+        throw new Error(`Weight-based cost total is invalid for ${item.name}.`);
+      }
+    } else {
+      if (!Number.isInteger(item.quantity) || item.quantity <= 0) {
+        throw new Error("Cart quantities must be whole numbers.");
+      }
+
+      if (item.lineTotalCents !== item.priceCents * item.quantity) {
+        throw new Error(`Line total is invalid for ${item.name}.`);
+      }
+
+      if (item.lineCostTotalCents !== item.costPriceCents * item.quantity) {
+        throw new Error(`Line cost total is invalid for ${item.name}.`);
+      }
     }
   });
 
@@ -760,9 +975,13 @@ export async function checkoutSale(db: SQLiteDatabase, input: CheckoutInput) {
 
   await db.withExclusiveTransactionAsync(async (txn) => {
     for (const item of safeItems) {
-      const product = await txn.getFirstAsync<{ stock: number }>(
+      const product = await txn.getFirstAsync<{
+        stock: number;
+        is_weight_based: number;
+        total_kg_available: number | null;
+      }>(
         `
-          SELECT stock
+          SELECT stock, is_weight_based, total_kg_available
           FROM products
           WHERE id = ?
         `,
@@ -773,7 +992,13 @@ export async function checkoutSale(db: SQLiteDatabase, input: CheckoutInput) {
         throw new Error(`Product "${item.name}" was not found.`);
       }
 
-      if (product.stock < item.quantity) {
+      if (Boolean(product.is_weight_based)) {
+        const availableKg = product.total_kg_available ?? 0;
+
+        if (availableKg < (item.weightKg ?? 0)) {
+          throw new Error(`Not enough stock left for ${item.name}.`);
+        }
+      } else if (product.stock < item.quantity) {
         throw new Error(`Not enough stock left for ${item.name}.`);
       }
     }
@@ -796,8 +1021,19 @@ export async function checkoutSale(db: SQLiteDatabase, input: CheckoutInput) {
     for (const item of safeItems) {
       await txn.runAsync(
         `
-          INSERT INTO sale_items (sale_id, product_id, product_name, unit_price_cents, unit_cost_cents, quantity)
-          VALUES (?, ?, ?, ?, ?, ?)
+          INSERT INTO sale_items (
+            sale_id,
+            product_id,
+            product_name,
+            unit_price_cents,
+            unit_cost_cents,
+            quantity,
+            is_weight_based,
+            weight_kg,
+            line_total_cents,
+            line_cost_total_cents
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         saleId,
         item.id,
@@ -805,17 +1041,33 @@ export async function checkoutSale(db: SQLiteDatabase, input: CheckoutInput) {
         item.priceCents,
         item.costPriceCents,
         item.quantity,
+        item.isWeightBased ? 1 : 0,
+        item.weightKg,
+        item.lineTotalCents,
+        item.lineCostTotalCents,
       );
 
-      await txn.runAsync(
-        `
-          UPDATE products
-          SET stock = stock - ?, synced = 0
-          WHERE id = ?
-        `,
-        item.quantity,
-        item.id,
-      );
+      if (item.isWeightBased) {
+        await txn.runAsync(
+          `
+            UPDATE products
+            SET total_kg_available = COALESCE(total_kg_available, 0) - ?, synced = 0
+            WHERE id = ?
+          `,
+          item.weightKg ?? 0,
+          item.id,
+        );
+      } else {
+        await txn.runAsync(
+          `
+            UPDATE products
+            SET stock = stock - ?, synced = 0
+            WHERE id = ?
+          `,
+          item.quantity,
+          item.id,
+        );
+      }
     }
 
     if (input.paymentMethod === "utang" && input.customerId) {

@@ -2,11 +2,15 @@ import { forwardRef } from "react";
 import { Text, View } from "react-native";
 
 import { useAppTheme } from "@/contexts/ThemeContext";
+import { formatWeightKg } from "@/utils/pricing";
 
 type ReceiptItem = {
   name: string;
   quantity: number;
+  weightKg?: number | null;
   priceCents: number;
+  lineTotalCents?: number;
+  isWeightBased?: boolean;
 };
 
 type Props = {
@@ -39,8 +43,7 @@ export const ReceiptView = forwardRef<View, Props>(function ReceiptView(
 ) {
   const { theme } = useAppTheme();
 
-  const fmt = (cents: number) =>
-    `₱${(cents / 100).toFixed(2)}`;
+  const fmt = (cents: number) => `PHP ${(cents / 100).toFixed(2)}`;
 
   return (
     <View
@@ -51,7 +54,6 @@ export const ReceiptView = forwardRef<View, Props>(function ReceiptView(
         width: 320,
       }}
     >
-      {/* Header */}
       <View style={{ alignItems: "center", gap: 4, marginBottom: 16 }}>
         <Text style={{ color: "#111", fontFamily: theme.typography.display, fontSize: 18, fontWeight: "700" }}>
           {storeName || "TindaHan AI"}
@@ -64,32 +66,32 @@ export const ReceiptView = forwardRef<View, Props>(function ReceiptView(
         </Text>
       </View>
 
-      {/* Divider */}
       <View style={{ borderBottomColor: "#CCC", borderBottomWidth: 1, borderStyle: "dashed", marginBottom: 12 }} />
 
-      {/* Items */}
-      {items.map((item, index) => (
-        <View
-          key={`${item.name}-${index}`}
-          style={{
-            flexDirection: "row",
-            justifyContent: "space-between",
-            marginBottom: 6,
-          }}
-        >
-          <Text style={{ color: "#222", flex: 1, fontFamily: theme.typography.body, fontSize: 13 }}>
-            {item.quantity}x {item.name}
-          </Text>
-          <Text style={{ color: "#222", fontFamily: theme.typography.body, fontSize: 13 }}>
-            {fmt(item.priceCents * item.quantity)}
-          </Text>
-        </View>
-      ))}
+      {items.map((item, index) => {
+        const lineTotalCents = item.lineTotalCents ?? Math.round(item.priceCents * (item.weightKg ?? item.quantity));
 
-      {/* Divider */}
+        return (
+          <View key={`${item.name}-${index}`} style={{ gap: 2, marginBottom: 8 }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 8 }}>
+              <Text style={{ color: "#222", flex: 1, fontFamily: theme.typography.body, fontSize: 13, fontWeight: "700" }}>
+                {item.name}
+              </Text>
+              <Text style={{ color: "#222", fontFamily: theme.typography.body, fontSize: 13 }}>
+                {fmt(lineTotalCents)}
+              </Text>
+            </View>
+            <Text style={{ color: "#666", fontFamily: theme.typography.body, fontSize: 11 }}>
+              {item.isWeightBased
+                ? `${formatWeightKg(item.weightKg ?? 0)} kg x ${fmt(item.priceCents)}/kg`
+                : `${item.quantity}x ${fmt(item.priceCents)}`}
+            </Text>
+          </View>
+        );
+      })}
+
       <View style={{ borderBottomColor: "#CCC", borderBottomWidth: 1, borderStyle: "dashed", marginVertical: 12 }} />
 
-      {/* Totals */}
       {discountCents > 0 ? (
         <>
           <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
@@ -128,7 +130,6 @@ export const ReceiptView = forwardRef<View, Props>(function ReceiptView(
         </View>
       )}
 
-      {/* Footer */}
       <View style={{ borderBottomColor: "#CCC", borderBottomWidth: 1, borderStyle: "dashed", marginVertical: 12 }} />
       <Text
         style={{
@@ -138,7 +139,7 @@ export const ReceiptView = forwardRef<View, Props>(function ReceiptView(
           textAlign: "center",
         }}
       >
-        Salamat sa inyong pagbili! 🇵🇭
+        Salamat sa inyong pagbili!
       </Text>
       <Text
         style={{

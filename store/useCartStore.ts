@@ -5,6 +5,7 @@ import type { CartItem } from "@/types/models";
 type CartStore = {
   items: CartItem[];
   addItem: (item: Omit<CartItem, "quantity">) => void;
+  setItem: (item: CartItem) => void;
   removeItem: (id: number) => void;
   updateQuantity: (id: number, quantity: number) => void;
   clearCart: () => void;
@@ -38,6 +39,20 @@ export const useCartStore = create<CartStore>((set, get) => ({
       };
     }),
 
+  setItem: (item) =>
+    set((state) => ({
+      items:
+        item.quantity <= 0
+          ? state.items.filter((current) => current.id !== item.id)
+          : [
+              ...state.items.filter((current) => current.id !== item.id),
+              {
+                ...item,
+                quantity: Math.min(item.quantity, item.stock),
+              },
+            ],
+    })),
+
   removeItem: (id) =>
     set((state) => ({
       items: state.items.filter((item) => item.id !== id),
@@ -58,4 +73,3 @@ export const useCartStore = create<CartStore>((set, get) => ({
   getTotalCents: () =>
     get().items.reduce((runningTotal, item) => runningTotal + item.priceCents * item.quantity, 0),
 }));
-

@@ -10,11 +10,33 @@ CREATE TABLE IF NOT EXISTS products (
   category TEXT,
   barcode TEXT,
   image_uri TEXT,
-  min_stock INTEGER NOT NULL DEFAULT 5,
+  min_stock NUMERIC(10,4) NOT NULL DEFAULT 5,
+  is_weight_based BOOLEAN NOT NULL DEFAULT false,
+  pricing_mode TEXT NOT NULL DEFAULT 'direct',
+  pricing_strategy TEXT NOT NULL DEFAULT 'manual',
+  total_kg_available NUMERIC(10,4),
+  cost_price_total_cents INTEGER,
+  selling_price_total_cents INTEGER,
+  cost_price_per_kg_cents INTEGER,
+  selling_price_per_kg_cents INTEGER,
+  target_margin_percent NUMERIC(10,4),
+  computed_price_per_kg_cents INTEGER,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 ALTER TABLE products ADD COLUMN IF NOT EXISTS image_uri TEXT;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS min_stock NUMERIC(10,4) NOT NULL DEFAULT 5;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS is_weight_based BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS pricing_mode TEXT NOT NULL DEFAULT 'direct';
+ALTER TABLE products ADD COLUMN IF NOT EXISTS pricing_strategy TEXT NOT NULL DEFAULT 'manual';
+ALTER TABLE products ADD COLUMN IF NOT EXISTS total_kg_available NUMERIC(10,4);
+ALTER TABLE products ADD COLUMN IF NOT EXISTS cost_price_total_cents INTEGER;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS selling_price_total_cents INTEGER;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS cost_price_per_kg_cents INTEGER;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS selling_price_per_kg_cents INTEGER;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS target_margin_percent NUMERIC(10,4);
+ALTER TABLE products ADD COLUMN IF NOT EXISTS computed_price_per_kg_cents INTEGER;
+ALTER TABLE products ALTER COLUMN min_stock TYPE NUMERIC(10,4);
 
 CREATE TABLE IF NOT EXISTS customers (
   id BIGINT PRIMARY KEY,
@@ -42,8 +64,17 @@ CREATE TABLE IF NOT EXISTS sale_items (
   product_name TEXT NOT NULL,
   unit_price_cents INTEGER NOT NULL,
   unit_cost_cents INTEGER NOT NULL DEFAULT 0,
-  quantity INTEGER NOT NULL DEFAULT 1
+  quantity INTEGER NOT NULL DEFAULT 1,
+  is_weight_based BOOLEAN NOT NULL DEFAULT false,
+  weight_kg NUMERIC(10,4),
+  line_total_cents INTEGER NOT NULL DEFAULT 0,
+  line_cost_total_cents INTEGER NOT NULL DEFAULT 0
 );
+
+ALTER TABLE sale_items ADD COLUMN IF NOT EXISTS is_weight_based BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE sale_items ADD COLUMN IF NOT EXISTS weight_kg NUMERIC(10,4);
+ALTER TABLE sale_items ADD COLUMN IF NOT EXISTS line_total_cents INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE sale_items ADD COLUMN IF NOT EXISTS line_cost_total_cents INTEGER NOT NULL DEFAULT 0;
 
 CREATE TABLE IF NOT EXISTS utang (
   id BIGINT PRIMARY KEY,

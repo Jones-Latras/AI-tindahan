@@ -1,7 +1,7 @@
 import type { SQLiteDatabase } from "expo-sqlite";
 
 export const DATABASE_NAME = "tindahan-ai.db";
-export const DATABASE_VERSION = 5;
+export const DATABASE_VERSION = 6;
 
 export async function migrateDbIfNeeded(db: SQLiteDatabase) {
   await db.execAsync("PRAGMA journal_mode = WAL;");
@@ -28,6 +28,16 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
         barcode TEXT UNIQUE,
         image_uri TEXT,
         min_stock INTEGER NOT NULL DEFAULT 5 CHECK(min_stock >= 0),
+        is_weight_based INTEGER NOT NULL DEFAULT 0 CHECK(is_weight_based IN (0, 1)),
+        pricing_mode TEXT NOT NULL DEFAULT 'direct' CHECK(pricing_mode IN ('derived', 'direct')),
+        pricing_strategy TEXT NOT NULL DEFAULT 'manual' CHECK(pricing_strategy IN ('manual', 'margin_based')),
+        total_kg_available REAL,
+        cost_price_total_cents INTEGER,
+        selling_price_total_cents INTEGER,
+        cost_price_per_kg_cents INTEGER,
+        selling_price_per_kg_cents INTEGER,
+        target_margin_percent REAL,
+        computed_price_per_kg_cents INTEGER,
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         synced INTEGER NOT NULL DEFAULT 0
       );
@@ -52,6 +62,10 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
         unit_price_cents INTEGER NOT NULL CHECK(unit_price_cents >= 0),
         unit_cost_cents INTEGER NOT NULL DEFAULT 0 CHECK(unit_cost_cents >= 0),
         quantity INTEGER NOT NULL CHECK(quantity > 0),
+        is_weight_based INTEGER NOT NULL DEFAULT 0 CHECK(is_weight_based IN (0, 1)),
+        weight_kg REAL,
+        line_total_cents INTEGER NOT NULL DEFAULT 0 CHECK(line_total_cents >= 0),
+        line_cost_total_cents INTEGER NOT NULL DEFAULT 0 CHECK(line_cost_total_cents >= 0),
         synced INTEGER NOT NULL DEFAULT 0
       );
 
@@ -83,7 +97,7 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
       CREATE INDEX IF NOT EXISTS idx_utang_customer ON utang(customer_id, created_at DESC);
     `);
 
-    currentVersion = 2;
+    currentVersion = 6;
   }
 
   if (currentVersion === 1) {
@@ -122,6 +136,44 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
     `);
 
     currentVersion = 5;
+  }
+
+  if (currentVersion === 5) {
+    await db.execAsync(`
+      ALTER TABLE products ADD COLUMN is_weight_based INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE products ADD COLUMN pricing_mode TEXT NOT NULL DEFAULT 'direct';
+      ALTER TABLE products ADD COLUMN pricing_strategy TEXT NOT NULL DEFAULT 'manual';
+      ALTER TABLE products ADD COLUMN total_kg_available REAL;
+      ALTER TABLE products ADD COLUMN cost_price_total_cents INTEGER;
+      ALTER TABLE products ADD COLUMN selling_price_total_cents INTEGER;
+      ALTER TABLE products ADD COLUMN cost_price_per_kg_cents INTEGER;
+      ALTER TABLE products ADD COLUMN selling_price_per_kg_cents INTEGER;
+      ALTER TABLE products ADD COLUMN target_margin_percent REAL;
+      ALTER TABLE products ADD COLUMN computed_price_per_kg_cents INTEGER;
+      ALTER TABLE sale_items ADD COLUMN is_weight_based INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE sale_items ADD COLUMN weight_kg REAL;
+      ALTER TABLE sale_items ADD COLUMN line_total_cents INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE sale_items ADD COLUMN line_cost_total_cents INTEGER NOT NULL DEFAULT 0;
+
+      UPDATE products
+      SET
+        cost_price_total_cents = NULL,
+        selling_price_total_cents = NULL,
+        cost_price_per_kg_cents = NULL,
+        selling_price_per_kg_cents = NULL,
+        target_margin_percent = NULL,
+        computed_price_per_kg_cents = NULL
+      WHERE is_weight_based = 0;
+
+      UPDATE sale_items
+      SET
+        line_total_cents = unit_price_cents * quantity,
+        line_cost_total_cents = unit_cost_cents * quantity
+      WHERE line_total_cents = 0
+        AND line_cost_total_cents = 0;
+    `);
+
+    currentVersion = 6;
   }
 
   await db.execAsync(`PRAGMA user_version = ${currentVersion};`);

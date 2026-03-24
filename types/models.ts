@@ -6,6 +6,8 @@ export type TrustScore = "Bago" | "Maaasahan" | "Bantayan" | "Delikado";
 export type OverdueLevel = "fresh" | "attention" | "critical";
 
 export type PaymentMethod = "cash" | "gcash" | "maya" | "utang";
+export type ProductPricingMode = "derived" | "direct";
+export type ProductPricingStrategy = "manual" | "margin_based";
 
 export interface Product {
   id: number;
@@ -18,6 +20,16 @@ export interface Product {
   imageUri: string | null;
   minStock: number;
   createdAt: string;
+  isWeightBased: boolean;
+  pricingMode: ProductPricingMode;
+  pricingStrategy: ProductPricingStrategy;
+  totalKgAvailable: number | null;
+  costPriceTotalCents: number | null;
+  sellingPriceTotalCents: number | null;
+  costPricePerKgCents: number | null;
+  sellingPricePerKgCents: number | null;
+  targetMarginPercent: number | null;
+  computedPricePerKgCents: number | null;
 }
 
 export interface Customer {
@@ -34,6 +46,7 @@ export interface CartItem {
   priceCents: number;
   stock: number;
   quantity: number;
+  isWeightBased: boolean;
 }
 
 export interface SaleItemInput {
@@ -42,6 +55,10 @@ export interface SaleItemInput {
   priceCents: number;
   costPriceCents: number;
   quantity: number;
+  isWeightBased: boolean;
+  weightKg: number | null;
+  lineTotalCents: number;
+  lineCostTotalCents: number;
 }
 
 export interface HomeMetrics {
@@ -119,6 +136,7 @@ export interface ProductVelocity {
   unitsPerDay: number;
   currentStock: number;
   daysUntilOutOfStock: number | null;
+  isWeightBased: boolean;
 }
 
 export interface StoreAiContext {

@@ -9,6 +9,7 @@ type InputFieldProps = {
   placeholder?: string;
   keyboardType?: "default" | "number-pad" | "decimal-pad" | "phone-pad";
   multiline?: boolean;
+  error?: string | null;
 };
 
 export function InputField({
@@ -18,6 +19,7 @@ export function InputField({
   placeholder,
   keyboardType = "default",
   multiline = false,
+  error,
 }: InputFieldProps) {
   const { theme } = useAppTheme();
 
@@ -41,7 +43,7 @@ export function InputField({
         placeholderTextColor={theme.colors.textSoft}
         style={{
           backgroundColor: theme.colors.surface,
-          borderColor: theme.colors.border,
+          borderColor: error ? theme.colors.danger : theme.colors.border,
           borderRadius: theme.radius.sm,
           borderWidth: 1,
           color: theme.colors.text,
@@ -53,7 +55,18 @@ export function InputField({
         }}
         value={value}
       />
+      {error ? (
+        <Text
+          style={{
+            color: theme.colors.danger,
+            fontFamily: theme.typography.body,
+            fontSize: 12,
+            lineHeight: 18,
+          }}
+        >
+          {error}
+        </Text>
+      ) : null}
     </View>
   );
 }
-

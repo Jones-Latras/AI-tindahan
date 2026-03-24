@@ -17,9 +17,13 @@ type ProductCardProps = {
   name: string;
   category?: string | null;
   priceCents: number;
+  priceLabel?: string;
   stock: number;
+  stockLabel?: string;
   minStock: number;
+  minStockLabel?: string;
   marginPercent: string;
+  isWeightBased?: boolean;
   imageUri?: string | null;
   barcode?: string | null;
   disabled?: boolean;
@@ -39,9 +43,13 @@ export function ProductCard({
   name,
   category,
   priceCents,
+  priceLabel,
   stock,
+  stockLabel,
   minStock,
+  minStockLabel,
   marginPercent,
+  isWeightBased = false,
   imageUri,
   barcode,
   disabled = false,
@@ -143,11 +151,12 @@ export function ProductCard({
 
   const detailRows = [
     { label: "Category", value: category || "General", tone: theme.colors.text },
-    { label: "Price", value: formatCurrencyFromCents(priceCents), tone: theme.colors.text },
+    { label: "Price", value: priceLabel ?? formatCurrencyFromCents(priceCents), tone: theme.colors.text },
     ...(showStockAndMargin
-      ? [{ label: "Stock", value: `${stock} left`, tone: isLowStock ? theme.colors.warning : theme.colors.text }]
+      ? [{ label: "Stock", value: stockLabel ?? `${stock} left`, tone: isLowStock ? theme.colors.warning : theme.colors.text }]
       : []),
-    { label: "Min stock", value: `${minStock} target`, tone: theme.colors.textMuted },
+    { label: "Min stock", value: minStockLabel ?? `${minStock} target`, tone: theme.colors.textMuted },
+    ...(isWeightBased ? [{ label: "Pricing", value: "Sold by weight", tone: theme.colors.primary }] : []),
     ...(showStockAndMargin ? [{ label: "Margin", value: marginPercent, tone: theme.colors.success }] : []),
     { label: "Barcode", value: barcode || "No barcode", tone: barcode ? theme.colors.text : theme.colors.textSoft },
   ];
@@ -264,6 +273,28 @@ export function ProductCard({
               {category || "General"}
             </Text>
           </View>
+          {isWeightBased ? (
+            <View
+              style={{
+                backgroundColor: theme.colors.accentMuted,
+                borderRadius: theme.radius.pill,
+                paddingHorizontal: compact ? 8 : 10,
+                paddingVertical: compact ? 5 : 6,
+              }}
+            >
+              <Text
+                numberOfLines={1}
+                style={{
+                  color: theme.colors.accent,
+                  fontFamily: theme.typography.body,
+                  fontSize: usesRegularTextSizing ? 12 : 11,
+                  fontWeight: "700",
+                }}
+              >
+                By kg
+              </Text>
+            </View>
+          ) : null}
           {stockStatus ? (
             <View
               style={{
@@ -322,7 +353,7 @@ export function ProductCard({
             fontWeight: "700",
           }}
         >
-          {formatCurrencyFromCents(priceCents)}
+          {priceLabel ?? formatCurrencyFromCents(priceCents)}
         </Text>
       </View>
 
@@ -346,7 +377,7 @@ export function ProductCard({
                 fontWeight: "700",
               }}
             >
-              {stock} left
+              {stockLabel ?? `${stock} left`}
             </Text>
           </View>
           <View style={{ flexDirection: "row", justifyContent: "space-between" }}>

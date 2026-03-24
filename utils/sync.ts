@@ -105,7 +105,29 @@ export async function syncToCloud(db: SQLiteDatabase): Promise<string> {
 
   // Sync products
   const products = await db.getAllAsync<Record<string, unknown>>(
-    "SELECT id, name, price_cents, cost_price_cents, stock, category, barcode, image_uri, min_stock, created_at FROM products WHERE synced = 0",
+    `SELECT
+      id,
+      name,
+      price_cents,
+      cost_price_cents,
+      stock,
+      category,
+      barcode,
+      image_uri,
+      min_stock,
+      is_weight_based,
+      pricing_mode,
+      pricing_strategy,
+      total_kg_available,
+      cost_price_total_cents,
+      selling_price_total_cents,
+      cost_price_per_kg_cents,
+      selling_price_per_kg_cents,
+      target_margin_percent,
+      computed_price_per_kg_cents,
+      created_at
+    FROM products
+    WHERE synced = 0`,
   );
   if (products.length > 0) {
     await supabaseUpsert("products", products);
@@ -135,7 +157,20 @@ export async function syncToCloud(db: SQLiteDatabase): Promise<string> {
 
   // Sync sale_items
   const saleItems = await db.getAllAsync<Record<string, unknown>>(
-    "SELECT id, sale_id, product_id, product_name, unit_price_cents, unit_cost_cents, quantity FROM sale_items WHERE synced = 0",
+    `SELECT
+      id,
+      sale_id,
+      product_id,
+      product_name,
+      unit_price_cents,
+      unit_cost_cents,
+      quantity,
+      is_weight_based,
+      weight_kg,
+      line_total_cents,
+      line_cost_total_cents
+    FROM sale_items
+    WHERE synced = 0`,
   );
   if (saleItems.length > 0) {
     await supabaseUpsert("sale_items", saleItems);
@@ -191,11 +226,50 @@ export async function restoreFromCloud(db: SQLiteDatabase): Promise<string> {
     for (const p of products) {
       const row = p as Record<string, unknown>;
       await db.runAsync(
-        `INSERT OR REPLACE INTO products (id, name, price_cents, cost_price_cents, stock, category, barcode, image_uri, min_stock, created_at, synced)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
-        row.id as number, row.name as string, row.price_cents as number, row.cost_price_cents as number,
-        row.stock as number, row.category as string | null, row.barcode as string | null, row.image_uri as string | null,
-        row.min_stock as number, row.created_at as string,
+        `INSERT OR REPLACE INTO products (
+          id,
+          name,
+          price_cents,
+          cost_price_cents,
+          stock,
+          category,
+          barcode,
+          image_uri,
+          min_stock,
+          is_weight_based,
+          pricing_mode,
+          pricing_strategy,
+          total_kg_available,
+          cost_price_total_cents,
+          selling_price_total_cents,
+          cost_price_per_kg_cents,
+          selling_price_per_kg_cents,
+          target_margin_percent,
+          computed_price_per_kg_cents,
+          created_at,
+          synced
+        )
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+        row.id as number,
+        row.name as string,
+        row.price_cents as number,
+        row.cost_price_cents as number,
+        row.stock as number,
+        row.category as string | null,
+        row.barcode as string | null,
+        row.image_uri as string | null,
+        row.min_stock as number,
+        row.is_weight_based as number,
+        row.pricing_mode as string,
+        row.pricing_strategy as string,
+        row.total_kg_available as number | null,
+        row.cost_price_total_cents as number | null,
+        row.selling_price_total_cents as number | null,
+        row.cost_price_per_kg_cents as number | null,
+        row.selling_price_per_kg_cents as number | null,
+        row.target_margin_percent as number | null,
+        row.computed_price_per_kg_cents as number | null,
+        row.created_at as string,
       );
       restored++;
     }
@@ -219,11 +293,32 @@ export async function restoreFromCloud(db: SQLiteDatabase): Promise<string> {
     for (const si of saleItems) {
       const row = si as Record<string, unknown>;
       await db.runAsync(
-        `INSERT OR REPLACE INTO sale_items (id, sale_id, product_id, product_name, unit_price_cents, unit_cost_cents, quantity, synced)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 1)`,
-        row.id as number, row.sale_id as number, row.product_id as number,
-        row.product_name as string, row.unit_price_cents as number,
-        row.unit_cost_cents as number, row.quantity as number,
+        `INSERT OR REPLACE INTO sale_items (
+          id,
+          sale_id,
+          product_id,
+          product_name,
+          unit_price_cents,
+          unit_cost_cents,
+          quantity,
+          is_weight_based,
+          weight_kg,
+          line_total_cents,
+          line_cost_total_cents,
+          synced
+        )
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+        row.id as number,
+        row.sale_id as number,
+        row.product_id as number,
+        row.product_name as string,
+        row.unit_price_cents as number,
+        row.unit_cost_cents as number,
+        row.quantity as number,
+        row.is_weight_based as number,
+        row.weight_kg as number | null,
+        row.line_total_cents as number,
+        row.line_cost_total_cents as number,
       );
       restored++;
     }

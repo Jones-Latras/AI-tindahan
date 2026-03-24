@@ -21,10 +21,26 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { SurfaceCard } from "@/components/SurfaceCard";
 import { useAppLanguage } from "@/contexts/LanguageContext";
 import { useAppTheme } from "@/contexts/ThemeContext";
-import { checkoutSale, getHomeMetrics, getProductByBarcode, listCustomersWithBalances, listProducts } from "@/db/repositories";
+import {
+  checkoutSale,
+  getHomeMetrics,
+  getProductByBarcode,
+  listCustomersWithBalances,
+  listProducts,
+  saveProduct,
+} from "@/db/repositories";
 import { useCartStore } from "@/store/useCartStore";
 import type { CustomerSummary, PaymentMethod, Product } from "@/types/models";
 import { centsToDisplayValue, formatCurrencyFromCents, parseCurrencyToCents } from "@/utils/money";
+import {
+  computeProfitMargin,
+  computeTransactionTotal,
+  formatMarginPercent,
+  formatProductMinStockLabel,
+  formatProductPriceLabel,
+  formatProductStockLabel,
+  formatWeightKg,
+} from "@/utils/pricing";
 
 const QUICK_PAY_VALUES = [5000, 10000, 20000, 50000];
 const QUICK_DISCOUNT_PERCENTS = [5, 10, 15, 20];
@@ -41,6 +57,17 @@ type CartFeedback = {
   tone: "success" | "warning";
   icon: "check-circle" | "alert-triangle";
 };
+
+function parseDecimalInput(value: string) {
+  const normalized = value.replace(/[^0-9.]/g, "").trim();
+
+  if (!normalized) {
+    return 0;
+  }
+
+  const parsed = Number.parseFloat(normalized);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : Number.NaN;
+}
 
 export default function BentaScreen() {
   const db = useSQLiteContext();
@@ -64,9 +91,23 @@ export default function BentaScreen() {
   const [milestoneAmount, setMilestoneAmount] = useState(0);
   const [milestoneVisible, setMilestoneVisible] = useState(false);
   const [cartFeedback, setCartFeedback] = useState<CartFeedback | null>(null);
+  const [weightModalVisible, setWeightModalVisible] = useState(false);
+  const [selectedWeightProduct, setSelectedWeightProduct] = useState<Product | null>(null);
+  const [weightInput, setWeightInput] = useState("");
+  const [quickEditVisible, setQuickEditVisible] = useState(false);
+  const [quickEditProduct, setQuickEditProduct] = useState<Product | null>(null);
+  const [quickEditValue, setQuickEditValue] = useState("");
+  const [savingQuickEdit, setSavingQuickEdit] = useState(false);
   const [lastReceipt, setLastReceipt] = useState<{
     saleId: number;
-    items: Array<{ name: string; quantity: number; priceCents: number }>;
+    items: Array<{
+      name: string;
+      quantity: number;
+      weightKg: number | null;
+      priceCents: number;
+      lineTotalCents: number;
+      isWeightBased: boolean;
+    }>;
     subtotalCents: number;
     discountCents: number;
     totalCents: number;
@@ -89,6 +130,7 @@ export default function BentaScreen() {
   const addItem = useCartStore((state) => state.addItem);
   const clearCart = useCartStore((state) => state.clearCart);
   const removeItem = useCartStore((state) => state.removeItem);
+  const setItem = useCartStore((state) => state.setItem);
   const updateQuantity = useCartStore((state) => state.updateQuantity);
   const totalCents = useCartStore((state) =>
     state.items.reduce((runningTotal, item) => runningTotal + item.priceCents * item.quantity, 0),
@@ -99,6 +141,15 @@ export default function BentaScreen() {
   } as const;
 
   const productById = useMemo(() => new Map(products.map((product) => [product.id, product])), [products]);
+  const selectedWeightValue = parseDecimalInput(weightInput);
+  const weightLineTotalCents =
+    selectedWeightProduct && Number.isFinite(selectedWeightValue) && selectedWeightValue > 0
+      ? computeTransactionTotal(selectedWeightValue, selectedWeightProduct.priceCents)
+      : 0;
+  const quickEditNumericValue =
+    quickEditProduct?.pricingStrategy === "margin_based"
+      ? parseDecimalInput(quickEditValue)
+      : parseCurrencyToCents(quickEditValue);
 
   const loadScreenData = useCallback(async () => {
     setLoading(true);
@@ -251,16 +302,33 @@ export default function BentaScreen() {
     }, 1500);
   }, [cartFeedbackOpacity, cartFeedbackTranslateY, cartPulseLift, cartPulseScale]);
 
+  const openWeightModal = useCallback(
+    (product: Product) => {
+      const existingItem = cartItems.find((item) => item.id === product.id);
+      setSelectedWeightProduct(product);
+      setWeightInput(existingItem && existingItem.isWeightBased ? formatWeightKg(existingItem.quantity) : "");
+      setWeightModalVisible(true);
+    },
+    [cartItems],
+  );
+
   const handleAddToCart = useCallback(
     (product: Product) => {
-      if (product.stock <= 0) {
+      const availableStock = product.isWeightBased ? product.totalKgAvailable ?? 0 : product.stock;
+
+      if (availableStock <= 0) {
         Alert.alert("Out of stock", `${product.name} is currently out of stock.`);
+        return;
+      }
+
+      if (product.isWeightBased) {
+        openWeightModal(product);
         return;
       }
 
       const existingItem = cartItems.find((item) => item.id === product.id);
 
-      if (existingItem && existingItem.quantity >= product.stock) {
+      if (existingItem && existingItem.quantity >= availableStock) {
         triggerCartFeedback({
           icon: "alert-triangle",
           message: `${product.name} is already at the max available quantity.`,
@@ -274,10 +342,11 @@ export default function BentaScreen() {
         id: product.id,
         name: product.name,
         priceCents: product.priceCents,
-        stock: product.stock,
+        stock: availableStock,
+        isWeightBased: false,
       });
 
-      const nextQuantity = existingItem ? Math.min(existingItem.quantity + 1, product.stock) : 1;
+      const nextQuantity = existingItem ? Math.min(existingItem.quantity + 1, availableStock) : 1;
 
       triggerCartFeedback({
         icon: "check-circle",
@@ -289,8 +358,121 @@ export default function BentaScreen() {
         tone: "success",
       });
     },
-    [addItem, cartItems, triggerCartFeedback],
+    [addItem, cartItems, openWeightModal, triggerCartFeedback],
   );
+
+  const handleConfirmWeightItem = useCallback(() => {
+    if (!selectedWeightProduct) {
+      return;
+    }
+
+    if (!Number.isFinite(selectedWeightValue) || selectedWeightValue <= 0) {
+      Alert.alert("Invalid weight", "Enter a valid weight in kilograms.");
+      return;
+    }
+
+    const availableKg = selectedWeightProduct.totalKgAvailable ?? 0;
+
+    if (selectedWeightValue > availableKg) {
+      Alert.alert("Weight too high", `Only ${formatWeightKg(availableKg)} kg is available right now.`);
+      return;
+    }
+
+    setItem({
+      id: selectedWeightProduct.id,
+      name: selectedWeightProduct.name,
+      priceCents: selectedWeightProduct.priceCents,
+      stock: availableKg,
+      quantity: selectedWeightValue,
+      isWeightBased: true,
+    });
+
+    setWeightModalVisible(false);
+    setSelectedWeightProduct(null);
+    setWeightInput("");
+
+    triggerCartFeedback({
+      icon: "check-circle",
+      message: `${formatWeightKg(selectedWeightValue)} kg of ${selectedWeightProduct.name} is ready in the cart.`,
+      title: "Weight added",
+      tone: "success",
+    });
+  }, [selectedWeightProduct, selectedWeightValue, setItem, triggerCartFeedback]);
+
+  const openQuickEditModal = useCallback(
+    (product: Product) => {
+      if (!product.isWeightBased) {
+        return;
+      }
+
+      setQuickEditProduct(product);
+      setQuickEditValue(
+        product.pricingStrategy === "margin_based"
+          ? String(product.targetMarginPercent ?? computeProfitMargin(product.costPriceCents, product.priceCents))
+          : centsToDisplayValue(product.priceCents),
+      );
+      setQuickEditVisible(true);
+    },
+    [],
+  );
+
+  const handleQuickEditSave = useCallback(async () => {
+    if (!quickEditProduct) {
+      return;
+    }
+
+    if (quickEditProduct.pricingStrategy === "margin_based") {
+      if (!Number.isFinite(quickEditNumericValue) || quickEditNumericValue <= 0 || quickEditNumericValue >= 100) {
+        Alert.alert("Invalid margin", "Enter a target margin greater than 0 and less than 100.");
+        return;
+      }
+    } else if (!Number.isFinite(quickEditNumericValue) || quickEditNumericValue <= 0) {
+      Alert.alert("Invalid price", "Enter a valid selling price per kilogram.");
+      return;
+    }
+
+    setSavingQuickEdit(true);
+
+    try {
+      await saveProduct(
+        db,
+        {
+          name: quickEditProduct.name,
+          priceCents:
+            quickEditProduct.pricingStrategy === "manual"
+              ? (quickEditNumericValue as number)
+              : quickEditProduct.priceCents,
+          costPriceCents: quickEditProduct.costPriceCents,
+          stock: quickEditProduct.stock,
+          category: quickEditProduct.category ?? "",
+          barcode: quickEditProduct.barcode ?? "",
+          imageUri: quickEditProduct.imageUri ?? "",
+          minStock: quickEditProduct.minStock,
+          isWeightBased: true,
+          pricingMode: quickEditProduct.pricingMode,
+          pricingStrategy: quickEditProduct.pricingStrategy,
+          totalKgAvailable: quickEditProduct.totalKgAvailable ?? 0,
+          costPriceTotalCents: quickEditProduct.costPriceTotalCents,
+          sellingPriceTotalCents: quickEditProduct.pricingMode === "derived" ? undefined : quickEditProduct.sellingPriceTotalCents,
+          costPricePerKgCents: quickEditProduct.costPricePerKgCents ?? quickEditProduct.costPriceCents,
+          sellingPricePerKgCents:
+            quickEditProduct.pricingStrategy === "manual" ? (quickEditNumericValue as number) : undefined,
+          targetMarginPercent:
+            quickEditProduct.pricingStrategy === "margin_based" ? parseDecimalInput(quickEditValue) : undefined,
+        },
+        quickEditProduct.id,
+      );
+
+      setQuickEditVisible(false);
+      setQuickEditProduct(null);
+      setQuickEditValue("");
+      await loadScreenData();
+    } catch (error) {
+      Alert.alert("Quick edit failed", error instanceof Error ? error.message : "Could not update the product.");
+    } finally {
+      setSavingQuickEdit(false);
+    }
+  }, [db, loadScreenData, quickEditNumericValue, quickEditProduct, quickEditValue]);
 
   const handleOpenScanner = useCallback(async () => {
     if (!cameraPermission || !cameraPermission.granted) {
@@ -353,12 +535,19 @@ export default function BentaScreen() {
         throw new Error(`Product ${item.name} could not be refreshed.`);
       }
 
+      const lineTotalCents = Math.round(item.priceCents * item.quantity);
+      const lineCostTotalCents = Math.round(product.costPriceCents * item.quantity);
+
       return {
         id: item.id,
         name: item.name,
         priceCents: item.priceCents,
         costPriceCents: product.costPriceCents,
-        quantity: item.quantity,
+        quantity: item.isWeightBased ? 1 : item.quantity,
+        isWeightBased: item.isWeightBased,
+        weightKg: item.isWeightBased ? item.quantity : null,
+        lineTotalCents,
+        lineCostTotalCents,
       };
     });
 
@@ -377,7 +566,14 @@ export default function BentaScreen() {
 
       const receiptData = {
         saleId,
-        items: payloadItems.map((item) => ({ name: item.name, quantity: item.quantity, priceCents: item.priceCents })),
+        items: payloadItems.map((item) => ({
+          name: item.name,
+          quantity: item.quantity,
+          weightKg: item.weightKg,
+          priceCents: item.priceCents,
+          lineTotalCents: item.lineTotalCents,
+          isWeightBased: item.isWeightBased,
+        })),
         subtotalCents: totalCents,
         discountCents,
         totalCents: finalTotalCents,
@@ -706,28 +902,30 @@ export default function BentaScreen() {
             </SurfaceCard>
           ) : products.length > 0 ? (
             products.map((product) => {
-              const marginPercent =
-                product.priceCents > 0
-                  ? `${(((product.priceCents - product.costPriceCents) / product.priceCents) * 100).toFixed(0)}%`
-                  : "0%";
+              const availableStock = product.isWeightBased ? product.totalKgAvailable ?? 0 : product.stock;
 
               return (
                 <ProductCard
-                  actionLabel="Add to cart"
+                  actionLabel={product.isWeightBased ? "Weigh item" : "Add to cart"}
                   barcode={product.barcode}
-                  cardPressEnabled={false}
+                  cardPressEnabled={product.isWeightBased}
                   category={product.category}
                   compact
-                  disabled={product.stock <= 0}
+                  disabled={availableStock <= 0}
                   imageUri={product.imageUri}
+                  isWeightBased={product.isWeightBased}
                   key={product.id}
-                  marginPercent={marginPercent}
+                  marginPercent={formatMarginPercent(computeProfitMargin(product.costPriceCents, product.priceCents))}
                   minStock={product.minStock}
+                  minStockLabel={formatProductMinStockLabel(product)}
                   name={product.name}
                   onActionPress={() => handleAddToCart(product)}
+                  onPress={() => openQuickEditModal(product)}
                   priceCents={product.priceCents}
+                  priceLabel={formatProductPriceLabel(product)}
                   showInfoFlip
-                  stock={product.stock}
+                  stock={availableStock}
+                  stockLabel={formatProductStockLabel(product)}
                   useRegularImageSizing
                   useRegularTextSizing
                 />
@@ -772,10 +970,22 @@ export default function BentaScreen() {
             cartItems.map((item) => (
               <CartItem
                 key={item.id}
+                isWeightBased={item.isWeightBased}
+                lineTotalCents={Math.round(item.priceCents * item.quantity)}
                 maxQuantity={item.stock}
                 name={item.name}
-                onDecrease={() => updateQuantity(item.id, item.quantity - 1)}
-                onIncrease={() => updateQuantity(item.id, item.quantity + 1)}
+                onDecrease={item.isWeightBased ? undefined : () => updateQuantity(item.id, item.quantity - 1)}
+                onEdit={
+                  item.isWeightBased
+                    ? () => {
+                        const product = productById.get(item.id);
+                        if (product) {
+                          openWeightModal(product);
+                        }
+                      }
+                    : undefined
+                }
+                onIncrease={item.isWeightBased ? undefined : () => updateQuantity(item.id, item.quantity + 1)}
                 onRemove={() => removeItem(item.id)}
                 priceCents={item.priceCents}
                 quantity={item.quantity}
@@ -1105,10 +1315,22 @@ export default function BentaScreen() {
               <CartItem
                 compact
                 key={item.id}
+                isWeightBased={item.isWeightBased}
+                lineTotalCents={Math.round(item.priceCents * item.quantity)}
                 maxQuantity={item.stock}
                 name={item.name}
-                onDecrease={() => updateQuantity(item.id, item.quantity - 1)}
-                onIncrease={() => updateQuantity(item.id, item.quantity + 1)}
+                onDecrease={item.isWeightBased ? undefined : () => updateQuantity(item.id, item.quantity - 1)}
+                onEdit={
+                  item.isWeightBased
+                    ? () => {
+                        const product = productById.get(item.id);
+                        if (product) {
+                          openWeightModal(product);
+                        }
+                      }
+                    : undefined
+                }
+                onIncrease={item.isWeightBased ? undefined : () => updateQuantity(item.id, item.quantity + 1)}
                 onRemove={() => removeItem(item.id)}
                 priceCents={item.priceCents}
                 quantity={item.quantity}
@@ -1411,6 +1633,127 @@ export default function BentaScreen() {
             title={t("benta.cartEmptyTitle")}
           />
         )}
+      </ModalSheet>
+
+      <ModalSheet
+        footer={
+          <ActionButton
+            disabled={
+              !selectedWeightProduct ||
+              !Number.isFinite(selectedWeightValue) ||
+              selectedWeightValue <= 0 ||
+              selectedWeightValue > (selectedWeightProduct?.totalKgAvailable ?? 0)
+            }
+            label="Add Weighed Item"
+            onPress={handleConfirmWeightItem}
+          />
+        }
+        onClose={() => {
+          setWeightModalVisible(false);
+          setSelectedWeightProduct(null);
+          setWeightInput("");
+        }}
+        subtitle={
+          selectedWeightProduct
+            ? `Available: ${formatProductStockLabel(selectedWeightProduct)} at ${formatProductPriceLabel(selectedWeightProduct)}`
+            : "Enter the weight to add."
+        }
+        title={selectedWeightProduct ? `Weigh ${selectedWeightProduct.name}` : "Weigh Product"}
+        visible={weightModalVisible}
+      >
+        {selectedWeightProduct ? (
+          <>
+            <InputField
+              keyboardType="decimal-pad"
+              label="Weight (kg)"
+              onChangeText={setWeightInput}
+              placeholder="0.000"
+              error={
+                weightInput.length > 0 &&
+                (!Number.isFinite(selectedWeightValue) || selectedWeightValue <= 0)
+                  ? "Enter a valid weight greater than zero."
+                  : Number.isFinite(selectedWeightValue) &&
+                      selectedWeightValue > (selectedWeightProduct.totalKgAvailable ?? 0)
+                    ? "Weight cannot be higher than the available stock."
+                    : null
+              }
+              value={weightInput}
+            />
+            <SurfaceCard style={{ gap: theme.spacing.sm }}>
+              <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                <Text style={{ color: theme.colors.textMuted, fontFamily: theme.typography.body, fontSize: 13 }}>
+                  Price per kg
+                </Text>
+                <Text style={{ color: theme.colors.text, fontFamily: theme.typography.body, fontSize: 13, fontWeight: "700" }}>
+                  {formatProductPriceLabel(selectedWeightProduct)}
+                </Text>
+              </View>
+              <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                <Text style={{ color: theme.colors.textMuted, fontFamily: theme.typography.body, fontSize: 13 }}>
+                  Preview total
+                </Text>
+                <Text style={{ color: theme.colors.primary, fontFamily: theme.typography.body, fontSize: 13, fontWeight: "700" }}>
+                  {formatCurrencyFromCents(weightLineTotalCents)}
+                </Text>
+              </View>
+            </SurfaceCard>
+          </>
+        ) : null}
+      </ModalSheet>
+
+      <ModalSheet
+        footer={
+          <ActionButton
+            disabled={savingQuickEdit || !quickEditProduct}
+            label={savingQuickEdit ? "Saving..." : "Save Quick Edit"}
+            onPress={() => void handleQuickEditSave()}
+          />
+        }
+        onClose={() => {
+          setQuickEditVisible(false);
+          setQuickEditProduct(null);
+          setQuickEditValue("");
+        }}
+        subtitle={
+          quickEditProduct
+            ? quickEditProduct.pricingStrategy === "margin_based"
+              ? `Current margin ${formatMarginPercent(quickEditProduct.targetMarginPercent ?? computeProfitMargin(quickEditProduct.costPriceCents, quickEditProduct.priceCents))}`
+              : `Current price ${formatProductPriceLabel(quickEditProduct)}`
+            : "Adjust price quickly."
+        }
+        title={quickEditProduct ? `Quick Edit ${quickEditProduct.name}` : "Quick Edit"}
+        visible={quickEditVisible}
+      >
+        {quickEditProduct ? (
+          <>
+            <SurfaceCard style={{ gap: theme.spacing.sm }}>
+              <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                <Text style={{ color: theme.colors.textMuted, fontFamily: theme.typography.body, fontSize: 13 }}>
+                  Available stock
+                </Text>
+                <Text style={{ color: theme.colors.text, fontFamily: theme.typography.body, fontSize: 13, fontWeight: "700" }}>
+                  {formatProductStockLabel(quickEditProduct)}
+                </Text>
+              </View>
+              <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                <Text style={{ color: theme.colors.textMuted, fontFamily: theme.typography.body, fontSize: 13 }}>
+                  Low-stock threshold
+                </Text>
+                <Text style={{ color: theme.colors.text, fontFamily: theme.typography.body, fontSize: 13, fontWeight: "700" }}>
+                  {formatProductMinStockLabel(quickEditProduct)}
+                </Text>
+              </View>
+            </SurfaceCard>
+
+            <InputField
+              keyboardType="decimal-pad"
+              label={quickEditProduct.pricingStrategy === "margin_based" ? "Target margin (%)" : "Selling price per kg"}
+              onChangeText={setQuickEditValue}
+              placeholder={quickEditProduct.pricingStrategy === "margin_based" ? "25" : "0.00"}
+              value={quickEditValue}
+            />
+          </>
+        ) : null}
       </ModalSheet>
 
       <ModalSheet

@@ -3,7 +3,7 @@ import * as ImagePicker from "expo-image-picker";
 import { useFocusEffect } from "expo-router";
 import { useSQLiteContext } from "expo-sqlite";
 import Storage from "expo-sqlite/kv-store";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Alert, Image, Pressable, Text, View } from "react-native";
 
 import { ActionButton } from "@/components/ActionButton";
@@ -15,9 +15,24 @@ import { Screen } from "@/components/Screen";
 import { SurfaceCard } from "@/components/SurfaceCard";
 import { useAppLanguage } from "@/contexts/LanguageContext";
 import { useAppTheme } from "@/contexts/ThemeContext";
-import { deleteProduct, listProductCategories, listProducts, saveProduct } from "@/db/repositories";
-import type { Product } from "@/types/models";
+import {
+  deleteProduct,
+  listProductCategories,
+  listProducts,
+  saveProduct,
+  type ProductInput,
+} from "@/db/repositories";
+import type { Product, ProductPricingMode, ProductPricingStrategy } from "@/types/models";
 import { centsToDisplayValue, parseCurrencyToCents } from "@/utils/money";
+import {
+  computeProfitMargin,
+  formatMarginPercent,
+  formatProductMinStockLabel,
+  formatProductPriceLabel,
+  formatProductStockLabel,
+  formatWeightKg,
+  resolveWeightBasedPricing,
+} from "@/utils/pricing";
 
 type ProductFormState = {
   name: string;
@@ -28,7 +43,41 @@ type ProductFormState = {
   barcode: string;
   imageUri: string;
   minStock: string;
+  isWeightBased: boolean;
+  pricingMode: ProductPricingMode;
+  pricingStrategy: ProductPricingStrategy;
+  totalKgAvailable: string;
+  costPriceTotal: string;
+  sellingPriceTotal: string;
+  costPricePerKg: string;
+  sellingPricePerKg: string;
+  targetMarginPercent: string;
 };
+
+type ProductFormPreview =
+  | { error: string }
+  | {
+      error: null;
+      type: "weight";
+      minStock: number;
+      totalKgAvailable: number;
+      costPriceTotalCents: number;
+      sellingPriceTotalCents: number;
+      costPricePerKgCents: number;
+      sellingPricePerKgCents: number;
+      computedPricePerKgCents: number;
+      targetMarginPercent: number | null;
+      realizedMarginPercent: number;
+    }
+  | {
+      error: null;
+      type: "unit";
+      priceCents: number;
+      costPriceCents: number;
+      stock: number;
+      minStock: number;
+      marginPercent: number;
+    };
 
 const emptyForm: ProductFormState = {
   name: "",
@@ -39,6 +88,15 @@ const emptyForm: ProductFormState = {
   barcode: "",
   imageUri: "",
   minStock: "5",
+  isWeightBased: false,
+  pricingMode: "direct",
+  pricingStrategy: "manual",
+  totalKgAvailable: "",
+  costPriceTotal: "",
+  sellingPriceTotal: "",
+  costPricePerKg: "",
+  sellingPricePerKg: "",
+  targetMarginPercent: "",
 };
 
 const PRODUCT_IMAGE_QUALITY = 0.72;
@@ -92,6 +150,17 @@ function parseStoredCategories(rawValue: string | null) {
   }
 }
 
+function parseDecimalInput(value: string) {
+  const normalized = value.replace(/[^0-9.]/g, "").trim();
+
+  if (!normalized) {
+    return 0;
+  }
+
+  const parsed = Number.parseFloat(normalized);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : Number.NaN;
+}
+
 export default function ProduktoScreen() {
   const db = useSQLiteContext();
   const { theme } = useAppTheme();
@@ -112,6 +181,86 @@ export default function ProduktoScreen() {
   const [categoryModalTarget, setCategoryModalTarget] = useState<CategoryModalTarget>("catalog");
   const [mediaPermission, requestMediaPermission] = ImagePicker.useMediaLibraryPermissions();
   const [cameraPermission, requestCameraPermission] = ImagePicker.useCameraPermissions();
+  const pricingPreview = useMemo<ProductFormPreview>(() => {
+    const name = form.name.trim();
+
+    if (name.length < 2) {
+      return { error: "Product name must be at least 2 characters." };
+    }
+
+    if (form.isWeightBased) {
+      const totalKgAvailable = parseDecimalInput(form.totalKgAvailable);
+      const minStock = parseDecimalInput(form.minStock);
+
+      if (!Number.isFinite(totalKgAvailable) || totalKgAvailable <= 0) {
+        return { error: "Enter a valid total kilograms available." };
+      }
+
+      if (!Number.isFinite(minStock) || minStock < 0) {
+        return { error: "Low-stock threshold must be zero or higher." };
+      }
+
+      try {
+        const resolvedPricing = resolveWeightBasedPricing({
+          pricingMode: form.pricingMode,
+          pricingStrategy: form.pricingStrategy,
+          totalKgAvailable,
+          costPriceTotalCents: form.pricingMode === "derived" ? parseCurrencyToCents(form.costPriceTotal) : undefined,
+          sellingPriceTotalCents:
+            form.pricingMode === "derived" && form.pricingStrategy === "manual"
+              ? parseCurrencyToCents(form.sellingPriceTotal)
+              : undefined,
+          costPricePerKgCents:
+            form.pricingMode === "direct" ? parseCurrencyToCents(form.costPricePerKg) : undefined,
+          sellingPricePerKgCents:
+            form.pricingMode === "direct" && form.pricingStrategy === "manual"
+              ? parseCurrencyToCents(form.sellingPricePerKg)
+              : undefined,
+          targetMarginPercent:
+            form.pricingStrategy === "margin_based" ? parseDecimalInput(form.targetMarginPercent) : undefined,
+        });
+
+        return {
+          error: null,
+          minStock,
+          type: "weight" as const,
+          ...resolvedPricing,
+        };
+      } catch (error) {
+        return {
+          error: error instanceof Error ? error.message : "Review the weight-based pricing values.",
+        };
+      }
+    }
+
+    const priceCents = parseCurrencyToCents(form.price);
+    const costPriceCents = parseCurrencyToCents(form.costPrice);
+    const stock = Number.parseInt(form.stock, 10);
+    const minStock = Number.parseInt(form.minStock, 10);
+
+    if (!Number.isFinite(priceCents) || !Number.isFinite(costPriceCents)) {
+      return { error: "Enter valid peso amounts for the selling and cost prices." };
+    }
+
+    if (!Number.isInteger(stock) || stock < 0 || !Number.isInteger(minStock) || minStock < 0) {
+      return { error: "Stock and minimum stock must be non-negative whole numbers." };
+    }
+
+    if (costPriceCents >= priceCents) {
+      return { error: "Selling price must be greater than cost price." };
+    }
+
+    return {
+      error: null,
+      type: "unit" as const,
+      priceCents,
+      costPriceCents,
+      stock,
+      minStock,
+      marginPercent: computeProfitMargin(costPriceCents, priceCents),
+    };
+  }, [form]);
+  const shouldShowValidationMessage = modalVisible && (editingProduct !== null || form.name.trim().length > 0);
 
   const persistCategories = useCallback(async (nextCategories: string[]) => {
     const normalizedCategories = mergeCategoryLists(nextCategories);
@@ -179,7 +328,20 @@ export default function ProduktoScreen() {
       category: product.category ?? "",
       barcode: product.barcode ?? "",
       imageUri: product.imageUri ?? "",
-      minStock: String(product.minStock),
+      minStock: product.isWeightBased ? formatWeightKg(product.minStock) : String(product.minStock),
+      isWeightBased: product.isWeightBased,
+      pricingMode: product.pricingMode,
+      pricingStrategy: product.pricingStrategy,
+      totalKgAvailable: product.totalKgAvailable !== null ? formatWeightKg(product.totalKgAvailable) : "",
+      costPriceTotal: product.costPriceTotalCents !== null ? centsToDisplayValue(product.costPriceTotalCents) : "",
+      sellingPriceTotal:
+        product.sellingPriceTotalCents !== null ? centsToDisplayValue(product.sellingPriceTotalCents) : "",
+      costPricePerKg: centsToDisplayValue(product.costPricePerKgCents ?? product.costPriceCents),
+      sellingPricePerKg: centsToDisplayValue(product.sellingPricePerKgCents ?? product.priceCents),
+      targetMarginPercent:
+        product.targetMarginPercent !== null
+          ? String(product.targetMarginPercent)
+          : String(computeProfitMargin(product.costPriceCents, product.priceCents)),
     });
     setPhotoSheetVisible(false);
     setCategoryModalVisible(false);
@@ -220,21 +382,52 @@ export default function ProduktoScreen() {
   }, [categories, categoryDraft, categoryModalTarget, persistCategories]);
 
   const handleSave = useCallback(async () => {
-    const priceCents = parseCurrencyToCents(form.price);
-    const costPriceCents = parseCurrencyToCents(form.costPrice);
-    const stock = Number.parseInt(form.stock, 10);
-    const minStock = Number.parseInt(form.minStock, 10);
     const normalizedCategory = normalizeCategoryName(form.category);
 
-    if (!Number.isFinite(priceCents) || !Number.isFinite(costPriceCents)) {
-      Alert.alert("Invalid amount", "Enter valid peso amounts for the selling and cost prices.");
+    if (pricingPreview.error) {
+      Alert.alert("Invalid product setup", pricingPreview.error);
       return;
     }
 
-    if (!Number.isInteger(stock) || stock < 0 || !Number.isInteger(minStock) || minStock < 0) {
-      Alert.alert("Invalid stock", "Stock and minimum stock must be non-negative whole numbers.");
+    if (!("type" in pricingPreview)) {
       return;
     }
+
+    const payload: ProductInput =
+      pricingPreview.type === "weight"
+        ? {
+            name: form.name,
+            priceCents: pricingPreview.sellingPricePerKgCents,
+            costPriceCents: pricingPreview.costPricePerKgCents,
+            stock: 0,
+            category: normalizedCategory,
+            barcode: form.barcode,
+            imageUri: form.imageUri,
+            minStock: pricingPreview.minStock,
+            isWeightBased: true as const,
+            pricingMode: form.pricingMode,
+            pricingStrategy: form.pricingStrategy,
+            totalKgAvailable: pricingPreview.totalKgAvailable,
+            costPriceTotalCents: pricingPreview.costPriceTotalCents,
+            sellingPriceTotalCents:
+              form.pricingMode === "derived" ? pricingPreview.sellingPriceTotalCents : undefined,
+            costPricePerKgCents: pricingPreview.costPricePerKgCents,
+            sellingPricePerKgCents: pricingPreview.sellingPricePerKgCents,
+            targetMarginPercent:
+              form.pricingStrategy === "margin_based" ? pricingPreview.targetMarginPercent : undefined,
+            computedPricePerKgCents: pricingPreview.computedPricePerKgCents,
+          }
+        : {
+            name: form.name,
+            priceCents: pricingPreview.priceCents,
+            costPriceCents: pricingPreview.costPriceCents,
+            stock: pricingPreview.stock,
+            category: normalizedCategory,
+            barcode: form.barcode,
+            imageUri: form.imageUri,
+            minStock: pricingPreview.minStock,
+            isWeightBased: false as const,
+          };
 
     setSaving(true);
 
@@ -245,16 +438,7 @@ export default function ProduktoScreen() {
 
       await saveProduct(
         db,
-        {
-          name: form.name,
-          priceCents,
-          costPriceCents,
-          stock,
-          category: normalizedCategory,
-          barcode: form.barcode,
-          imageUri: form.imageUri,
-          minStock,
-        },
+        payload,
         editingProduct?.id,
       );
 
@@ -273,7 +457,7 @@ export default function ProduktoScreen() {
     } finally {
       setSaving(false);
     }
-  }, [categories, db, editingProduct?.id, form, loadProducts, persistCategories]);
+  }, [categories, db, editingProduct?.id, form, loadProducts, persistCategories, pricingPreview]);
 
   const handleDelete = useCallback(() => {
     if (!editingProduct) {
@@ -493,10 +677,7 @@ export default function ProduktoScreen() {
           </SurfaceCard>
         ) : products.length > 0 ? (
           products.map((product) => {
-            const marginPercent =
-              product.priceCents > 0
-                ? `${(((product.priceCents - product.costPriceCents) / product.priceCents) * 100).toFixed(0)}%`
-                : "0%";
+            const availableStock = product.isWeightBased ? product.totalKgAvailable ?? 0 : product.stock;
 
             return (
               <ProductCard
@@ -505,14 +686,18 @@ export default function ProduktoScreen() {
                 cardPressEnabled={false}
                 category={product.category}
                 imageUri={product.imageUri}
+                isWeightBased={product.isWeightBased}
                 key={product.id}
-                marginPercent={marginPercent}
+                marginPercent={formatMarginPercent(computeProfitMargin(product.costPriceCents, product.priceCents))}
                 minStock={product.minStock}
+                minStockLabel={formatProductMinStockLabel(product)}
                 name={product.name}
                 onActionPress={() => openEditModal(product)}
                 priceCents={product.priceCents}
+                priceLabel={formatProductPriceLabel(product)}
                 showInfoFlip
-                stock={product.stock}
+                stock={availableStock}
+                stockLabel={formatProductStockLabel(product)}
               />
             );
           })
@@ -531,7 +716,7 @@ export default function ProduktoScreen() {
         footer={
           <View style={{ gap: theme.spacing.sm }}>
             <ActionButton
-              disabled={saving}
+              disabled={saving || Boolean(pricingPreview.error)}
               label={saving ? "Saving..." : editingProduct ? "Update Product" : "Create Product"}
               onPress={() => void handleSave()}
             />
@@ -553,48 +738,436 @@ export default function ProduktoScreen() {
           label="Product name"
           onChangeText={(value) => setForm((current) => ({ ...current, name: value }))}
           placeholder="Example: Lucky Me Pancit Canton"
+          error={
+            shouldShowValidationMessage && form.name.trim().length > 0 && form.name.trim().length < 2
+              ? "Use at least 2 characters."
+              : null
+          }
           value={form.name}
         />
-        <View style={{ flexDirection: "row", gap: theme.spacing.md }}>
-          <View style={{ flex: 1 }}>
-            <InputField
-              keyboardType="decimal-pad"
-              label="Selling price"
-              onChangeText={(value) => setForm((current) => ({ ...current, price: value }))}
-              placeholder="0.00"
-              value={form.price}
-            />
+        <SurfaceCard style={{ gap: theme.spacing.sm }}>
+          <Text
+            style={{
+              color: theme.colors.text,
+              fontFamily: theme.typography.body,
+              fontSize: 14,
+              fontWeight: "700",
+            }}
+          >
+            Selling setup
+          </Text>
+          <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
+            {[
+              { label: "Per piece", value: false },
+              { label: "Sold by weight", value: true },
+            ].map((option) => {
+              const active = form.isWeightBased === option.value;
+
+              return (
+                <Pressable
+                  key={option.label}
+                  onPress={() => setForm((current) => ({ ...current, isWeightBased: option.value }))}
+                  style={({ pressed }) => ({
+                    backgroundColor: active ? theme.colors.primary : theme.colors.surface,
+                    borderColor: active ? theme.colors.primary : theme.colors.border,
+                    borderRadius: theme.radius.sm,
+                    borderWidth: 1,
+                    flex: 1,
+                    opacity: pressed ? 0.9 : 1,
+                    paddingHorizontal: theme.spacing.md,
+                    paddingVertical: 12,
+                  })}
+                >
+                  <Text
+                    style={{
+                      color: active ? theme.colors.primaryText : theme.colors.text,
+                      fontFamily: theme.typography.body,
+                      fontSize: 13,
+                      fontWeight: "700",
+                      textAlign: "center",
+                    }}
+                  >
+                    {option.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
           </View>
-          <View style={{ flex: 1 }}>
-            <InputField
-              keyboardType="decimal-pad"
-              label="Cost price"
-              onChangeText={(value) => setForm((current) => ({ ...current, costPrice: value }))}
-              placeholder="0.00"
-              value={form.costPrice}
-            />
-          </View>
-        </View>
-        <View style={{ flexDirection: "row", gap: theme.spacing.md }}>
-          <View style={{ flex: 1 }}>
-            <InputField
-              keyboardType="number-pad"
-              label="Stock"
-              onChangeText={(value) => setForm((current) => ({ ...current, stock: value }))}
-              placeholder="0"
-              value={form.stock}
-            />
-          </View>
-          <View style={{ flex: 1 }}>
-            <InputField
-              keyboardType="number-pad"
-              label="Min stock"
-              onChangeText={(value) => setForm((current) => ({ ...current, minStock: value }))}
-              placeholder="5"
-              value={form.minStock}
-            />
-          </View>
-        </View>
+        </SurfaceCard>
+
+        {form.isWeightBased ? (
+          <>
+            <SurfaceCard style={{ gap: theme.spacing.sm }}>
+              <Text
+                style={{
+                  color: theme.colors.text,
+                  fontFamily: theme.typography.body,
+                  fontSize: 14,
+                  fontWeight: "700",
+                }}
+              >
+                Weight pricing mode
+              </Text>
+              <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
+                {[
+                  { label: "Derived from total", value: "derived" as ProductPricingMode },
+                  { label: "Direct per kg", value: "direct" as ProductPricingMode },
+                ].map((option) => {
+                  const active = form.pricingMode === option.value;
+
+                  return (
+                    <Pressable
+                      key={option.value}
+                      onPress={() => setForm((current) => ({ ...current, pricingMode: option.value }))}
+                      style={({ pressed }) => ({
+                        backgroundColor: active ? theme.colors.primaryMuted : theme.colors.surface,
+                        borderColor: active ? theme.colors.primary : theme.colors.border,
+                        borderRadius: theme.radius.sm,
+                        borderWidth: 1,
+                        flex: 1,
+                        opacity: pressed ? 0.9 : 1,
+                        paddingHorizontal: theme.spacing.md,
+                        paddingVertical: 12,
+                      })}
+                    >
+                      <Text
+                        style={{
+                          color: active ? theme.colors.primary : theme.colors.text,
+                          fontFamily: theme.typography.body,
+                          fontSize: 13,
+                          fontWeight: "700",
+                          textAlign: "center",
+                        }}
+                      >
+                        {option.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </SurfaceCard>
+
+            <SurfaceCard style={{ gap: theme.spacing.sm }}>
+              <Text
+                style={{
+                  color: theme.colors.text,
+                  fontFamily: theme.typography.body,
+                  fontSize: 14,
+                  fontWeight: "700",
+                }}
+              >
+                Pricing strategy
+              </Text>
+              <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
+                {[
+                  { label: "Manual pricing", value: "manual" as ProductPricingStrategy },
+                  { label: "Margin-based", value: "margin_based" as ProductPricingStrategy },
+                ].map((option) => {
+                  const active = form.pricingStrategy === option.value;
+
+                  return (
+                    <Pressable
+                      key={option.value}
+                      onPress={() => setForm((current) => ({ ...current, pricingStrategy: option.value }))}
+                      style={({ pressed }) => ({
+                        backgroundColor: active ? theme.colors.primaryMuted : theme.colors.surface,
+                        borderColor: active ? theme.colors.primary : theme.colors.border,
+                        borderRadius: theme.radius.sm,
+                        borderWidth: 1,
+                        flex: 1,
+                        opacity: pressed ? 0.9 : 1,
+                        paddingHorizontal: theme.spacing.md,
+                        paddingVertical: 12,
+                      })}
+                    >
+                      <Text
+                        style={{
+                          color: active ? theme.colors.primary : theme.colors.text,
+                          fontFamily: theme.typography.body,
+                          fontSize: 13,
+                          fontWeight: "700",
+                          textAlign: "center",
+                        }}
+                      >
+                        {option.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </SurfaceCard>
+
+            <View style={{ flexDirection: "row", gap: theme.spacing.md }}>
+              <View style={{ flex: 1 }}>
+                <InputField
+                  keyboardType="decimal-pad"
+                  label="Total kilograms available"
+                  onChangeText={(value) => setForm((current) => ({ ...current, totalKgAvailable: value }))}
+                  placeholder="0.000"
+                  error={
+                    shouldShowValidationMessage &&
+                    (!Number.isFinite(parseDecimalInput(form.totalKgAvailable)) || parseDecimalInput(form.totalKgAvailable) <= 0)
+                      ? "Enter a value greater than zero."
+                      : null
+                  }
+                  value={form.totalKgAvailable}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <InputField
+                  keyboardType="decimal-pad"
+                  label="Low-stock threshold (kg)"
+                  onChangeText={(value) => setForm((current) => ({ ...current, minStock: value }))}
+                  placeholder="0.500"
+                  error={
+                    shouldShowValidationMessage &&
+                    (!Number.isFinite(parseDecimalInput(form.minStock)) || parseDecimalInput(form.minStock) < 0)
+                      ? "Enter zero or higher."
+                      : null
+                  }
+                  value={form.minStock}
+                />
+              </View>
+            </View>
+
+            {form.pricingMode === "derived" ? (
+              <View style={{ flexDirection: "row", gap: theme.spacing.md }}>
+                <View style={{ flex: 1 }}>
+                  <InputField
+                    keyboardType="decimal-pad"
+                    label="Total cost price"
+                    onChangeText={(value) => setForm((current) => ({ ...current, costPriceTotal: value }))}
+                    placeholder="0.00"
+                    value={form.costPriceTotal}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  {form.pricingStrategy === "manual" ? (
+                    <InputField
+                      keyboardType="decimal-pad"
+                      label="Total selling price"
+                      onChangeText={(value) => setForm((current) => ({ ...current, sellingPriceTotal: value }))}
+                      placeholder="0.00"
+                      value={form.sellingPriceTotal}
+                    />
+                  ) : (
+                    <InputField
+                      keyboardType="decimal-pad"
+                      label="Target margin (%)"
+                      onChangeText={(value) => setForm((current) => ({ ...current, targetMarginPercent: value }))}
+                      placeholder="25"
+                      value={form.targetMarginPercent}
+                    />
+                  )}
+                </View>
+              </View>
+            ) : (
+              <View style={{ flexDirection: "row", gap: theme.spacing.md }}>
+                <View style={{ flex: 1 }}>
+                  <InputField
+                    keyboardType="decimal-pad"
+                    label="Cost price per kg"
+                    onChangeText={(value) => setForm((current) => ({ ...current, costPricePerKg: value }))}
+                    placeholder="0.00"
+                    value={form.costPricePerKg}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  {form.pricingStrategy === "manual" ? (
+                    <InputField
+                      keyboardType="decimal-pad"
+                      label="Selling price per kg"
+                      onChangeText={(value) => setForm((current) => ({ ...current, sellingPricePerKg: value }))}
+                      placeholder="0.00"
+                      value={form.sellingPricePerKg}
+                    />
+                  ) : (
+                    <InputField
+                      keyboardType="decimal-pad"
+                      label="Target margin (%)"
+                      onChangeText={(value) => setForm((current) => ({ ...current, targetMarginPercent: value }))}
+                      placeholder="25"
+                      value={form.targetMarginPercent}
+                    />
+                  )}
+                </View>
+              </View>
+            )}
+          </>
+        ) : (
+          <>
+            <View style={{ flexDirection: "row", gap: theme.spacing.md }}>
+              <View style={{ flex: 1 }}>
+                <InputField
+                  keyboardType="decimal-pad"
+                  label="Selling price"
+                  onChangeText={(value) => setForm((current) => ({ ...current, price: value }))}
+                  placeholder="0.00"
+                  error={
+                    shouldShowValidationMessage &&
+                    !Number.isFinite(parseCurrencyToCents(form.price))
+                      ? "Enter a valid peso amount."
+                      : null
+                  }
+                  value={form.price}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <InputField
+                  keyboardType="decimal-pad"
+                  label="Cost price"
+                  onChangeText={(value) => setForm((current) => ({ ...current, costPrice: value }))}
+                  placeholder="0.00"
+                  error={
+                    shouldShowValidationMessage &&
+                    !Number.isFinite(parseCurrencyToCents(form.costPrice))
+                      ? "Enter a valid peso amount."
+                      : null
+                  }
+                  value={form.costPrice}
+                />
+              </View>
+            </View>
+            <View style={{ flexDirection: "row", gap: theme.spacing.md }}>
+              <View style={{ flex: 1 }}>
+                <InputField
+                  keyboardType="number-pad"
+                  label="Stock"
+                  onChangeText={(value) => setForm((current) => ({ ...current, stock: value }))}
+                  placeholder="0"
+                  error={
+                    shouldShowValidationMessage &&
+                    (!Number.isInteger(Number.parseInt(form.stock, 10)) || Number.parseInt(form.stock, 10) < 0)
+                      ? "Use a whole number."
+                      : null
+                  }
+                  value={form.stock}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <InputField
+                  keyboardType="number-pad"
+                  label="Min stock"
+                  onChangeText={(value) => setForm((current) => ({ ...current, minStock: value }))}
+                  placeholder="5"
+                  error={
+                    shouldShowValidationMessage &&
+                    (!Number.isInteger(Number.parseInt(form.minStock, 10)) || Number.parseInt(form.minStock, 10) < 0)
+                      ? "Use a whole number."
+                      : null
+                  }
+                  value={form.minStock}
+                />
+              </View>
+            </View>
+          </>
+        )}
+
+        {shouldShowValidationMessage && pricingPreview.error ? (
+          <SurfaceCard
+            style={{
+              backgroundColor: theme.colors.dangerMuted,
+              borderColor: theme.colors.danger,
+              borderWidth: 1,
+              gap: theme.spacing.xs,
+            }}
+          >
+            <Text
+              style={{
+                color: theme.colors.danger,
+                fontFamily: theme.typography.body,
+                fontSize: 13,
+                fontWeight: "700",
+              }}
+            >
+              Fix before saving
+            </Text>
+            <Text
+              style={{
+                color: theme.colors.text,
+                fontFamily: theme.typography.body,
+                fontSize: 13,
+                lineHeight: 19,
+              }}
+            >
+              {pricingPreview.error}
+            </Text>
+          </SurfaceCard>
+        ) : pricingPreview.error ? null : "type" in pricingPreview && pricingPreview.type === "weight" ? (
+          <SurfaceCard style={{ gap: theme.spacing.sm }}>
+            <Text
+              style={{
+                color: theme.colors.text,
+                fontFamily: theme.typography.body,
+                fontSize: 14,
+                fontWeight: "700",
+              }}
+            >
+              Live pricing preview
+            </Text>
+            <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+              <Text style={{ color: theme.colors.textMuted, fontFamily: theme.typography.body, fontSize: 13 }}>
+                Price per kg
+              </Text>
+              <Text style={{ color: theme.colors.primary, fontFamily: theme.typography.body, fontSize: 13, fontWeight: "700" }}>
+                {centsToDisplayValue(pricingPreview.computedPricePerKgCents)}
+              </Text>
+            </View>
+            <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+              <Text style={{ color: theme.colors.textMuted, fontFamily: theme.typography.body, fontSize: 13 }}>
+                Cost per kg
+              </Text>
+              <Text style={{ color: theme.colors.text, fontFamily: theme.typography.body, fontSize: 13, fontWeight: "700" }}>
+                {centsToDisplayValue(pricingPreview.costPricePerKgCents)}
+              </Text>
+            </View>
+            <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+              <Text style={{ color: theme.colors.textMuted, fontFamily: theme.typography.body, fontSize: 13 }}>
+                Total projected sales
+              </Text>
+              <Text style={{ color: theme.colors.text, fontFamily: theme.typography.body, fontSize: 13, fontWeight: "700" }}>
+                {centsToDisplayValue(pricingPreview.sellingPriceTotalCents)}
+              </Text>
+            </View>
+            <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+              <Text style={{ color: theme.colors.textMuted, fontFamily: theme.typography.body, fontSize: 13 }}>
+                Margin
+              </Text>
+              <Text style={{ color: theme.colors.success, fontFamily: theme.typography.body, fontSize: 13, fontWeight: "700" }}>
+                {formatMarginPercent(pricingPreview.realizedMarginPercent)}
+              </Text>
+            </View>
+          </SurfaceCard>
+        ) : "type" in pricingPreview && pricingPreview.type === "unit" ? (
+          <SurfaceCard style={{ gap: theme.spacing.sm }}>
+            <Text
+              style={{
+                color: theme.colors.text,
+                fontFamily: theme.typography.body,
+                fontSize: 14,
+                fontWeight: "700",
+              }}
+            >
+              Live pricing preview
+            </Text>
+            <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+              <Text style={{ color: theme.colors.textMuted, fontFamily: theme.typography.body, fontSize: 13 }}>
+                Selling price
+              </Text>
+              <Text style={{ color: theme.colors.primary, fontFamily: theme.typography.body, fontSize: 13, fontWeight: "700" }}>
+                {centsToDisplayValue(pricingPreview.priceCents)}
+              </Text>
+            </View>
+            <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+              <Text style={{ color: theme.colors.textMuted, fontFamily: theme.typography.body, fontSize: 13 }}>
+                Margin
+              </Text>
+              <Text style={{ color: theme.colors.success, fontFamily: theme.typography.body, fontSize: 13, fontWeight: "700" }}>
+                {formatMarginPercent(pricingPreview.marginPercent)}
+              </Text>
+            </View>
+          </SurfaceCard>
+        ) : null}
         <InputField
           label="Category"
           onChangeText={(value) => setForm((current) => ({ ...current, category: value }))}
