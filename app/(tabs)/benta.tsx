@@ -3,8 +3,10 @@ import { CameraView, useCameraPermissions, type BarcodeScanningResult } from "ex
 import { useFocusEffect } from "expo-router";
 import { useSQLiteContext } from "expo-sqlite";
 import Storage from "expo-sqlite/kv-store";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import * as Sharing from "expo-sharing";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Alert, Text, View } from "react-native";
+import { captureRef } from "react-native-view-shot";
 
 import { ActionButton } from "@/components/ActionButton";
 import { CartItem } from "@/components/CartItem";
@@ -13,6 +15,7 @@ import { InputField } from "@/components/InputField";
 import { MilestoneCelebration } from "@/components/MilestoneCelebration";
 import { ModalSheet } from "@/components/ModalSheet";
 import { ProductCard } from "@/components/ProductCard";
+import { ReceiptView } from "@/components/ReceiptView";
 import { Screen } from "@/components/Screen";
 import { StatusBadge } from "@/components/StatusBadge";
 import { SurfaceCard } from "@/components/SurfaceCard";
@@ -50,6 +53,19 @@ export default function BentaScreen() {
   const [tawadType, setTawadType] = useState<"fixed" | "percent">("fixed");
   const [milestoneAmount, setMilestoneAmount] = useState(0);
   const [milestoneVisible, setMilestoneVisible] = useState(false);
+  const [lastReceipt, setLastReceipt] = useState<{
+    saleId: number;
+    items: Array<{ name: string; quantity: number; priceCents: number }>;
+    subtotalCents: number;
+    discountCents: number;
+    totalCents: number;
+    cashPaidCents: number;
+    changeCents: number;
+    paymentMethod: string;
+    date: string;
+  } | null>(null);
+  const [storeName, setStoreName] = useState("");
+  const receiptRef = useRef<View>(null);
 
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
 
@@ -87,6 +103,9 @@ export default function BentaScreen() {
   useFocusEffect(
     useCallback(() => {
       void loadScreenData();
+      void Storage.getItem("tindahan.store-name").then((name) => {
+        if (name) setStoreName(name);
+      });
     }, [loadScreenData]),
   );
 
@@ -214,6 +233,19 @@ export default function BentaScreen() {
         utangDescription: selectedCustomer ? `POS sale for ${selectedCustomer.name}` : undefined,
       });
 
+      const receiptData = {
+        saleId,
+        items: payloadItems.map((item) => ({ name: item.name, quantity: item.quantity, priceCents: item.priceCents })),
+        subtotalCents: totalCents,
+        discountCents,
+        totalCents: finalTotalCents,
+        cashPaidCents: paymentMethod === "cash" && hasValidCash ? cashPaidCents : 0,
+        changeCents: paymentMethod === "cash" ? changeCents : 0,
+        paymentMethod,
+        date: new Date().toLocaleString("en-PH", { dateStyle: "medium", timeStyle: "short" }),
+      };
+      setLastReceipt(receiptData);
+
       clearCart();
       setCashInput("");
       setPaymentMethod("cash");
@@ -230,7 +262,26 @@ export default function BentaScreen() {
             ? `Linked to ${selectedCustomer?.name}'s utang ledger.`
             : `Saved as ${paymentMethod.toUpperCase()} payment.`;
 
-      Alert.alert("Sale completed", `Transaction #${saleId} saved successfully. ${successSuffix}`);
+      Alert.alert(
+        "Sale completed",
+        `Transaction #${saleId} saved successfully. ${successSuffix}`,
+        [
+          { text: "OK", style: "cancel" },
+          {
+            text: "Share Receipt",
+            onPress: async () => {
+              try {
+                // Small delay to let the hidden receipt render
+                await new Promise((r) => setTimeout(r, 200));
+                const uri = await captureRef(receiptRef, { format: "png", quality: 1 });
+                await Sharing.shareAsync(uri, { mimeType: "image/png", dialogTitle: "Share Receipt" });
+              } catch (err) {
+                Alert.alert("Share failed", String(err));
+              }
+            },
+          },
+        ],
+      );
 
       // Check for daily sales milestones
       const MILESTONES = [500000, 200000, 100000, 50000];
@@ -793,6 +844,24 @@ export default function BentaScreen() {
         onDismiss={() => setMilestoneVisible(false)}
         visible={milestoneVisible}
       />
+
+      {lastReceipt ? (
+        <View style={{ left: -9999, position: "absolute", top: -9999 }}>
+          <ReceiptView
+            ref={receiptRef}
+            cashPaidCents={lastReceipt.cashPaidCents}
+            changeCents={lastReceipt.changeCents}
+            date={lastReceipt.date}
+            discountCents={lastReceipt.discountCents}
+            items={lastReceipt.items}
+            paymentMethod={lastReceipt.paymentMethod}
+            saleId={lastReceipt.saleId}
+            storeName={storeName}
+            subtotalCents={lastReceipt.subtotalCents}
+            totalCents={lastReceipt.totalCents}
+          />
+        </View>
+      ) : null}
     </>
   );
 }
