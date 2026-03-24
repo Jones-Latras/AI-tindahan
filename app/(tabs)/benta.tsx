@@ -339,7 +339,7 @@ export default function BentaScreen() {
       <Screen
         contentContainerStyle={{
           gap: theme.spacing.md,
-          paddingBottom: 136,
+          paddingBottom: 104,
           paddingTop: theme.spacing.md,
         }}
         overlay={
@@ -350,7 +350,7 @@ export default function BentaScreen() {
               borderColor: cartItems.length > 0 ? theme.colors.primary : theme.colors.border,
               borderRadius: theme.radius.md,
               borderWidth: 1,
-              bottom: 86,
+              bottom: theme.spacing.sm,
               left: theme.spacing.lg,
               opacity: pressed ? 0.96 : 1,
               padding: theme.spacing.md,
