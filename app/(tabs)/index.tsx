@@ -321,7 +321,7 @@ export default function HomeScreen() {
               />
               <StatCard
                 icon="alert-circle"
-                label={language === "english" ? "Outstanding Credit" : "Outstanding Utang"}
+                label={language === "english" ? "Many Debts" : "Maraming Utang"}
                 tone="warning"
                 value={formatCurrencyFromCents(metrics.totalUtangCents)}
               />
