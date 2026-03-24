@@ -139,14 +139,91 @@ export interface ProductVelocity {
   isWeightBased: boolean;
 }
 
+export interface StoreAiProduct {
+  id: number;
+  name: string;
+  category: string | null;
+  barcode: string | null;
+  priceCents: number;
+  costPriceCents: number;
+  stock: number;
+  minStock: number;
+  isWeightBased: boolean;
+  pricingMode: ProductPricingMode;
+  pricingStrategy: ProductPricingStrategy;
+  totalKgAvailable: number | null;
+  costPriceTotalCents: number | null;
+  sellingPriceTotalCents: number | null;
+  costPricePerKgCents: number | null;
+  sellingPricePerKgCents: number | null;
+  targetMarginPercent: number | null;
+  computedPricePerKgCents: number | null;
+  createdAt: string;
+}
+
+export interface StoreAiCustomerLedgerEntry {
+  id: number;
+  amountCents: number;
+  amountPaidCents: number;
+  outstandingCents: number;
+  description: string | null;
+  createdAt: string;
+  paidAt: string | null;
+}
+
+export interface StoreAiCustomer {
+  id: number;
+  name: string;
+  phone: string | null;
+  trustScore: TrustScore;
+  balanceCents: number;
+  lastUtangDate: string | null;
+  overdueLevel: OverdueLevel;
+  ledgerEntries: StoreAiCustomerLedgerEntry[];
+}
+
+export interface StoreAiSaleItem {
+  id: number;
+  productId: number;
+  productName: string;
+  unitPriceCents: number;
+  unitCostCents: number;
+  quantity: number;
+  isWeightBased: boolean;
+  weightKg: number | null;
+  lineTotalCents: number;
+  lineCostTotalCents: number;
+}
+
+export interface StoreAiSale {
+  id: number;
+  totalCents: number;
+  cashPaidCents: number;
+  changeGivenCents: number;
+  discountCents: number;
+  paymentMethod: PaymentMethod;
+  customerId: number | null;
+  customerName: string | null;
+  createdAt: string;
+  items: StoreAiSaleItem[];
+}
+
 export interface StoreAiContext {
+  storeName: string | null;
   todaySalesCents: number;
+  todayTransactions: number;
+  todayProfitCents: number;
   totalUtangCents: number;
-  lowStockProducts: string[];
-  topProducts: string[];
-  delikadoCustomers: string[];
+  lowStockProducts: Product[];
+  topProducts: TopProductSummary[];
+  delikadoCustomers: RiskCustomerAlert[];
   paymentBreakdown: PaymentBreakdown;
-  customerBalances: Array<{ name: string; balanceCents: number; trustScore: TrustScore }>;
+  dailySales: DailySalesPoint[];
+  weeklyReports: WeeklyPaymentReport[];
+  productVelocity: ProductVelocity[];
+  products: StoreAiProduct[];
+  customers: StoreAiCustomer[];
+  sales: StoreAiSale[];
 }
 
 export interface CustomerRiskProfile {

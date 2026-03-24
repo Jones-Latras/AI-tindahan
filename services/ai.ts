@@ -16,9 +16,9 @@ import type {
   ChatMessage,
   CustomerRiskProfile,
   HomeAiBrief,
-  PaymentBreakdown,
   Product,
   ProductVelocity,
+  StoreAiContext,
   TrustScore,
 } from "@/types/models";
 import { formatCurrencyFromCents } from "@/utils/money";
@@ -324,13 +324,32 @@ function validateTrustScore(value: unknown): { trustScore: TrustScore; reason: s
   };
 }
 
-function summarizePaymentBreakdown(paymentBreakdown: PaymentBreakdown) {
-  return [
-    `Cash ${formatCurrencyFromCents(paymentBreakdown.cashCents)}`,
-    `GCash ${formatCurrencyFromCents(paymentBreakdown.gcashCents)}`,
-    `Maya ${formatCurrencyFromCents(paymentBreakdown.mayaCents)}`,
-    `Utang ${formatCurrencyFromCents(paymentBreakdown.utangCents)}`,
-  ].join(", ");
+function buildStoreAiPromptContext(context: StoreAiContext) {
+  return JSON.stringify(
+    {
+      storeProfile: {
+        storeName: context.storeName,
+      },
+      dashboard: {
+        todaySalesCents: context.todaySalesCents,
+        todayTransactions: context.todayTransactions,
+        todayProfitCents: context.todayProfitCents,
+        totalUtangCents: context.totalUtangCents,
+        paymentBreakdown: context.paymentBreakdown,
+        lowStockProducts: context.lowStockProducts,
+        delikadoCustomers: context.delikadoCustomers,
+        dailySales: context.dailySales,
+        weeklyReports: context.weeklyReports,
+        topProducts: context.topProducts,
+        productVelocity: context.productVelocity,
+      },
+      catalog: context.products,
+      customers: context.customers,
+      sales: context.sales,
+    },
+    null,
+    2,
+  );
 }
 
 function buildHeuristicRestockSuggestions(language: AppLanguage, atRiskProducts: ProductVelocity[]) {
@@ -619,7 +638,14 @@ export async function chatWithAlingAi(
       : "Hindi pa naka-connect ang Gemini key. Add EXPO_PUBLIC_GEMINI_KEY sa local .env mo para ma-unlock si Aling AI.";
   }
 
-  const context = await getStoreAiContext(db);
+  const [context, storedStoreName] = await Promise.all([
+    getStoreAiContext(db),
+    Storage.getItem("tindahan.store-name"),
+  ]);
+  const promptContext = buildStoreAiPromptContext({
+    ...context,
+    storeName: storedStoreName?.trim() || context.storeName,
+  });
   const trimmedHistory = history.slice(-8);
 
   try {
@@ -628,27 +654,19 @@ export async function chatWithAlingAi(
         "You are Aling AI, the smart assistant inside TindaHan AI.",
         getReplyLanguageInstruction(language),
         "Be encouraging, brief, and specific to the store data provided.",
-        "Never mention phone numbers. Only use the names and summaries provided.",
+        "The store data provided is authoritative. Use it as your source of truth for products, stock, sales, utang, customers, pricing, and payment mix.",
+        "When the user asks about specific products, customers, balances, stock, or sales, inspect the provided data carefully before answering.",
+        "Do not volunteer phone numbers unless the user explicitly asks for them.",
+        "You may use light markdown for structure and emphasis, including **bold**, short bullet lists, and numbered lists.",
+        "Do not use tables, code blocks, or HTML.",
       ].join(" "),
       contents: [
         {
           parts: [
             {
               text: [
-                "Store context:",
-                `Today's sales: ${formatCurrencyFromCents(context.todaySalesCents)}`,
-                `Outstanding utang: ${formatCurrencyFromCents(context.totalUtangCents)}`,
-                `Low stock products: ${context.lowStockProducts.join(", ") || "None"}`,
-                `Top products: ${context.topProducts.join(", ") || "None"}`,
-                `Delikado customers: ${context.delikadoCustomers.join(", ") || "None"}`,
-                `Payment mix today: ${summarizePaymentBreakdown(context.paymentBreakdown)}`,
-                `Customer balances: ${
-                  context.customerBalances.length > 0
-                    ? context.customerBalances
-                        .map((customer) => `${customer.name} ${formatCurrencyFromCents(customer.balanceCents)} (${customer.trustScore})`)
-                        .join(", ")
-                    : "None"
-                }`,
+                "Full store context JSON:",
+                promptContext,
               ].join("\n"),
             },
           ],

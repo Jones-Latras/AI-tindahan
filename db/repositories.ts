@@ -20,6 +20,7 @@ import type {
   SaleItemInput,
   SalesInsightContext,
   StoreAiContext,
+  StoreAiSale,
   TopProductSummary,
   TrustScore,
   UtangLedgerEntry,
@@ -70,6 +71,32 @@ type LedgerRow = {
   description: string | null;
   created_at: string;
   paid_at: string | null;
+};
+
+type SaleContextRow = {
+  id: number;
+  total_cents: number;
+  cash_paid_cents: number;
+  change_given_cents: number;
+  discount_cents: number;
+  payment_method: PaymentMethod;
+  customer_id: number | null;
+  customer_name: string | null;
+  created_at: string;
+};
+
+type SaleItemContextRow = {
+  id: number;
+  sale_id: number;
+  product_id: number;
+  product_name: string;
+  unit_price_cents: number;
+  unit_cost_cents: number;
+  quantity: number;
+  is_weight_based: number;
+  weight_kg: number | null;
+  line_total_cents: number;
+  line_cost_total_cents: number;
 };
 
 type PaymentBreakdownRow = {
@@ -141,6 +168,48 @@ function normalizePaymentBreakdown(row?: PaymentBreakdownRow | null): PaymentBre
     mayaCents: row?.maya_cents ?? 0,
     utangCents: row?.utang_cents ?? 0,
   };
+}
+
+function buildSaleItemsBySale(saleItemRows: SaleItemContextRow[]) {
+  const itemsBySale = new Map<number, StoreAiSale["items"]>();
+
+  for (const row of saleItemRows) {
+    const nextItem = {
+      id: row.id,
+      productId: row.product_id,
+      productName: row.product_name,
+      unitPriceCents: row.unit_price_cents,
+      unitCostCents: row.unit_cost_cents,
+      quantity: row.quantity,
+      isWeightBased: Boolean(row.is_weight_based),
+      weightKg: row.weight_kg,
+      lineTotalCents: row.line_total_cents,
+      lineCostTotalCents: row.line_cost_total_cents,
+    };
+
+    const items = itemsBySale.get(row.sale_id) ?? [];
+    items.push(nextItem);
+    itemsBySale.set(row.sale_id, items);
+  }
+
+  return itemsBySale;
+}
+
+function mapSalesHistory(salesRows: SaleContextRow[], saleItemRows: SaleItemContextRow[]): StoreAiSale[] {
+  const itemsBySale = buildSaleItemsBySale(saleItemRows);
+
+  return salesRows.map((sale) => ({
+    id: sale.id,
+    totalCents: sale.total_cents,
+    cashPaidCents: sale.cash_paid_cents,
+    changeGivenCents: sale.change_given_cents,
+    discountCents: sale.discount_cents,
+    paymentMethod: sale.payment_method,
+    customerId: sale.customer_id,
+    customerName: sale.customer_name,
+    createdAt: sale.created_at,
+    items: itemsBySale.get(sale.id) ?? [],
+  }));
 }
 
 function assertMoney(value: number, label: string) {
@@ -633,59 +702,190 @@ export async function getProductSalesVelocity(db: SQLiteDatabase): Promise<Produ
 }
 
 export async function getStoreAiContext(db: SQLiteDatabase): Promise<StoreAiContext> {
-  const homeMetrics = await getHomeMetrics(db);
-  const topProducts = await db.getAllAsync<{ name: string }>(
-    `
-      SELECT
-        p.name
-      FROM sale_items si
-      INNER JOIN sales s ON s.id = si.sale_id
-      INNER JOIN products p ON p.id = si.product_id
-      WHERE DATE(s.created_at, 'localtime') >= DATE('now', '-29 days', 'localtime')
-      GROUP BY p.id, p.name
-      ORDER BY
-        SUM(
-          CASE
-            WHEN si.is_weight_based = 1 THEN COALESCE(si.weight_kg, 0)
-            ELSE si.quantity
-          END
-        ) DESC,
-        p.name ASC
-      LIMIT 5
-    `,
-  );
-  const customerBalances = await db.getAllAsync<{
-    name: string;
-    balance_cents: number;
-    trust_score: TrustScore;
-  }>(
-    `
-      SELECT
-        c.name,
-        COALESCE(SUM(u.amount_cents - u.amount_paid_cents), 0) AS balance_cents,
-        c.trust_score
-      FROM customers c
-      LEFT JOIN utang u ON u.customer_id = c.id
-      GROUP BY c.id, c.name, c.trust_score
-      HAVING balance_cents > 0
-      ORDER BY balance_cents DESC, c.name ASC
-      LIMIT 5
-    `,
-  );
+  const [
+    homeMetrics,
+    salesInsight,
+    productVelocity,
+    weeklyReports,
+    products,
+    customers,
+    ledgerRows,
+    salesRows,
+    saleItemRows,
+  ] = await Promise.all([
+    getHomeMetrics(db),
+    getSalesInsightContext(db),
+    getProductSalesVelocity(db),
+    getWeeklyPaymentBreakdown(db),
+    listProducts(db),
+    listCustomersWithBalances(db),
+    db.getAllAsync<LedgerRow>(
+      `
+        SELECT
+          id,
+          customer_id,
+          amount_cents,
+          amount_paid_cents,
+          description,
+          created_at,
+          paid_at
+        FROM utang
+        ORDER BY customer_id ASC, created_at DESC
+      `,
+    ),
+    db.getAllAsync<SaleContextRow>(
+      `
+        SELECT
+          s.id,
+          s.total_cents,
+          s.cash_paid_cents,
+          s.change_given_cents,
+          s.discount_cents,
+          s.payment_method,
+          s.customer_id,
+          c.name AS customer_name,
+          s.created_at
+        FROM sales s
+        LEFT JOIN customers c ON c.id = s.customer_id
+        ORDER BY s.created_at DESC, s.id DESC
+      `,
+    ),
+    db.getAllAsync<SaleItemContextRow>(
+      `
+        SELECT
+          id,
+          sale_id,
+          product_id,
+          product_name,
+          unit_price_cents,
+          unit_cost_cents,
+          quantity,
+          is_weight_based,
+          weight_kg,
+          line_total_cents,
+          line_cost_total_cents
+        FROM sale_items
+        ORDER BY sale_id DESC, id ASC
+      `,
+    ),
+  ]);
+
+  const ledgerByCustomer = new Map<number, Array<{
+    id: number;
+    amountCents: number;
+    amountPaidCents: number;
+    outstandingCents: number;
+    description: string | null;
+    createdAt: string;
+    paidAt: string | null;
+  }>>();
+
+  for (const row of ledgerRows) {
+    const nextEntry = {
+      id: row.id,
+      amountCents: row.amount_cents,
+      amountPaidCents: row.amount_paid_cents,
+      outstandingCents: Math.max(0, row.amount_cents - row.amount_paid_cents),
+      description: row.description,
+      createdAt: row.created_at,
+      paidAt: row.paid_at,
+    };
+
+    const entries = ledgerByCustomer.get(row.customer_id) ?? [];
+    entries.push(nextEntry);
+    ledgerByCustomer.set(row.customer_id, entries);
+  }
+
+  const sales = mapSalesHistory(salesRows, saleItemRows);
 
   return {
+    storeName: null,
     todaySalesCents: homeMetrics.todaySalesCents,
+    todayTransactions: homeMetrics.todayTransactions,
+    todayProfitCents: homeMetrics.todayProfitCents,
     totalUtangCents: homeMetrics.totalUtangCents,
-    lowStockProducts: homeMetrics.lowStockProducts.map((product) => product.name),
-    topProducts: topProducts.map((product) => product.name),
-    delikadoCustomers: homeMetrics.delikadoCustomers.map((customer) => customer.name),
+    lowStockProducts: homeMetrics.lowStockProducts,
+    topProducts: salesInsight.topProducts,
+    delikadoCustomers: homeMetrics.delikadoCustomers,
     paymentBreakdown: homeMetrics.paymentBreakdown,
-    customerBalances: customerBalances.map((row) => ({
-      name: row.name,
-      balanceCents: row.balance_cents,
-      trustScore: row.trust_score,
+    dailySales: salesInsight.dailySales,
+    weeklyReports,
+    productVelocity,
+    products: products.map((product) => ({
+      id: product.id,
+      name: product.name,
+      category: product.category,
+      barcode: product.barcode,
+      priceCents: product.priceCents,
+      costPriceCents: product.costPriceCents,
+      stock: product.stock,
+      minStock: product.minStock,
+      isWeightBased: product.isWeightBased,
+      pricingMode: product.pricingMode,
+      pricingStrategy: product.pricingStrategy,
+      totalKgAvailable: product.totalKgAvailable,
+      costPriceTotalCents: product.costPriceTotalCents,
+      sellingPriceTotalCents: product.sellingPriceTotalCents,
+      costPricePerKgCents: product.costPricePerKgCents,
+      sellingPricePerKgCents: product.sellingPricePerKgCents,
+      targetMarginPercent: product.targetMarginPercent,
+      computedPricePerKgCents: product.computedPricePerKgCents,
+      createdAt: product.createdAt,
     })),
+    customers: customers.map((customer) => ({
+      id: customer.id,
+      name: customer.name,
+      phone: customer.phone,
+      trustScore: customer.trustScore,
+      balanceCents: customer.balanceCents,
+      lastUtangDate: customer.lastUtangDate,
+      overdueLevel: customer.overdueLevel,
+      ledgerEntries: ledgerByCustomer.get(customer.id) ?? [],
+    })),
+    sales,
   };
+}
+
+export async function listSalesHistory(db: SQLiteDatabase): Promise<StoreAiSale[]> {
+  const [salesRows, saleItemRows] = await Promise.all([
+    db.getAllAsync<SaleContextRow>(
+      `
+        SELECT
+          s.id,
+          s.total_cents,
+          s.cash_paid_cents,
+          s.change_given_cents,
+          s.discount_cents,
+          s.payment_method,
+          s.customer_id,
+          c.name AS customer_name,
+          s.created_at
+        FROM sales s
+        LEFT JOIN customers c ON c.id = s.customer_id
+        ORDER BY s.created_at DESC, s.id DESC
+      `,
+    ),
+    db.getAllAsync<SaleItemContextRow>(
+      `
+        SELECT
+          id,
+          sale_id,
+          product_id,
+          product_name,
+          unit_price_cents,
+          unit_cost_cents,
+          quantity,
+          is_weight_based,
+          weight_kg,
+          line_total_cents,
+          line_cost_total_cents
+        FROM sale_items
+        ORDER BY sale_id DESC, id ASC
+      `,
+    ),
+  ]);
+
+  return mapSalesHistory(salesRows, saleItemRows);
 }
 
 export async function listCustomersWithBalances(db: SQLiteDatabase): Promise<CustomerSummary[]> {

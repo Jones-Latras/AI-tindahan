@@ -7,18 +7,20 @@ import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from "rea
 
 import { ActionButton } from "@/components/ActionButton";
 import { AutoSwipeSuggestionCarousel } from "@/components/AutoSwipeSuggestionCarousel";
+import { ChatRichText } from "@/components/ChatRichText";
 import { EmptyState } from "@/components/EmptyState";
 import { InputField } from "@/components/InputField";
 import { ModalSheet } from "@/components/ModalSheet";
+import { ReceiptView } from "@/components/ReceiptView";
 import { Screen } from "@/components/Screen";
 import { StatCard } from "@/components/StatCard";
 import { StatusBadge } from "@/components/StatusBadge";
 import { SurfaceCard } from "@/components/SurfaceCard";
 import { useAppLanguage } from "@/contexts/LanguageContext";
 import { useAppTheme } from "@/contexts/ThemeContext";
-import { getHomeMetrics, getProductSalesVelocity, getWeeklyPaymentBreakdown } from "@/db/repositories";
+import { getHomeMetrics, getProductSalesVelocity, getWeeklyPaymentBreakdown, listSalesHistory } from "@/db/repositories";
 import { chatWithAlingAi, getOrCreateHomeAiBrief, isGeminiReady } from "@/services/ai";
-import type { ChatMessage, HomeAiBrief, HomeMetrics, ProductVelocity, WeeklyPaymentReport } from "@/types/models";
+import type { ChatMessage, HomeAiBrief, HomeMetrics, ProductVelocity, StoreAiSale, WeeklyPaymentReport } from "@/types/models";
 import { formatCurrencyFromCents } from "@/utils/money";
 import { formatWeightKg } from "@/utils/pricing";
 
@@ -31,7 +33,7 @@ function createChatMessage(role: ChatMessage["role"], text: string): ChatMessage
   };
 }
 
-type HomePanel = "analytics" | "inventory" | "credit";
+type HomePanel = "analytics" | "inventory" | "credit" | "history";
 
 type HomeShortcutCardProps = {
   icon: keyof typeof Feather.glyphMap;
@@ -119,6 +121,34 @@ function getMillisecondsUntilNextMidnight(now = new Date()) {
   return Math.max(1000, nextMidnight.getTime() - now.getTime());
 }
 
+function getPaymentMethodLabel(paymentMethod: StoreAiSale["paymentMethod"]) {
+  if (paymentMethod === "gcash") {
+    return "GCash";
+  }
+
+  if (paymentMethod === "maya") {
+    return "Maya";
+  }
+
+  if (paymentMethod === "utang") {
+    return "Utang";
+  }
+
+  return "Cash";
+}
+
+function getPaymentMethodTone(paymentMethod: StoreAiSale["paymentMethod"]) {
+  if (paymentMethod === "cash") {
+    return "success" as const;
+  }
+
+  if (paymentMethod === "utang") {
+    return "warning" as const;
+  }
+
+  return "primary" as const;
+}
+
 export default function HomeScreen() {
   const db = useSQLiteContext();
   const { theme } = useAppTheme();
@@ -135,6 +165,9 @@ export default function HomeScreen() {
   const [chatInput, setChatInput] = useState("");
   const [sendingChat, setSendingChat] = useState(false);
   const [activePanel, setActivePanel] = useState<HomePanel | null>(null);
+  const [salesHistory, setSalesHistory] = useState<StoreAiSale[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [receiptSale, setReceiptSale] = useState<StoreAiSale | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>(() => [createChatMessage("assistant", t("home.aiWelcome"))]);
   const compactCardStyle = {
     gap: theme.spacing.sm,
@@ -148,28 +181,35 @@ export default function HomeScreen() {
       title: string;
       tone: HomeShortcutCardProps["tone"];
     }> = [
-      {
-        icon: "bar-chart-2",
-        key: "analytics",
-        subtitle: t("home.shortcuts.analytics.subtitle"),
-        title: t("home.shortcuts.analytics.title"),
-        tone: "primary",
-      },
-      {
-        icon: "package",
-        key: "inventory",
-        subtitle: t("home.shortcuts.inventory.subtitle"),
-        title: t("home.shortcuts.inventory.title"),
-        tone: "warning",
-      },
-      {
-        icon: "users",
-        key: "credit",
-        subtitle: t("home.shortcuts.credit.subtitle"),
-        title: t("home.shortcuts.credit.title"),
-        tone: "danger",
-      },
-    ];
+        {
+          icon: "bar-chart-2",
+          key: "analytics",
+          subtitle: t("home.shortcuts.analytics.subtitle"),
+          title: t("home.shortcuts.analytics.title"),
+          tone: "primary",
+        },
+        {
+          icon: "package",
+          key: "inventory",
+          subtitle: t("home.shortcuts.inventory.subtitle"),
+          title: t("home.shortcuts.inventory.title"),
+          tone: "warning",
+        },
+        {
+          icon: "users",
+          key: "credit",
+          subtitle: t("home.shortcuts.credit.subtitle"),
+          title: t("home.shortcuts.credit.title"),
+          tone: "danger",
+        },
+        {
+          icon: "file-text",
+          key: "history",
+          subtitle: t("home.shortcuts.history.subtitle"),
+          title: t("home.shortcuts.history.title"),
+          tone: "accent",
+        },
+      ];
 
     return items;
   }, [t]);
@@ -252,6 +292,23 @@ export default function HomeScreen() {
       setSendingChat(false);
     }
   }, [chatInput, db, language, messages, sendingChat]);
+
+  const loadSalesHistory = useCallback(async () => {
+    setHistoryLoading(true);
+
+    try {
+      const nextHistory = await listSalesHistory(db);
+      setSalesHistory(nextHistory);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [db]);
+
+  useEffect(() => {
+    if (activePanel === "history") {
+      void loadSalesHistory();
+    }
+  }, [activePanel, loadSalesHistory]);
 
   const renderAnalyticsPanel = () => {
     if (!metrics) {
@@ -664,6 +721,277 @@ export default function HomeScreen() {
     );
   };
 
+  const renderHistoryPanel = () => {
+    const locale = language === "english" ? "en-PH" : "fil-PH";
+
+    const formatHistoryDate = (dateIso: string) =>
+      new Date(dateIso).toLocaleString(locale, {
+        dateStyle: "medium",
+        timeStyle: "short",
+      });
+
+    if (historyLoading) {
+      return (
+        <SurfaceCard style={[compactCardStyle, { alignItems: "center" }]}>
+          <ActivityIndicator color={theme.colors.primary} />
+          <Text
+            style={{
+              color: theme.colors.textMuted,
+              fontFamily: theme.typography.body,
+              fontSize: 14,
+            }}
+          >
+            {t("home.history.loading")}
+          </Text>
+        </SurfaceCard>
+      );
+    }
+
+    if (salesHistory.length === 0) {
+      return (
+        <EmptyState
+          icon="file-text"
+          message={t("home.history.emptyMessage")}
+          title={t("home.history.emptyTitle")}
+        />
+      );
+    }
+
+    return (
+      <>
+        {salesHistory.map((sale) => {
+          const subtotalCents = sale.totalCents + sale.discountCents;
+          const paymentLabel = getPaymentMethodLabel(sale.paymentMethod);
+
+          return (
+            <SurfaceCard key={sale.id} style={compactCardStyle}>
+              <View style={{ alignItems: "flex-start", flexDirection: "row", gap: theme.spacing.md, justifyContent: "space-between" }}>
+                <View style={{ flex: 1, gap: 4 }}>
+                  <Text
+                    style={{
+                      color: theme.colors.text,
+                      fontFamily: theme.typography.display,
+                      fontSize: 22,
+                      fontWeight: "700",
+                    }}
+                  >
+                    #{sale.id}
+                  </Text>
+                  <Text
+                    style={{
+                      color: theme.colors.textMuted,
+                      fontFamily: theme.typography.body,
+                      fontSize: 13,
+                      lineHeight: 19,
+                    }}
+                  >
+                    {formatHistoryDate(sale.createdAt)}
+                  </Text>
+                </View>
+
+                <View style={{ alignItems: "flex-end", gap: theme.spacing.xs }}>
+                  <StatusBadge label={paymentLabel} tone={getPaymentMethodTone(sale.paymentMethod)} />
+                  <Text
+                    style={{
+                      color: theme.colors.primary,
+                      fontFamily: theme.typography.display,
+                      fontSize: 20,
+                      fontWeight: "700",
+                    }}
+                  >
+                    {formatCurrencyFromCents(sale.totalCents)}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
+                <StatusBadge
+                  label={`${t("home.history.items")}: ${sale.items.length}`}
+                  tone="neutral"
+                />
+                <StatusBadge
+                  label={`${t("home.history.customer")}: ${sale.customerName ?? t("home.history.walkIn")}`}
+                  tone={sale.customerName ? "warning" : "neutral"}
+                />
+                {sale.discountCents > 0 ? (
+                  <StatusBadge
+                    label={`${t("home.history.discount")}: ${formatCurrencyFromCents(sale.discountCents)}`}
+                    tone="success"
+                  />
+                ) : null}
+              </View>
+
+              <View
+                style={{
+                  backgroundColor: theme.colors.surface,
+                  borderColor: theme.colors.border,
+                  borderRadius: theme.radius.sm,
+                  borderWidth: 1,
+                  gap: theme.spacing.sm,
+                  padding: theme.spacing.md,
+                }}
+              >
+                {sale.items.map((item) => (
+                  <View
+                    key={item.id}
+                    style={{
+                      alignItems: "flex-start",
+                      flexDirection: "row",
+                      gap: theme.spacing.md,
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <View style={{ flex: 1, gap: 2 }}>
+                      <Text
+                        style={{
+                          color: theme.colors.text,
+                          fontFamily: theme.typography.body,
+                          fontSize: 14,
+                          fontWeight: "700",
+                        }}
+                      >
+                        {item.productName}
+                      </Text>
+                      <Text
+                        style={{
+                          color: theme.colors.textMuted,
+                          fontFamily: theme.typography.body,
+                          fontSize: 12,
+                          lineHeight: 18,
+                        }}
+                      >
+                        {item.isWeightBased
+                          ? `${formatWeightKg(item.weightKg ?? 0)} kg x ${formatCurrencyFromCents(item.unitPriceCents)}/kg`
+                          : `${item.quantity}x ${formatCurrencyFromCents(item.unitPriceCents)}`}
+                      </Text>
+                    </View>
+                    <Text
+                      style={{
+                        color: theme.colors.text,
+                        fontFamily: theme.typography.body,
+                        fontSize: 13,
+                        fontWeight: "700",
+                      }}
+                    >
+                      {formatCurrencyFromCents(item.lineTotalCents)}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+
+              <View
+                style={{
+                  backgroundColor: theme.colors.surfaceMuted,
+                  borderRadius: theme.radius.sm,
+                  gap: theme.spacing.xs,
+                  padding: theme.spacing.md,
+                }}
+              >
+                <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                  <Text
+                    style={{
+                      color: theme.colors.textMuted,
+                      fontFamily: theme.typography.body,
+                      fontSize: 12,
+                    }}
+                  >
+                    {t("home.history.subtotal")}
+                  </Text>
+                  <Text
+                    style={{
+                      color: theme.colors.text,
+                      fontFamily: theme.typography.body,
+                      fontSize: 12,
+                      fontWeight: "700",
+                    }}
+                  >
+                    {formatCurrencyFromCents(subtotalCents)}
+                  </Text>
+                </View>
+                {sale.discountCents > 0 ? (
+                  <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                    <Text
+                      style={{
+                        color: theme.colors.success,
+                        fontFamily: theme.typography.body,
+                        fontSize: 12,
+                        fontWeight: "700",
+                      }}
+                    >
+                      {t("home.history.discount")}
+                    </Text>
+                    <Text
+                      style={{
+                        color: theme.colors.success,
+                        fontFamily: theme.typography.body,
+                        fontSize: 12,
+                        fontWeight: "700",
+                      }}
+                    >
+                      -{formatCurrencyFromCents(sale.discountCents)}
+                    </Text>
+                  </View>
+                ) : null}
+                {sale.paymentMethod === "cash" ? (
+                  <>
+                    <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                      <Text
+                        style={{
+                          color: theme.colors.textMuted,
+                          fontFamily: theme.typography.body,
+                          fontSize: 12,
+                        }}
+                      >
+                        {t("home.history.cashReceived")}
+                      </Text>
+                      <Text
+                        style={{
+                          color: theme.colors.text,
+                          fontFamily: theme.typography.body,
+                          fontSize: 12,
+                          fontWeight: "700",
+                        }}
+                      >
+                        {formatCurrencyFromCents(sale.cashPaidCents)}
+                      </Text>
+                    </View>
+                    <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                      <Text
+                        style={{
+                          color: theme.colors.textMuted,
+                          fontFamily: theme.typography.body,
+                          fontSize: 12,
+                        }}
+                      >
+                        {t("home.history.change")}
+                      </Text>
+                      <Text
+                        style={{
+                          color: theme.colors.text,
+                          fontFamily: theme.typography.body,
+                          fontSize: 12,
+                          fontWeight: "700",
+                        }}
+                      >
+                        {formatCurrencyFromCents(sale.changeGivenCents)}
+                      </Text>
+                    </View>
+                  </>
+                ) : null}
+              </View>
+
+              <ActionButton
+                label={t("home.history.viewReceipt")}
+                onPress={() => setReceiptSale(sale)}
+                variant="secondary"
+              />
+            </SurfaceCard>
+          );
+        })}
+      </>
+    );
+  };
+
   const renderActivePanelContent = () => {
     if (activePanel === "analytics") {
       return renderAnalyticsPanel();
@@ -675,6 +1003,10 @@ export default function HomeScreen() {
 
     if (activePanel === "credit") {
       return renderCreditPanel();
+    }
+
+    if (activePanel === "history") {
+      return renderHistoryPanel();
     }
 
     return null;
@@ -695,7 +1027,7 @@ export default function HomeScreen() {
               alignItems: "center",
               backgroundColor: theme.colors.primary,
               borderRadius: theme.radius.pill,
-              bottom: 92,
+              bottom: 30,
               elevation: 4,
               flexDirection: "row",
               gap: theme.spacing.sm,
@@ -820,8 +1152,8 @@ export default function HomeScreen() {
                   fontWeight: "700",
                 }}
               >
-                  {t("home.brief.restock")}
-                </Text>
+                {t("home.brief.restock")}
+              </Text>
               {brief.restockSuggestions.length > 0 ? (
                 <AutoSwipeSuggestionCarousel suggestions={brief.restockSuggestions} />
               ) : (
@@ -903,6 +1235,53 @@ export default function HomeScreen() {
       </ModalSheet>
 
       <ModalSheet
+        fullHeight
+        footer={<ActionButton label={t("home.history.closeReceipt")} onPress={() => setReceiptSale(null)} variant="ghost" />}
+        onClose={() => setReceiptSale(null)}
+        subtitle={
+          receiptSale
+            ? t("home.history.receiptSubtitle", {
+                date:
+                  new Date(receiptSale.createdAt).toLocaleString(language === "english" ? "en-PH" : "fil-PH", {
+                    dateStyle: "medium",
+                    timeStyle: "short",
+                  }),
+                id: receiptSale.id,
+              })
+            : ""
+        }
+        title={t("home.history.receiptTitle")}
+        visible={receiptSale !== null}
+      >
+        {receiptSale ? (
+          <View style={{ alignItems: "center", paddingBottom: theme.spacing.md }}>
+            <ReceiptView
+              cashPaidCents={receiptSale.cashPaidCents}
+              changeCents={receiptSale.changeGivenCents}
+              date={new Date(receiptSale.createdAt).toLocaleString(language === "english" ? "en-PH" : "fil-PH", {
+                dateStyle: "medium",
+                timeStyle: "short",
+              })}
+              discountCents={receiptSale.discountCents}
+              items={receiptSale.items.map((item) => ({
+                name: item.productName,
+                quantity: item.quantity,
+                weightKg: item.weightKg,
+                priceCents: item.unitPriceCents,
+                lineTotalCents: item.lineTotalCents,
+                isWeightBased: item.isWeightBased,
+              }))}
+              paymentMethod={receiptSale.paymentMethod}
+              saleId={receiptSale.id}
+              storeName={storeName}
+              subtotalCents={receiptSale.totalCents + receiptSale.discountCents}
+              totalCents={receiptSale.totalCents}
+            />
+          </View>
+        ) : null}
+      </ModalSheet>
+
+      <ModalSheet
         footer={
           <View style={{ gap: theme.spacing.sm }}>
             <InputField
@@ -941,16 +1320,10 @@ export default function HomeScreen() {
                 padding: theme.spacing.md,
               }}
             >
-              <Text
-                style={{
-                  color: message.role === "user" ? theme.colors.primaryText : theme.colors.text,
-                  fontFamily: theme.typography.body,
-                  fontSize: 14,
-                  lineHeight: 22,
-                }}
-              >
-                {message.text}
-              </Text>
+              <ChatRichText
+                color={message.role === "user" ? theme.colors.primaryText : theme.colors.text}
+                text={message.text}
+              />
             </View>
           ))}
 
@@ -972,9 +1345,9 @@ export default function HomeScreen() {
                   fontSize: 14,
                 }}
               >
-                  {t("home.chat.aiThinking")}
-                </Text>
-              </View>
+                {t("home.chat.aiThinking")}
+              </Text>
+            </View>
           ) : null}
         </ScrollView>
       </ModalSheet>
