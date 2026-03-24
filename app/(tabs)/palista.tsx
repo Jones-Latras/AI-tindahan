@@ -1,8 +1,18 @@
 import { Feather } from "@expo/vector-icons";
 import { useFocusEffect } from "expo-router";
 import { useSQLiteContext } from "expo-sqlite";
-import { useCallback, useMemo, useState } from "react";
-import { ActivityIndicator, Alert, Text, View } from "react-native";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  ActivityIndicator,
+  Alert,
+  Animated,
+  Easing,
+  LayoutAnimation,
+  Platform,
+  Text,
+  UIManager,
+  View,
+} from "react-native";
 
 import { ActionButton } from "@/components/ActionButton";
 import { EmptyState } from "@/components/EmptyState";
@@ -90,26 +100,65 @@ export default function PalistaScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [refreshingScores, setRefreshingScores] = useState(false);
+  const [refreshingList, setRefreshingList] = useState(false);
+  const hasLoadedCustomersRef = useRef(false);
+  const customerListOpacity = useRef(new Animated.Value(1)).current;
 
-  const refreshCustomers = useCallback(async () => {
-    setLoading(true);
-
-    try {
-      const nextCustomers = await listCustomersWithBalances(db);
-      setCustomers(nextCustomers);
-
-      if (selectedCustomer) {
-        const refreshedSelected = nextCustomers.find((customer) => customer.id === selectedCustomer.id) ?? null;
-        setSelectedCustomer(refreshedSelected);
-      }
-    } finally {
-      setLoading(false);
+  useEffect(() => {
+    if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
+      UIManager.setLayoutAnimationEnabledExperimental(true);
     }
-  }, [db, selectedCustomer]);
+  }, []);
+
+  const animateCustomerList = useCallback(
+    (toValue: number, duration: number) => {
+      Animated.timing(customerListOpacity, {
+        duration,
+        easing: Easing.out(Easing.cubic),
+        toValue,
+        useNativeDriver: true,
+      }).start();
+    },
+    [customerListOpacity],
+  );
+
+  const refreshCustomers = useCallback(
+    async (mode: "foreground" | "background" = "background") => {
+      const showSkeleton = mode === "foreground" && !hasLoadedCustomersRef.current;
+
+      if (showSkeleton) {
+        setLoading(true);
+      } else {
+        setRefreshingList(true);
+        animateCustomerList(0.86, 120);
+      }
+
+      try {
+        const nextCustomers = await listCustomersWithBalances(db);
+        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+        setCustomers(nextCustomers);
+        setSelectedCustomer((currentSelected) =>
+          currentSelected
+            ? nextCustomers.find((customer) => customer.id === currentSelected.id) ?? null
+            : currentSelected,
+        );
+        hasLoadedCustomersRef.current = true;
+      } finally {
+        if (showSkeleton) {
+          setLoading(false);
+        } else {
+          setRefreshingList(false);
+          animateCustomerList(1, 200);
+        }
+      }
+    },
+    [animateCustomerList, db],
+  );
 
   const refreshLedger = useCallback(
     async (customerId: number) => {
       const nextLedger = await listCustomerLedger(db, customerId);
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
       setLedgerEntries(nextLedger);
     },
     [db],
@@ -117,7 +166,7 @@ export default function PalistaScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      void refreshCustomers();
+      void refreshCustomers(hasLoadedCustomersRef.current ? "background" : "foreground");
     }, [refreshCustomers]),
   );
 
@@ -160,7 +209,7 @@ export default function PalistaScreen() {
       setCustomerModalVisible(false);
       setEditingCustomer(null);
       setCustomerForm(emptyCustomerForm);
-      await refreshCustomers();
+      await refreshCustomers("background");
     } catch (error) {
       const message =
         error instanceof Error
@@ -175,7 +224,7 @@ export default function PalistaScreen() {
   const refreshSingleTrustScore = useCallback(
     async (customerId: number) => {
       await refreshCustomerTrustScore(db, customerId);
-      await refreshCustomers();
+      await refreshCustomers("background");
     },
     [db, refreshCustomers],
   );
@@ -247,7 +296,7 @@ export default function PalistaScreen() {
 
     try {
       await refreshAllCustomerTrustScores(db);
-      await refreshCustomers();
+      await refreshCustomers("background");
       Alert.alert("AI scores refreshed", "Customer trust scores have been updated.");
     } catch {
       Alert.alert("Refresh failed", "Trust scores could not be refreshed right now.");
@@ -259,16 +308,34 @@ export default function PalistaScreen() {
   return (
     <Screen subtitle="Track customers, outstanding balances, partial payments, and AI trust score updates." title="Palista">
       <SurfaceCard style={{ gap: theme.spacing.md }}>
-        <Text
-          style={{
-            color: theme.colors.text,
-            fontFamily: theme.typography.display,
-            fontSize: 24,
-            fontWeight: "700",
-          }}
-        >
-          Customer Ledger
-        </Text>
+        <View style={{ alignItems: "center", flexDirection: "row", justifyContent: "space-between", gap: theme.spacing.md }}>
+          <Text
+            style={{
+              color: theme.colors.text,
+              flex: 1,
+              fontFamily: theme.typography.display,
+              fontSize: 24,
+              fontWeight: "700",
+            }}
+          >
+            Customer Ledger
+          </Text>
+          {refreshingList ? (
+            <View style={{ alignItems: "center", flexDirection: "row", gap: theme.spacing.xs }}>
+              <ActivityIndicator color={theme.colors.primary} size="small" />
+              <Text
+                style={{
+                  color: theme.colors.textMuted,
+                  fontFamily: theme.typography.body,
+                  fontSize: 12,
+                  fontWeight: "700",
+                }}
+              >
+                Updating
+              </Text>
+            </View>
+          ) : null}
+        </View>
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
           <ActionButton
             icon={<Feather color={theme.colors.primaryText} name="user-plus" size={16} />}
@@ -300,113 +367,117 @@ export default function PalistaScreen() {
           </Text>
         </SurfaceCard>
       ) : customers.length > 0 ? (
-        customers.map((customer) => {
-          const overdue = getOverdueTone(customer.overdueLevel);
-          const daysSince = getDaysBetween(customer.lastUtangDate);
+        <Animated.View style={{ gap: theme.spacing.md, opacity: customerListOpacity }}>
+          {customers.map((customer) => {
+            const overdue = getOverdueTone(customer.overdueLevel);
+            const daysSince = getDaysBetween(customer.lastUtangDate);
 
-          return (
-            <SurfaceCard key={customer.id} style={{ gap: theme.spacing.md }}>
-              <View style={{ alignItems: "flex-start", flexDirection: "row", justifyContent: "space-between", gap: theme.spacing.md }}>
-                <View style={{ flex: 1, gap: 6 }}>
-                  <Text
-                    style={{
-                      color: theme.colors.text,
-                      fontFamily: theme.typography.display,
-                      fontSize: 22,
-                      fontWeight: "700",
-                    }}
-                  >
-                    {customer.name}
-                  </Text>
-                  <Text
-                    style={{
-                      color: theme.colors.textMuted,
-                      fontFamily: theme.typography.body,
-                      fontSize: 14,
-                    }}
-                  >
-                    {customer.phone || "No phone number"}
-                  </Text>
+            return (
+              <SurfaceCard key={customer.id} style={{ gap: theme.spacing.md }}>
+                <View style={{ alignItems: "flex-start", flexDirection: "row", justifyContent: "space-between", gap: theme.spacing.md }}>
+                  <View style={{ flex: 1, gap: 6 }}>
+                    <Text
+                      style={{
+                        color: theme.colors.text,
+                        fontFamily: theme.typography.display,
+                        fontSize: 22,
+                        fontWeight: "700",
+                      }}
+                    >
+                      {customer.name}
+                    </Text>
+                    <Text
+                      style={{
+                        color: theme.colors.textMuted,
+                        fontFamily: theme.typography.body,
+                        fontSize: 14,
+                      }}
+                    >
+                      {customer.phone || "No phone number"}
+                    </Text>
+                  </View>
+                  <View style={{ alignItems: "flex-end", gap: theme.spacing.xs }}>
+                    <StatusBadge label={customer.trustScore} tone={getTrustTone(customer.trustScore)} />
+                    <StatusBadge label={overdue.label} tone={overdue.tone} />
+                  </View>
                 </View>
-                <View style={{ alignItems: "flex-end", gap: theme.spacing.xs }}>
-                  <StatusBadge label={customer.trustScore} tone={getTrustTone(customer.trustScore)} />
-                  <StatusBadge label={overdue.label} tone={overdue.tone} />
-                </View>
-              </View>
 
-              <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                <View style={{ gap: 4 }}>
-                  <Text
-                    style={{
-                      color: theme.colors.textSoft,
-                      fontFamily: theme.typography.body,
-                      fontSize: 12,
-                    }}
-                  >
-                    Outstanding balance
-                  </Text>
-                  <Text
-                    style={{
-                      color: theme.colors.text,
-                      fontFamily: theme.typography.display,
-                      fontSize: 26,
-                      fontWeight: "700",
-                    }}
-                  >
-                    {formatCurrencyFromCents(customer.balanceCents)}
-                  </Text>
+                <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                  <View style={{ gap: 4 }}>
+                    <Text
+                      style={{
+                        color: theme.colors.textSoft,
+                        fontFamily: theme.typography.body,
+                        fontSize: 12,
+                      }}
+                    >
+                      Outstanding balance
+                    </Text>
+                    <Text
+                      style={{
+                        color: theme.colors.text,
+                        fontFamily: theme.typography.display,
+                        fontSize: 26,
+                        fontWeight: "700",
+                      }}
+                    >
+                      {formatCurrencyFromCents(customer.balanceCents)}
+                    </Text>
+                  </View>
+                  <View style={{ alignItems: "flex-end", gap: 4 }}>
+                    <Text
+                      style={{
+                        color: theme.colors.textSoft,
+                        fontFamily: theme.typography.body,
+                        fontSize: 12,
+                      }}
+                    >
+                      Last utang
+                    </Text>
+                    <Text
+                      style={{
+                        color: theme.colors.text,
+                        fontFamily: theme.typography.body,
+                        fontSize: 14,
+                        fontWeight: "700",
+                      }}
+                    >
+                      {customer.lastUtangDate ? `${daysSince} day(s)` : "No record"}
+                    </Text>
+                  </View>
                 </View>
-                <View style={{ alignItems: "flex-end", gap: 4 }}>
-                  <Text
-                    style={{
-                      color: theme.colors.textSoft,
-                      fontFamily: theme.typography.body,
-                      fontSize: 12,
-                    }}
-                  >
-                    Last utang
-                  </Text>
-                  <Text
-                    style={{
-                      color: theme.colors.text,
-                      fontFamily: theme.typography.body,
-                      fontSize: 14,
-                      fontWeight: "700",
-                    }}
-                  >
-                    {customer.lastUtangDate ? `${daysSince} day(s)` : "No record"}
-                  </Text>
-                </View>
-              </View>
 
-              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
-                <ActionButton
-                  label="View History"
-                  onPress={() => void openCustomerDetail(customer)}
-                  style={{ flex: 1, minWidth: 150 }}
-                />
-                <ActionButton
-                  label="Refresh Score"
-                  onPress={() => void refreshSingleTrustScore(customer.id)}
-                  style={{ flex: 1, minWidth: 150 }}
-                  variant="secondary"
-                />
-                <ActionButton
-                  label="Edit Customer"
-                  onPress={() => openCustomerModal(customer)}
-                  style={{ flex: 1, minWidth: 150 }}
-                  variant="ghost"
-                />
-              </View>
-            </SurfaceCard>
-          );
-        })
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
+                  <ActionButton
+                    label="View History"
+                    onPress={() => void openCustomerDetail(customer)}
+                    style={{ flex: 1, minWidth: 150 }}
+                  />
+                  <ActionButton
+                    label="Refresh Score"
+                    onPress={() => void refreshSingleTrustScore(customer.id)}
+                    style={{ flex: 1, minWidth: 150 }}
+                    variant="secondary"
+                  />
+                  <ActionButton
+                    label="Edit Customer"
+                    onPress={() => openCustomerModal(customer)}
+                    style={{ flex: 1, minWidth: 150 }}
+                    variant="ghost"
+                  />
+                </View>
+              </SurfaceCard>
+            );
+          })}
+        </Animated.View>
       ) : (
-        <EmptyState
-          icon="book-open"
-          message="Add your first customer and start logging balances instead of relying on a handwritten notebook."
-          title="No Utang Records Yet"
-        />
+        <Animated.View style={{ opacity: customerListOpacity }}>
+          <EmptyState
+            icon="book-open"
+            message="Add your first customer and start logging balances instead of relying on a handwritten notebook."
+            title="No Utang Records Yet"
+          />
+        </Animated.View>
       )}
 
       <ModalSheet

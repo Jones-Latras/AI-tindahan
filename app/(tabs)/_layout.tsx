@@ -8,7 +8,9 @@ export default function TabLayout() {
 
   return (
     <Tabs
+      detachInactiveScreens={false}
       screenOptions={{
+        animation: "fade",
         headerShown: false,
         sceneStyle: {
           backgroundColor: theme.colors.background,
@@ -63,4 +65,3 @@ export default function TabLayout() {
     </Tabs>
   );
 }
-
