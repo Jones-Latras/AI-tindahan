@@ -63,15 +63,15 @@ export const lightTheme = {
 export const darkTheme = {
   mode: "dark" as ThemeMode,
   colors: {
-    background: "#0E1311",
-    surface: "#131917",
-    surfaceMuted: "#1A221F",
-    card: "#161D1A",
-    border: "#28322E",
-    borderStrong: "#3B4843",
-    text: "#F4F1E9",
-    textMuted: "#C5BCAE",
-    textSoft: "#958D81",
+    background: "#000000",
+    surface: "#050505",
+    surfaceMuted: "#0B0B0B",
+    card: "#101010",
+    border: "#232323",
+    borderStrong: "#363636",
+    text: "#F5F5F5",
+    textMuted: "#BCBCBC",
+    textSoft: "#8A8A8A",
     primary: "#4FC49F",
     primaryMuted: "#12362C",
     primaryText: "#081510",
@@ -83,8 +83,8 @@ export const darkTheme = {
     warningMuted: "#372A15",
     success: "#65D3A5",
     successMuted: "#112F24",
-    overlay: "rgba(4, 7, 6, 0.6)",
-    shadow: "rgba(0, 0, 0, 0.28)"
+    overlay: "rgba(0, 0, 0, 0.76)",
+    shadow: "rgba(0, 0, 0, 0.4)"
   },
   typography: {
     display: displayFontFamily,

@@ -793,6 +793,134 @@ export default function HomeScreen() {
     );
   };
 
+  const renderSettingsCard = () => (
+    <SurfaceCard style={compactCardStyle}>
+      <View style={{ gap: 4 }}>
+        <Text
+          style={{
+            color: theme.colors.text,
+            fontFamily: theme.typography.display,
+            fontSize: 24,
+            fontWeight: "700",
+          }}
+        >
+          {t("home.settings.title")}
+        </Text>
+        <Text
+          style={{
+            color: theme.colors.textMuted,
+            fontFamily: theme.typography.body,
+            fontSize: 14,
+          }}
+        >
+          {t("home.settings.subtitle")}
+        </Text>
+      </View>
+
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
+        <View
+          style={{
+            backgroundColor: theme.colors.surfaceMuted,
+            borderRadius: theme.radius.md,
+            flex: 1,
+            gap: theme.spacing.sm,
+            minWidth: "47%",
+            padding: theme.spacing.md,
+          }}
+        >
+          <View style={{ alignItems: "center", flexDirection: "row", gap: theme.spacing.sm }}>
+            <View
+              style={{
+                alignItems: "center",
+                backgroundColor: theme.colors.primaryMuted,
+                borderRadius: theme.radius.pill,
+                height: 36,
+                justifyContent: "center",
+                width: 36,
+              }}
+            >
+              <Feather color={theme.colors.primary} name="globe" size={16} />
+            </View>
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text
+                style={{
+                  color: theme.colors.text,
+                  fontFamily: theme.typography.body,
+                  fontSize: 15,
+                  fontWeight: "700",
+                }}
+              >
+                {t("home.settings.language.title")}
+              </Text>
+              <Text
+                style={{
+                  color: theme.colors.textMuted,
+                  fontFamily: theme.typography.body,
+                  fontSize: 13,
+                  lineHeight: 18,
+                }}
+              >
+                {t("home.settings.language.subtitle")}
+              </Text>
+            </View>
+          </View>
+
+          <LanguageToggle />
+        </View>
+
+        <View
+          style={{
+            backgroundColor: theme.colors.surfaceMuted,
+            borderRadius: theme.radius.md,
+            flex: 1,
+            gap: theme.spacing.sm,
+            minWidth: "47%",
+            padding: theme.spacing.md,
+          }}
+        >
+          <View style={{ alignItems: "center", flexDirection: "row", gap: theme.spacing.sm }}>
+            <View
+              style={{
+                alignItems: "center",
+                backgroundColor: theme.colors.accentMuted,
+                borderRadius: theme.radius.pill,
+                height: 36,
+                justifyContent: "center",
+                width: 36,
+              }}
+            >
+              <Feather color={theme.colors.accent} name="moon" size={16} />
+            </View>
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text
+                style={{
+                  color: theme.colors.text,
+                  fontFamily: theme.typography.body,
+                  fontSize: 15,
+                  fontWeight: "700",
+                }}
+              >
+                {t("home.settings.theme.title")}
+              </Text>
+              <Text
+                style={{
+                  color: theme.colors.textMuted,
+                  fontFamily: theme.typography.body,
+                  fontSize: 13,
+                  lineHeight: 18,
+                }}
+              >
+                {t("home.settings.theme.subtitle")}
+              </Text>
+            </View>
+          </View>
+
+          <ThemeToggle />
+        </View>
+      </View>
+    </SurfaceCard>
+  );
+
   const renderActivePanelContent = () => {
     if (activePanel === "analytics") {
       return renderAnalyticsPanel();
@@ -859,12 +987,6 @@ export default function HomeScreen() {
               {t("home.aiButton")}
             </Text>
           </Pressable>
-        }
-        rightSlot={
-          <View style={{ alignItems: "flex-end", gap: theme.spacing.sm }}>
-            <LanguageToggle />
-            <ThemeToggle />
-          </View>
         }
         subtitle={t("home.subtitle")}
         title={storeName || "TindaHan AI"}
@@ -1034,6 +1156,8 @@ export default function HomeScreen() {
             </View>
           </SurfaceCard>
         ) : null}
+
+        {renderSettingsCard()}
       </Screen>
 
       <ModalSheet

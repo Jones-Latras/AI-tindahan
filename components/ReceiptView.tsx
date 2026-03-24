@@ -1,5 +1,4 @@
-import { forwardRef } from "react";
-import { Text, View } from "react-native";
+import { View, Text } from "react-native";
 
 import { useAppTheme } from "@/contexts/ThemeContext";
 import { formatWeightKg } from "@/utils/pricing";
@@ -26,132 +25,407 @@ type Props = {
   date: string;
 };
 
-export const ReceiptView = forwardRef<View, Props>(function ReceiptView(
-  {
-    storeName,
-    saleId,
-    items,
-    subtotalCents,
-    discountCents,
-    totalCents,
-    cashPaidCents,
-    changeCents,
-    paymentMethod,
-    date,
-  },
-  ref,
-) {
+function formatPaymentLabel(paymentMethod: string) {
+  if (paymentMethod === "gcash") {
+    return "GCash";
+  }
+
+  if (paymentMethod === "maya") {
+    return "Maya";
+  }
+
+  if (paymentMethod === "utang") {
+    return "Utang";
+  }
+
+  return "Cash";
+}
+
+export function ReceiptView({
+  storeName,
+  saleId,
+  items,
+  subtotalCents,
+  discountCents,
+  totalCents,
+  cashPaidCents,
+  changeCents,
+  paymentMethod,
+  date,
+}: Props) {
   const { theme } = useAppTheme();
 
   const fmt = (cents: number) => `PHP ${(cents / 100).toFixed(2)}`;
+  const paymentLabel = formatPaymentLabel(paymentMethod);
 
   return (
     <View
-      ref={ref}
       style={{
+        alignSelf: "center",
         backgroundColor: "#FFFFFF",
-        padding: 24,
-        width: 320,
+        borderColor: "#D8E2DC",
+        borderRadius: 28,
+        borderWidth: 1,
+        overflow: "hidden",
+        width: 344,
       }}
     >
-      <View style={{ alignItems: "center", gap: 4, marginBottom: 16 }}>
-        <Text style={{ color: "#111", fontFamily: theme.typography.display, fontSize: 18, fontWeight: "700" }}>
-          {storeName || "TindaHan AI"}
-        </Text>
-        <Text style={{ color: "#666", fontFamily: theme.typography.body, fontSize: 11 }}>
-          Transaction #{saleId}
-        </Text>
-        <Text style={{ color: "#666", fontFamily: theme.typography.body, fontSize: 11 }}>
-          {date}
-        </Text>
-      </View>
+      <View style={{ backgroundColor: theme.colors.primary, height: 12 }} />
 
-      <View style={{ borderBottomColor: "#CCC", borderBottomWidth: 1, borderStyle: "dashed", marginBottom: 12 }} />
-
-      {items.map((item, index) => {
-        const lineTotalCents = item.lineTotalCents ?? Math.round(item.priceCents * (item.weightKg ?? item.quantity));
-
-        return (
-          <View key={`${item.name}-${index}`} style={{ gap: 2, marginBottom: 8 }}>
-            <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 8 }}>
-              <Text style={{ color: "#222", flex: 1, fontFamily: theme.typography.body, fontSize: 13, fontWeight: "700" }}>
-                {item.name}
-              </Text>
-              <Text style={{ color: "#222", fontFamily: theme.typography.body, fontSize: 13 }}>
-                {fmt(lineTotalCents)}
-              </Text>
-            </View>
-            <Text style={{ color: "#666", fontFamily: theme.typography.body, fontSize: 11 }}>
-              {item.isWeightBased
-                ? `${formatWeightKg(item.weightKg ?? 0)} kg x ${fmt(item.priceCents)}/kg`
-                : `${item.quantity}x ${fmt(item.priceCents)}`}
+      <View style={{ gap: 18, padding: 22 }}>
+        <View style={{ gap: 14 }}>
+          <View style={{ gap: 6 }}>
+            <Text
+              style={{
+                color: "#667085",
+                fontFamily: theme.typography.body,
+                fontSize: 11,
+                fontWeight: "700",
+                letterSpacing: 1,
+                textTransform: "uppercase",
+              }}
+            >
+              Custom Store Receipt
+            </Text>
+            <Text
+              style={{
+                color: "#101828",
+                fontFamily: theme.typography.display,
+                fontSize: 28,
+                fontWeight: "700",
+              }}
+            >
+              {storeName || "TindaHan AI"}
+            </Text>
+            <Text
+              style={{
+                color: "#667085",
+                fontFamily: theme.typography.body,
+                fontSize: 12,
+                lineHeight: 18,
+              }}
+            >
+              Freshly generated from your POS after checkout.
             </Text>
           </View>
-        );
-      })}
 
-      <View style={{ borderBottomColor: "#CCC", borderBottomWidth: 1, borderStyle: "dashed", marginVertical: 12 }} />
-
-      {discountCents > 0 ? (
-        <>
-          <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
-            <Text style={{ color: "#444", fontFamily: theme.typography.body, fontSize: 13 }}>Subtotal</Text>
-            <Text style={{ color: "#444", fontFamily: theme.typography.body, fontSize: 13 }}>{fmt(subtotalCents)}</Text>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+            <View
+              style={{
+                backgroundColor: "#E8F5EF",
+                borderRadius: 999,
+                paddingHorizontal: 12,
+                paddingVertical: 8,
+              }}
+            >
+              <Text
+                style={{
+                  color: theme.colors.primary,
+                  fontFamily: theme.typography.body,
+                  fontSize: 11,
+                  fontWeight: "700",
+                }}
+              >
+                Transaction #{saleId}
+              </Text>
+            </View>
+            <View
+              style={{
+                backgroundColor: "#F2F4F7",
+                borderRadius: 999,
+                paddingHorizontal: 12,
+                paddingVertical: 8,
+              }}
+            >
+              <Text
+                style={{
+                  color: "#344054",
+                  fontFamily: theme.typography.body,
+                  fontSize: 11,
+                  fontWeight: "700",
+                }}
+              >
+                {paymentLabel}
+              </Text>
+            </View>
           </View>
-          <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
-            <Text style={{ color: "#16a34a", fontFamily: theme.typography.body, fontSize: 13, fontWeight: "700" }}>Tawad</Text>
-            <Text style={{ color: "#16a34a", fontFamily: theme.typography.body, fontSize: 13, fontWeight: "700" }}>-{fmt(discountCents)}</Text>
-          </View>
-        </>
-      ) : null}
 
-      <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
-        <Text style={{ color: "#111", fontFamily: theme.typography.display, fontSize: 16, fontWeight: "700" }}>Total</Text>
-        <Text style={{ color: "#111", fontFamily: theme.typography.display, fontSize: 16, fontWeight: "700" }}>{fmt(totalCents)}</Text>
-      </View>
-
-      {paymentMethod === "cash" ? (
-        <>
-          <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
-            <Text style={{ color: "#444", fontFamily: theme.typography.body, fontSize: 13 }}>Cash</Text>
-            <Text style={{ color: "#444", fontFamily: theme.typography.body, fontSize: 13 }}>{fmt(cashPaidCents)}</Text>
+          <View
+            style={{
+              backgroundColor: "#F8FAFC",
+              borderColor: "#E5E7EB",
+              borderRadius: 18,
+              borderWidth: 1,
+              gap: 8,
+              padding: 14,
+            }}
+          >
+            <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12 }}>
+              <Text style={{ color: "#667085", fontFamily: theme.typography.body, fontSize: 12 }}>Date</Text>
+              <Text
+                style={{
+                  color: "#101828",
+                  flexShrink: 1,
+                  fontFamily: theme.typography.body,
+                  fontSize: 12,
+                  fontWeight: "700",
+                  textAlign: "right",
+                }}
+              >
+                {date}
+              </Text>
+            </View>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12 }}>
+              <Text style={{ color: "#667085", fontFamily: theme.typography.body, fontSize: 12 }}>Items</Text>
+              <Text
+                style={{
+                  color: "#101828",
+                  fontFamily: theme.typography.body,
+                  fontSize: 12,
+                  fontWeight: "700",
+                }}
+              >
+                {items.length}
+              </Text>
+            </View>
           </View>
+        </View>
+
+        <View style={{ gap: 10 }}>
           <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-            <Text style={{ color: "#444", fontFamily: theme.typography.body, fontSize: 13, fontWeight: "700" }}>Sukli</Text>
-            <Text style={{ color: "#444", fontFamily: theme.typography.body, fontSize: 13, fontWeight: "700" }}>{fmt(changeCents)}</Text>
+            <Text
+              style={{
+                color: "#667085",
+                fontFamily: theme.typography.body,
+                fontSize: 11,
+                fontWeight: "700",
+                textTransform: "uppercase",
+              }}
+            >
+              Item
+            </Text>
+            <Text
+              style={{
+                color: "#667085",
+                fontFamily: theme.typography.body,
+                fontSize: 11,
+                fontWeight: "700",
+                textTransform: "uppercase",
+              }}
+            >
+              Amount
+            </Text>
           </View>
-        </>
-      ) : (
-        <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-          <Text style={{ color: "#444", fontFamily: theme.typography.body, fontSize: 13 }}>Paid via</Text>
-          <Text style={{ color: "#444", fontFamily: theme.typography.body, fontSize: 13, fontWeight: "700" }}>
-            {paymentMethod.toUpperCase()}
+
+          {items.map((item, index) => {
+            const lineTotalCents = item.lineTotalCents ?? Math.round(item.priceCents * (item.weightKg ?? item.quantity));
+
+            return (
+              <View
+                key={`${item.name}-${index}`}
+                style={{
+                  backgroundColor: index % 2 === 0 ? "#FCFCFD" : "#F8FAFC",
+                  borderRadius: 16,
+                  gap: 6,
+                  padding: 14,
+                }}
+              >
+                <View style={{ flexDirection: "row", gap: 10, justifyContent: "space-between" }}>
+                  <Text
+                    style={{
+                      color: "#101828",
+                      flex: 1,
+                      fontFamily: theme.typography.body,
+                      fontSize: 14,
+                      fontWeight: "700",
+                    }}
+                  >
+                    {item.name}
+                  </Text>
+                  <Text
+                    style={{
+                      color: "#101828",
+                      fontFamily: theme.typography.body,
+                      fontSize: 14,
+                      fontWeight: "700",
+                    }}
+                  >
+                    {fmt(lineTotalCents)}
+                  </Text>
+                </View>
+
+                <Text
+                  style={{
+                    color: "#667085",
+                    fontFamily: theme.typography.body,
+                    fontSize: 12,
+                    lineHeight: 17,
+                  }}
+                >
+                  {item.isWeightBased
+                    ? `${formatWeightKg(item.weightKg ?? 0)} kg x ${fmt(item.priceCents)}/kg`
+                    : `${item.quantity}x ${fmt(item.priceCents)}`}
+                </Text>
+              </View>
+            );
+          })}
+        </View>
+
+        <View
+          style={{
+            backgroundColor: "#ECFDF3",
+            borderColor: "#ABEFC6",
+            borderRadius: 22,
+            borderWidth: 1,
+            gap: 10,
+            padding: 16,
+          }}
+        >
+          <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12 }}>
+            <Text style={{ color: "#344054", fontFamily: theme.typography.body, fontSize: 13 }}>Subtotal</Text>
+            <Text style={{ color: "#101828", fontFamily: theme.typography.body, fontSize: 13, fontWeight: "700" }}>
+              {fmt(subtotalCents)}
+            </Text>
+          </View>
+
+          {discountCents > 0 ? (
+            <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12 }}>
+              <Text style={{ color: theme.colors.success, fontFamily: theme.typography.body, fontSize: 13, fontWeight: "700" }}>
+                Tawad
+              </Text>
+              <Text style={{ color: theme.colors.success, fontFamily: theme.typography.body, fontSize: 13, fontWeight: "700" }}>
+                -{fmt(discountCents)}
+              </Text>
+            </View>
+          ) : null}
+
+          <View style={{ borderTopColor: "#ABEFC6", borderTopWidth: 1, marginTop: 2, paddingTop: 12 }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12 }}>
+              <Text
+                style={{
+                  color: "#101828",
+                  fontFamily: theme.typography.display,
+                  fontSize: 18,
+                  fontWeight: "700",
+                }}
+              >
+                Total
+              </Text>
+              <Text
+                style={{
+                  color: theme.colors.primary,
+                  fontFamily: theme.typography.display,
+                  fontSize: 24,
+                  fontWeight: "700",
+                }}
+              >
+                {fmt(totalCents)}
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        {paymentMethod === "cash" ? (
+          <View
+            style={{
+              backgroundColor: "#101828",
+              borderRadius: 20,
+              gap: 10,
+              padding: 16,
+            }}
+          >
+            <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12 }}>
+              <Text style={{ color: "#D0D5DD", fontFamily: theme.typography.body, fontSize: 13 }}>Cash received</Text>
+              <Text style={{ color: "#FFFFFF", fontFamily: theme.typography.body, fontSize: 13, fontWeight: "700" }}>
+                {fmt(cashPaidCents)}
+              </Text>
+            </View>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12 }}>
+              <Text
+                style={{
+                  color: "#86EFAC",
+                  fontFamily: theme.typography.body,
+                  fontSize: 13,
+                  fontWeight: "700",
+                  textTransform: "uppercase",
+                }}
+              >
+                Sukli
+              </Text>
+              <Text
+                style={{
+                  color: "#86EFAC",
+                  fontFamily: theme.typography.display,
+                  fontSize: 22,
+                  fontWeight: "700",
+                }}
+              >
+                {fmt(changeCents)}
+              </Text>
+            </View>
+          </View>
+        ) : (
+          <View
+            style={{
+              backgroundColor: "#F8FAFC",
+              borderColor: "#E5E7EB",
+              borderRadius: 18,
+              borderWidth: 1,
+              flexDirection: "row",
+              justifyContent: "space-between",
+              padding: 14,
+            }}
+          >
+            <Text style={{ color: "#667085", fontFamily: theme.typography.body, fontSize: 13 }}>Paid via</Text>
+            <Text style={{ color: "#101828", fontFamily: theme.typography.body, fontSize: 13, fontWeight: "700" }}>
+              {paymentLabel}
+            </Text>
+          </View>
+        )}
+
+        <View
+          style={{
+            alignItems: "center",
+            borderTopColor: "#E4E7EC",
+            borderTopWidth: 1,
+            gap: 6,
+            paddingTop: 18,
+          }}
+        >
+          <Text
+            style={{
+              color: "#101828",
+              fontFamily: theme.typography.body,
+              fontSize: 13,
+              fontWeight: "700",
+              textAlign: "center",
+            }}
+          >
+            Salamat sa inyong pagbili!
+          </Text>
+          <Text
+            style={{
+              color: "#667085",
+              fontFamily: theme.typography.body,
+              fontSize: 11,
+              textAlign: "center",
+            }}
+          >
+            Keep this custom receipt for your records.
+          </Text>
+          <Text
+            style={{
+              color: theme.colors.primary,
+              fontFamily: theme.typography.body,
+              fontSize: 11,
+              fontWeight: "700",
+              textAlign: "center",
+            }}
+          >
+            Powered by TindaHan AI
           </Text>
         </View>
-      )}
-
-      <View style={{ borderBottomColor: "#CCC", borderBottomWidth: 1, borderStyle: "dashed", marginVertical: 12 }} />
-      <Text
-        style={{
-          color: "#888",
-          fontFamily: theme.typography.body,
-          fontSize: 11,
-          textAlign: "center",
-        }}
-      >
-        Salamat sa inyong pagbili!
-      </Text>
-      <Text
-        style={{
-          color: "#AAA",
-          fontFamily: theme.typography.body,
-          fontSize: 9,
-          marginTop: 4,
-          textAlign: "center",
-        }}
-      >
-        Powered by TindaHan AI
-      </Text>
+      </View>
     </View>
   );
-});
+}

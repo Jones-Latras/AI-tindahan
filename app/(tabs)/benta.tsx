@@ -42,7 +42,6 @@ import {
   formatWeightKg,
 } from "@/utils/pricing";
 
-const QUICK_PAY_VALUES = [5000, 10000, 20000, 50000];
 const QUICK_DISCOUNT_PERCENTS = [5, 10, 15, 20];
 const PAYMENT_METHODS: Array<{ key: PaymentMethod; label: string }> = [
   { key: "cash", label: "Cash" },
@@ -78,6 +77,7 @@ export default function BentaScreen() {
   const [searchTerm, setSearchTerm] = useState("");
   const [cashInput, setCashInput] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
+  const [paymentMethodExpanded, setPaymentMethodExpanded] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [processingCheckout, setProcessingCheckout] = useState(false);
@@ -98,6 +98,8 @@ export default function BentaScreen() {
   const [quickEditProduct, setQuickEditProduct] = useState<Product | null>(null);
   const [quickEditValue, setQuickEditValue] = useState("");
   const [savingQuickEdit, setSavingQuickEdit] = useState(false);
+  const [receiptVisible, setReceiptVisible] = useState(false);
+  const [sharingReceipt, setSharingReceipt] = useState(false);
   const [lastReceipt, setLastReceipt] = useState<{
     saleId: number;
     items: Array<{
@@ -117,7 +119,7 @@ export default function BentaScreen() {
     date: string;
   } | null>(null);
   const [storeName, setStoreName] = useState("");
-  const receiptRef = useRef<View>(null);
+  const receiptCaptureRef = useRef<View>(null);
   const cartPulseScale = useRef(new Animated.Value(1)).current;
   const cartPulseLift = useRef(new Animated.Value(0)).current;
   const cartFeedbackOpacity = useRef(new Animated.Value(0)).current;
@@ -150,6 +152,8 @@ export default function BentaScreen() {
     quickEditProduct?.pricingStrategy === "margin_based"
       ? parseDecimalInput(quickEditValue)
       : parseCurrencyToCents(quickEditValue);
+  const selectedPaymentMethodOption =
+    PAYMENT_METHODS.find((method) => method.key === paymentMethod) ?? PAYMENT_METHODS[0];
 
   const loadScreenData = useCallback(async () => {
     setLoading(true);
@@ -474,6 +478,50 @@ export default function BentaScreen() {
     }
   }, [db, loadScreenData, quickEditNumericValue, quickEditProduct, quickEditValue]);
 
+  const handleSelectPaymentMethod = useCallback((method: PaymentMethod) => {
+    setPaymentMethod(method);
+    setPaymentMethodExpanded(false);
+
+    if (method !== "utang") {
+      setSelectedCustomer(null);
+    }
+  }, []);
+
+  const handleShareReceipt = useCallback(async () => {
+    if (!lastReceipt || !receiptCaptureRef.current) {
+      Alert.alert("Receipt unavailable", "The receipt is not ready yet. Please try again in a moment.");
+      return;
+    }
+
+    setSharingReceipt(true);
+
+    try {
+      const sharingAvailable = await Sharing.isAvailableAsync();
+
+      if (!sharingAvailable) {
+        throw new Error("Sharing is not available on this device.");
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 180));
+
+      const uri = await captureRef(receiptCaptureRef.current, {
+        format: "png",
+        quality: 1,
+        result: "tmpfile",
+      });
+
+      await Sharing.shareAsync(uri, {
+        mimeType: "image/png",
+        dialogTitle: `${storeName || "TindaHan AI"} Receipt`,
+        UTI: "public.png",
+      });
+    } catch (error) {
+      Alert.alert("Share failed", error instanceof Error ? error.message : "Could not share the receipt.");
+    } finally {
+      setSharingReceipt(false);
+    }
+  }, [lastReceipt, storeName]);
+
   const handleOpenScanner = useCallback(async () => {
     if (!cameraPermission || !cameraPermission.granted) {
       const permission = await requestCameraPermission();
@@ -583,44 +631,18 @@ export default function BentaScreen() {
         date: new Date().toLocaleString("en-PH", { dateStyle: "medium", timeStyle: "short" }),
       };
       setLastReceipt(receiptData);
+      setReceiptVisible(true);
 
       clearCart();
       setCartSheetVisible(false);
       setCashInput("");
       setPaymentMethod("cash");
+      setPaymentMethodExpanded(false);
       setSelectedCustomer(null);
       setTawadActive(false);
       setTawadInput("");
       setTawadType("fixed");
       await loadScreenData();
-
-      const successSuffix =
-        paymentMethod === "cash"
-          ? `Change: ${formatCurrencyFromCents(changeCents)}.`
-          : paymentMethod === "utang"
-            ? `Linked to ${selectedCustomer?.name}'s utang ledger.`
-            : `Saved as ${paymentMethod.toUpperCase()} payment.`;
-
-      Alert.alert(
-        "Sale completed",
-        `Transaction #${saleId} saved successfully. ${successSuffix}`,
-        [
-          { text: "OK", style: "cancel" },
-          {
-            text: "Share Receipt",
-            onPress: async () => {
-              try {
-                // Small delay to let the hidden receipt render
-                await new Promise((r) => setTimeout(r, 200));
-                const uri = await captureRef(receiptRef, { format: "png", quality: 1 });
-                await Sharing.shareAsync(uri, { mimeType: "image/png", dialogTitle: "Share Receipt" });
-              } catch (err) {
-                Alert.alert("Share failed", String(err));
-              }
-            },
-          },
-        ],
-      );
 
       // Check for daily sales milestones
       const MILESTONES = [500000, 200000, 100000, 50000];
@@ -1135,46 +1157,73 @@ export default function BentaScreen() {
               >
                 Payment method
               </Text>
-              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
-                {PAYMENT_METHODS.map((method) => (
-                  <ActionButton
-                    key={method.key}
-                    label={method.label}
-                    onPress={() => {
-                      setPaymentMethod(method.key);
-                      if (method.key !== "utang") {
-                        setSelectedCustomer(null);
-                      }
+              <Pressable
+                onPress={() => setPaymentMethodExpanded((current) => !current)}
+                style={({ pressed }) => ({
+                  alignItems: "center",
+                  backgroundColor: theme.colors.surface,
+                  borderColor: theme.colors.border,
+                  borderRadius: theme.radius.sm,
+                  borderWidth: 1,
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  opacity: pressed ? 0.9 : 1,
+                  paddingHorizontal: theme.spacing.md,
+                  paddingVertical: 14,
+                })}
+              >
+                <View style={{ gap: 2 }}>
+                  <Text
+                    style={{
+                      color: theme.colors.textSoft,
+                      fontFamily: theme.typography.body,
+                      fontSize: 11,
+                      fontWeight: "700",
+                      textTransform: "uppercase",
                     }}
-                    style={{ flex: 1, minWidth: 120 }}
-                    variant={paymentMethod === method.key ? "primary" : "ghost"}
-                  />
-                ))}
-              </View>
-            </View>
-
-            {paymentMethod === "cash" ? (
-              <>
-                <InputField
-                  keyboardType="decimal-pad"
-                  label="Cash received"
-                  onChangeText={setCashInput}
-                  placeholder="0.00"
-                  value={cashInput}
+                  >
+                    Selected
+                  </Text>
+                  <Text
+                    style={{
+                      color: theme.colors.text,
+                      fontFamily: theme.typography.body,
+                      fontSize: 15,
+                      fontWeight: "700",
+                    }}
+                  >
+                    {selectedPaymentMethodOption.label}
+                  </Text>
+                </View>
+                <Feather
+                  color={theme.colors.textMuted}
+                  name={paymentMethodExpanded ? "chevron-up" : "chevron-down"}
+                  size={18}
                 />
-
+              </Pressable>
+              {paymentMethodExpanded ? (
                 <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
-                  {QUICK_PAY_VALUES.map((value) => (
+                  {PAYMENT_METHODS.map((method) => (
                     <ActionButton
-                      key={value}
-                      label={formatCurrencyFromCents(value)}
-                      onPress={() => setCashInput(centsToDisplayValue(value))}
+                      key={method.key}
+                      label={method.label}
+                      onPress={() => handleSelectPaymentMethod(method.key)}
                       style={{ flex: 1, minWidth: 120 }}
-                      variant="ghost"
+                      variant={paymentMethod === method.key ? "primary" : "ghost"}
                     />
                   ))}
                 </View>
-              </>
+              ) : null}
+            </View>
+
+            {paymentMethod === "cash" ? (
+              <InputField
+                keyboardType="decimal-pad"
+                label="Cash received"
+                onChangeText={setCashInput}
+                placeholder="0.00"
+                value={cashInput}
+              />
             ) : paymentMethod === "utang" ? (
               <View style={{ gap: theme.spacing.sm }}>
                 {selectedCustomer ? (
@@ -1254,31 +1303,53 @@ export default function BentaScreen() {
                 padding: theme.spacing.md,
               }}
             >
-              <Text
-                style={{
-                  color:
-                    paymentMethod === "cash"
-                      ? isEnoughCash
-                        ? theme.colors.success
-                        : theme.colors.danger
-                      : paymentMethod === "utang" && !selectedCustomer
-                        ? theme.colors.warning
-                        : theme.colors.success,
-                  fontFamily: theme.typography.body,
-                  fontSize: 14,
-                  fontWeight: "700",
-                }}
-              >
-                {paymentMethod === "cash"
-                  ? isEnoughCash
-                    ? `Sukli: ${formatCurrencyFromCents(changeCents)}`
-                    : "Kulang pa ang cash para ma-checkout."
-                  : paymentMethod === "utang"
-                    ? selectedCustomer
-                      ? "This sale will be added to the selected customer's utang ledger."
-                      : "Pick a customer before saving this utang sale."
-                    : `Digital payment ready via ${paymentMethod.toUpperCase()}.`}
-              </Text>
+              {paymentMethod === "cash" && isEnoughCash ? (
+                <View style={{ gap: 4 }}>
+                  <Text
+                    style={{
+                      color: theme.colors.success,
+                      fontFamily: theme.typography.body,
+                      fontSize: 12,
+                      fontWeight: "700",
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    Sukli
+                  </Text>
+                  <Text
+                    style={{
+                      color: theme.colors.success,
+                      fontFamily: theme.typography.display,
+                      fontSize: 30,
+                      fontWeight: "700",
+                    }}
+                  >
+                    {formatCurrencyFromCents(changeCents)}
+                  </Text>
+                </View>
+              ) : (
+                <Text
+                  style={{
+                    color:
+                      paymentMethod === "cash"
+                        ? theme.colors.danger
+                        : paymentMethod === "utang" && !selectedCustomer
+                          ? theme.colors.warning
+                          : theme.colors.success,
+                    fontFamily: theme.typography.body,
+                    fontSize: 14,
+                    fontWeight: "700",
+                  }}
+                >
+                  {paymentMethod === "cash"
+                    ? "Kulang pa ang cash para ma-checkout."
+                    : paymentMethod === "utang"
+                      ? selectedCustomer
+                        ? "This sale will be added to the selected customer's utang ledger."
+                        : "Pick a customer before saving this utang sale."
+                      : `Digital payment ready via ${paymentMethod.toUpperCase()}.`}
+                </Text>
+              )}
             </View>
 
             <ActionButton
@@ -1479,46 +1550,73 @@ export default function BentaScreen() {
                 >
                   Payment method
                 </Text>
-                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
-                  {PAYMENT_METHODS.map((method) => (
-                    <ActionButton
-                      key={method.key}
-                      label={method.label}
-                      onPress={() => {
-                        setPaymentMethod(method.key);
-                        if (method.key !== "utang") {
-                          setSelectedCustomer(null);
-                        }
+                <Pressable
+                  onPress={() => setPaymentMethodExpanded((current) => !current)}
+                  style={({ pressed }) => ({
+                    alignItems: "center",
+                    backgroundColor: theme.colors.surface,
+                    borderColor: theme.colors.border,
+                    borderRadius: theme.radius.sm,
+                    borderWidth: 1,
+                    flexDirection: "row",
+                    justifyContent: "space-between",
+                    opacity: pressed ? 0.9 : 1,
+                    paddingHorizontal: theme.spacing.md,
+                    paddingVertical: 14,
+                  })}
+                >
+                  <View style={{ gap: 2 }}>
+                    <Text
+                      style={{
+                        color: theme.colors.textSoft,
+                        fontFamily: theme.typography.body,
+                        fontSize: 11,
+                        fontWeight: "700",
+                        textTransform: "uppercase",
                       }}
-                      style={{ flex: 1, minWidth: 120 }}
-                      variant={paymentMethod === method.key ? "primary" : "ghost"}
-                    />
-                  ))}
-                </View>
-              </View>
-
-              {paymentMethod === "cash" ? (
-                <>
-                  <InputField
-                    keyboardType="decimal-pad"
-                    label="Cash received"
-                    onChangeText={setCashInput}
-                    placeholder="0.00"
-                    value={cashInput}
+                    >
+                      Selected
+                    </Text>
+                    <Text
+                      style={{
+                        color: theme.colors.text,
+                        fontFamily: theme.typography.body,
+                        fontSize: 15,
+                        fontWeight: "700",
+                      }}
+                    >
+                      {selectedPaymentMethodOption.label}
+                    </Text>
+                  </View>
+                  <Feather
+                    color={theme.colors.textMuted}
+                    name={paymentMethodExpanded ? "chevron-up" : "chevron-down"}
+                    size={18}
                   />
-
+                </Pressable>
+                {paymentMethodExpanded ? (
                   <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
-                    {QUICK_PAY_VALUES.map((value) => (
+                    {PAYMENT_METHODS.map((method) => (
                       <ActionButton
-                        key={value}
-                        label={formatCurrencyFromCents(value)}
-                        onPress={() => setCashInput(centsToDisplayValue(value))}
+                        key={method.key}
+                        label={method.label}
+                        onPress={() => handleSelectPaymentMethod(method.key)}
                         style={{ flex: 1, minWidth: 120 }}
-                        variant="ghost"
+                        variant={paymentMethod === method.key ? "primary" : "ghost"}
                       />
                     ))}
                   </View>
-                </>
+                ) : null}
+              </View>
+
+              {paymentMethod === "cash" ? (
+                <InputField
+                  keyboardType="decimal-pad"
+                  label="Cash received"
+                  onChangeText={setCashInput}
+                  placeholder="0.00"
+                  value={cashInput}
+                />
               ) : paymentMethod === "utang" ? (
                 <View style={{ gap: theme.spacing.sm }}>
                   {selectedCustomer ? (
@@ -1598,31 +1696,53 @@ export default function BentaScreen() {
                   padding: theme.spacing.md,
                 }}
               >
-                <Text
-                  style={{
-                    color:
-                      paymentMethod === "cash"
-                        ? isEnoughCash
-                          ? theme.colors.success
-                          : theme.colors.danger
-                        : paymentMethod === "utang" && !selectedCustomer
-                          ? theme.colors.warning
-                          : theme.colors.success,
-                    fontFamily: theme.typography.body,
-                    fontSize: 14,
-                    fontWeight: "700",
-                  }}
-                >
-                  {paymentMethod === "cash"
-                    ? isEnoughCash
-                      ? `Sukli: ${formatCurrencyFromCents(changeCents)}`
-                      : "Kulang pa ang cash para ma-checkout."
-                    : paymentMethod === "utang"
-                      ? selectedCustomer
-                        ? "This sale will be added to the selected customer's utang ledger."
-                        : "Pick a customer before saving this utang sale."
-                      : `Digital payment ready via ${paymentMethod.toUpperCase()}.`}
-                </Text>
+                {paymentMethod === "cash" && isEnoughCash ? (
+                  <View style={{ gap: 4 }}>
+                    <Text
+                      style={{
+                        color: theme.colors.success,
+                        fontFamily: theme.typography.body,
+                        fontSize: 12,
+                        fontWeight: "700",
+                        textTransform: "uppercase",
+                      }}
+                    >
+                      Sukli
+                    </Text>
+                    <Text
+                      style={{
+                        color: theme.colors.success,
+                        fontFamily: theme.typography.display,
+                        fontSize: 30,
+                        fontWeight: "700",
+                      }}
+                    >
+                      {formatCurrencyFromCents(changeCents)}
+                    </Text>
+                  </View>
+                ) : (
+                  <Text
+                    style={{
+                      color:
+                        paymentMethod === "cash"
+                          ? theme.colors.danger
+                          : paymentMethod === "utang" && !selectedCustomer
+                            ? theme.colors.warning
+                            : theme.colors.success,
+                      fontFamily: theme.typography.body,
+                      fontSize: 14,
+                      fontWeight: "700",
+                    }}
+                  >
+                    {paymentMethod === "cash"
+                      ? "Kulang pa ang cash para ma-checkout."
+                      : paymentMethod === "utang"
+                        ? selectedCustomer
+                          ? "This sale will be added to the selected customer's utang ledger."
+                          : "Pick a customer before saving this utang sale."
+                        : `Digital payment ready via ${paymentMethod.toUpperCase()}.`}
+                  </Text>
+                )}
               </View>
             </View>
           </>
@@ -1876,23 +1996,57 @@ export default function BentaScreen() {
         visible={milestoneVisible}
       />
 
-      {lastReceipt ? (
-        <View style={{ left: -9999, position: "absolute", top: -9999 }}>
-          <ReceiptView
-            ref={receiptRef}
-            cashPaidCents={lastReceipt.cashPaidCents}
-            changeCents={lastReceipt.changeCents}
-            date={lastReceipt.date}
-            discountCents={lastReceipt.discountCents}
-            items={lastReceipt.items}
-            paymentMethod={lastReceipt.paymentMethod}
-            saleId={lastReceipt.saleId}
-            storeName={storeName}
-            subtotalCents={lastReceipt.subtotalCents}
-            totalCents={lastReceipt.totalCents}
+      <ModalSheet
+        fullHeight
+        footer={
+          <View style={{ gap: theme.spacing.sm }}>
+            <ActionButton
+              disabled={!lastReceipt || sharingReceipt}
+              label={sharingReceipt ? "Sharing..." : "Share Receipt"}
+              onPress={() => void handleShareReceipt()}
+            />
+            <ActionButton label="Close" onPress={() => setReceiptVisible(false)} variant="ghost" />
+          </View>
+        }
+        onClose={() => setReceiptVisible(false)}
+        subtitle={
+          lastReceipt
+            ? `Transaction #${lastReceipt.saleId} is ready with your custom receipt design.`
+            : "Your receipt will appear here after checkout."
+        }
+        title="Your Receipt"
+        visible={receiptVisible}
+      >
+        {lastReceipt ? (
+          <View
+            collapsable={false}
+            ref={receiptCaptureRef}
+            style={{
+              alignItems: "center",
+              paddingBottom: theme.spacing.md,
+            }}
+          >
+            <ReceiptView
+              cashPaidCents={lastReceipt.cashPaidCents}
+              changeCents={lastReceipt.changeCents}
+              date={lastReceipt.date}
+              discountCents={lastReceipt.discountCents}
+              items={lastReceipt.items}
+              paymentMethod={lastReceipt.paymentMethod}
+              saleId={lastReceipt.saleId}
+              storeName={storeName}
+              subtotalCents={lastReceipt.subtotalCents}
+              totalCents={lastReceipt.totalCents}
+            />
+          </View>
+        ) : (
+          <EmptyState
+            icon="file-text"
+            message="Finish a sale and your custom receipt will be ready to share here."
+            title="No receipt yet"
           />
-        </View>
-      ) : null}
+        )}
+      </ModalSheet>
     </>
   );
 }
