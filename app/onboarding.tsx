@@ -12,6 +12,8 @@ import {
 
 import { ActionButton } from "@/components/ActionButton";
 import { InputField } from "@/components/InputField";
+import { LanguageToggle } from "@/components/LanguageToggle";
+import { useAppLanguage } from "@/contexts/LanguageContext";
 import { useAppTheme } from "@/contexts/ThemeContext";
 
 export const ONBOARDED_KEY = "tindahan.has-onboarded";
@@ -27,34 +29,34 @@ type SlideData = {
   body: string;
 };
 
-const SLIDES: SlideData[] = [
-  {
-    id: "welcome",
-    emoji: "🇵🇭",
-    title: "Maligayang pagdating\nsa TindaHan AI!",
-    body: "Ang iyong smart POS para sa sari-sari store. Offline-first, AI-powered, at designed para sa mga tindero at tindera ng Pilipinas.",
-  },
-  {
-    id: "setup",
-    emoji: "🏪",
-    title: "I-setup ang iyong\ntindahan",
-    body: "Ilagay ang pangalan ng store mo at ang pangalan mo para mas personal ang experience.",
-  },
-  {
-    id: "start",
-    emoji: "🚀",
-    title: "Mag-dagdag ng\nprodukto",
-    body: "Pagkatapos ng setup, pumunta sa Produkto tab at i-add ang mga items sa iyong store. Kaya na natin 'to!",
-  },
-];
-
 export default function OnboardingScreen() {
   const router = useRouter();
   const { theme } = useAppTheme();
+  const { t } = useAppLanguage();
   const flatListRef = useRef<FlatList>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [storeName, setStoreName] = useState("");
   const [ownerName, setOwnerName] = useState("");
+  const slides: SlideData[] = [
+    {
+      id: "welcome",
+      emoji: "🇵🇭",
+      title: t("onboarding.slide.welcome.title"),
+      body: t("onboarding.slide.welcome.body"),
+    },
+    {
+      id: "setup",
+      emoji: "🏪",
+      title: t("onboarding.slide.setup.title"),
+      body: t("onboarding.slide.setup.body"),
+    },
+    {
+      id: "start",
+      emoji: "🚀",
+      title: t("onboarding.slide.start.title"),
+      body: t("onboarding.slide.start.body"),
+    },
+  ];
 
   const onViewableItemsChanged = useCallback(
     ({ viewableItems }: { viewableItems: ViewToken[] }) => {
@@ -66,10 +68,10 @@ export default function OnboardingScreen() {
   );
 
   const goNext = useCallback(() => {
-    if (currentIndex < SLIDES.length - 1) {
+    if (currentIndex < slides.length - 1) {
       flatListRef.current?.scrollToIndex({ index: currentIndex + 1 });
     }
-  }, [currentIndex]);
+  }, [currentIndex, slides.length]);
 
   const finishOnboarding = useCallback(async () => {
     if (storeName.trim()) {
@@ -89,7 +91,16 @@ export default function OnboardingScreen() {
 
   return (
     <View style={{ backgroundColor: theme.colors.background, flex: 1 }}>
-      <View style={{ alignItems: "flex-end", paddingHorizontal: 20, paddingTop: 56 }}>
+      <View
+        style={{
+          alignItems: "center",
+          flexDirection: "row",
+          justifyContent: "space-between",
+          paddingHorizontal: 20,
+          paddingTop: 56,
+        }}
+      >
+        <LanguageToggle />
         <Pressable
           onPress={() => void handleSkip()}
           style={({ pressed }) => ({
@@ -106,14 +117,14 @@ export default function OnboardingScreen() {
               fontWeight: "700",
             }}
           >
-            Skip
+            {t("onboarding.skip")}
           </Text>
         </Pressable>
       </View>
 
       <FlatList
         ref={flatListRef}
-        data={SLIDES}
+        data={slides}
         horizontal
         keyExtractor={(item) => item.id}
         onViewableItemsChanged={onViewableItemsChanged}
@@ -159,15 +170,15 @@ export default function OnboardingScreen() {
             {item.id === "setup" ? (
               <View style={{ gap: 14, width: "100%" }}>
                 <InputField
-                  label="Store name"
+                  label={t("onboarding.storeName")}
                   onChangeText={setStoreName}
-                  placeholder="e.g. Tindahan ni Aling Rosa"
+                  placeholder={t("onboarding.storeName.placeholder")}
                   value={storeName}
                 />
                 <InputField
-                  label="Owner name"
+                  label={t("onboarding.ownerName")}
                   onChangeText={setOwnerName}
-                  placeholder="e.g. Rosa Garcia"
+                  placeholder={t("onboarding.ownerName.placeholder")}
                   value={ownerName}
                 />
               </View>
@@ -178,7 +189,7 @@ export default function OnboardingScreen() {
 
       <View style={{ alignItems: "center", gap: 20, paddingBottom: 48, paddingHorizontal: 32 }}>
         <View style={{ flexDirection: "row", gap: 8 }}>
-          {SLIDES.map((slide, index) => (
+          {slides.map((slide, index) => (
             <View
               key={slide.id}
               style={{
@@ -192,11 +203,11 @@ export default function OnboardingScreen() {
           ))}
         </View>
 
-        {currentIndex < SLIDES.length - 1 ? (
-          <ActionButton label="Susunod" onPress={goNext} style={{ width: "100%" }} />
+        {currentIndex < slides.length - 1 ? (
+          <ActionButton label={t("onboarding.next")} onPress={goNext} style={{ width: "100%" }} />
         ) : (
           <ActionButton
-            label="Simulan na!"
+            label={t("onboarding.start")}
             onPress={() => void finishOnboarding()}
             style={{ width: "100%" }}
           />

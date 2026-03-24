@@ -1,4 +1,5 @@
 export type ThemeMode = "light" | "dark";
+export type AppLanguage = "english" | "taglish";
 
 export type TrustScore = "Bago" | "Maaasahan" | "Bantayan" | "Delikado";
 

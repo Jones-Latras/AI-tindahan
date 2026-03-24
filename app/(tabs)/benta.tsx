@@ -19,6 +19,7 @@ import { ReceiptView } from "@/components/ReceiptView";
 import { Screen } from "@/components/Screen";
 import { StatusBadge } from "@/components/StatusBadge";
 import { SurfaceCard } from "@/components/SurfaceCard";
+import { useAppLanguage } from "@/contexts/LanguageContext";
 import { useAppTheme } from "@/contexts/ThemeContext";
 import { checkoutSale, getHomeMetrics, getProductByBarcode, listCustomersWithBalances, listProducts } from "@/db/repositories";
 import { useCartStore } from "@/store/useCartStore";
@@ -44,6 +45,7 @@ type CartFeedback = {
 export default function BentaScreen() {
   const db = useSQLiteContext();
   const { theme } = useAppTheme();
+  const { t } = useAppLanguage();
   const [products, setProducts] = useState<Product[]>([]);
   const [customers, setCustomers] = useState<CustomerSummary[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
@@ -645,8 +647,8 @@ export default function BentaScreen() {
             </Animated.View>
           </>
         }
-        subtitle="Tap products fast, then open the cart anytime from the sticky bar."
-        title="Benta"
+        subtitle={t("benta.subtitle")}
+        title={t("benta.title")}
       >
         <SurfaceCard style={compactCardStyle}>
           <View style={{ alignItems: "center", flexDirection: "row", justifyContent: "space-between", gap: theme.spacing.sm }}>
@@ -736,7 +738,7 @@ export default function BentaScreen() {
               <EmptyState
                 icon="package"
                 message="Add products first in the Produkto tab to start selling from the POS screen."
-                title="No Products Yet"
+                title={t("benta.noProductsTitle")}
               />
             </View>
           )}
@@ -783,7 +785,7 @@ export default function BentaScreen() {
             <EmptyState
               icon="shopping-cart"
               message="Tap any product card above and it will appear here instantly."
-              title="Cart Is Empty"
+              title={t("benta.cartEmptyTitle")}
             />
           )}
 
@@ -1088,8 +1090,8 @@ export default function BentaScreen() {
           />
         }
         onClose={() => setCartSheetVisible(false)}
-        subtitle={cartItems.length > 0 ? `${cartCountLabel} ready for checkout.` : "Tap products from the catalog to start a sale."}
-        title="Cart & Checkout"
+        subtitle={cartItems.length > 0 ? t("benta.cartSubtitle.ready", { count: cartCountLabel }) : t("benta.cartSubtitle.empty")}
+        title={t("benta.cartTitle")}
         visible={cartSheetVisible}
       >
         {cartItems.length > 0 ? (
@@ -1406,7 +1408,7 @@ export default function BentaScreen() {
           <EmptyState
             icon="shopping-cart"
             message="Tap any product card and your active sale will appear here instantly."
-            title="Cart Is Empty"
+            title={t("benta.cartEmptyTitle")}
           />
         )}
       </ModalSheet>
@@ -1414,8 +1416,8 @@ export default function BentaScreen() {
       <ModalSheet
         footer={<ActionButton label="Close" onPress={() => setCustomerPickerVisible(false)} variant="ghost" />}
         onClose={() => setCustomerPickerVisible(false)}
-        subtitle="Choose the customer whose utang ledger should receive this sale."
-        title="Select Customer"
+        subtitle={t("benta.customerPickerSubtitle")}
+        title={t("benta.customerPickerTitle")}
         visible={customerPickerVisible}
       >
         {customers.length > 0 ? (
@@ -1470,7 +1472,7 @@ export default function BentaScreen() {
           <EmptyState
             icon="users"
             message="Create a customer in Palista first, then return here to save utang-based checkout."
-            title="No Customers Yet"
+            title={t("benta.noCustomersTitle")}
           />
         )}
       </ModalSheet>
@@ -1478,8 +1480,8 @@ export default function BentaScreen() {
       <ModalSheet
         footer={<ActionButton label="Close Scanner" onPress={() => setScannerVisible(false)} variant="ghost" />}
         onClose={() => setScannerVisible(false)}
-        subtitle="Point the camera at a supported product barcode to add it directly to the cart."
-        title="Barcode Scanner"
+        subtitle={t("benta.barcodeSubtitle")}
+        title={t("benta.barcodeTitle")}
         visible={scannerVisible}
       >
         <View

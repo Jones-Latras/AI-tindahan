@@ -2,7 +2,7 @@ import { Feather } from "@expo/vector-icons";
 import { useFocusEffect } from "expo-router";
 import { useSQLiteContext } from "expo-sqlite";
 import Storage from "expo-sqlite/kv-store";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from "react-native";
 
 import { seedStoreData } from "@/scripts/seed-store";
@@ -11,11 +11,13 @@ import { ActionButton } from "@/components/ActionButton";
 import { AutoSwipeSuggestionCarousel } from "@/components/AutoSwipeSuggestionCarousel";
 import { EmptyState } from "@/components/EmptyState";
 import { InputField } from "@/components/InputField";
+import { LanguageToggle } from "@/components/LanguageToggle";
 import { ModalSheet } from "@/components/ModalSheet";
 import { Screen } from "@/components/Screen";
 import { StatCard } from "@/components/StatCard";
 import { StatusBadge } from "@/components/StatusBadge";
 import { SurfaceCard } from "@/components/SurfaceCard";
+import { useAppLanguage } from "@/contexts/LanguageContext";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useAppTheme } from "@/contexts/ThemeContext";
 import { getHomeMetrics, getProductSalesVelocity, getWeeklyPaymentBreakdown } from "@/db/repositories";
@@ -37,6 +39,7 @@ function createChatMessage(role: ChatMessage["role"], text: string): ChatMessage
 export default function HomeScreen() {
   const db = useSQLiteContext();
   const { theme } = useAppTheme();
+  const { language, t } = useAppLanguage();
   const geminiReady = isGeminiReady();
   const [metrics, setMetrics] = useState<HomeMetrics | null>(null);
   const [brief, setBrief] = useState<HomeAiBrief | null>(null);
@@ -51,16 +54,19 @@ export default function HomeScreen() {
   const [seeding, setSeeding] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [lastSync, setLastSync] = useState<string | null>(null);
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    createChatMessage(
-      "assistant",
-      "Kumusta. I can help explain sales, restock pressure, utang risk, and overall store performance in Taglish.",
-    ),
-  ]);
+  const [messages, setMessages] = useState<ChatMessage[]>(() => [createChatMessage("assistant", t("home.aiWelcome"))]);
   const compactCardStyle = {
     gap: theme.spacing.sm,
     padding: theme.spacing.md,
   } as const;
+
+  useEffect(() => {
+    setMessages((current) =>
+      current.length === 1 && current[0]?.role === "assistant"
+        ? [createChatMessage("assistant", t("home.aiWelcome"))]
+        : current,
+    );
+  }, [t]);
 
   const loadDashboard = useCallback(async () => {
     setLoading(true);
@@ -69,7 +75,7 @@ export default function HomeScreen() {
     try {
       const [nextMetrics, nextBrief, nextVelocity, nextWeekly] = await Promise.all([
         getHomeMetrics(db),
-        getOrCreateHomeAiBrief(db),
+        getOrCreateHomeAiBrief(db, language),
         getProductSalesVelocity(db),
         getWeeklyPaymentBreakdown(db),
       ]);
@@ -81,7 +87,7 @@ export default function HomeScreen() {
       setLoading(false);
       setAiLoading(false);
     }
-  }, [db]);
+  }, [db, language]);
 
   useFocusEffect(
     useCallback(() => {
@@ -106,12 +112,12 @@ export default function HomeScreen() {
     setSendingChat(true);
 
     try {
-      const reply = await chatWithAlingAi(db, messages, userText);
+      const reply = await chatWithAlingAi(db, messages, userText, language);
       setMessages((current) => [...current, createChatMessage("assistant", reply)]);
     } finally {
       setSendingChat(false);
     }
-  }, [chatInput, db, messages, sendingChat]);
+  }, [chatInput, db, language, messages, sendingChat]);
 
   return (
     <>
@@ -152,12 +158,17 @@ export default function HomeScreen() {
                 fontWeight: "700",
               }}
             >
-              Aling AI
+              {t("home.aiButton")}
             </Text>
           </Pressable>
         }
-        rightSlot={<ThemeToggle />}
-        subtitle="Sales, stock, and utang in one quick glance."
+        rightSlot={
+          <View style={{ alignItems: "flex-end", gap: theme.spacing.sm }}>
+            <LanguageToggle />
+            <ThemeToggle />
+          </View>
+        }
+        subtitle={t("home.subtitle")}
         title={storeName || "TindaHan AI"}
       >
         {aiLoading ? (
@@ -217,7 +228,7 @@ export default function HomeScreen() {
                     fontWeight: "700",
                   }}
                 >
-                  Aling AI Daily Brief
+                  {t("home.brief.title")}
                 </Text>
                 <Text
                   style={{
@@ -226,11 +237,11 @@ export default function HomeScreen() {
                     fontSize: 13,
                   }}
                 >
-                  Fresh insight for today&apos;s store rhythm.
+                  {t("home.brief.subtitle")}
                 </Text>
               </View>
               <StatusBadge
-                label={brief.source === "ai" ? "Live Insight" : geminiReady ? "Fallback" : "AI Off"}
+                label={brief.source === "ai" ? t("home.brief.live") : geminiReady ? t("home.brief.fallback") : t("home.brief.aiOff")}
                 tone={brief.source === "ai" ? "primary" : "neutral"}
               />
             </View>
@@ -255,8 +266,8 @@ export default function HomeScreen() {
                   fontWeight: "700",
                 }}
               >
-                Restock suggestions
-              </Text>
+                  {t("home.brief.restock")}
+                </Text>
               {brief.restockSuggestions.length > 0 ? (
                 <AutoSwipeSuggestionCarousel suggestions={brief.restockSuggestions} />
               ) : (
@@ -267,7 +278,7 @@ export default function HomeScreen() {
                     fontSize: 14,
                   }}
                 >
-                  No urgent restock recommendations right now.
+                  {t("home.brief.noRestock")}
                 </Text>
               )}
             </View>
@@ -284,7 +295,7 @@ export default function HomeScreen() {
                 fontSize: 14,
               }}
             >
-              Loading today&apos;s numbers...
+              {t("home.loadingNumbers")}
             </Text>
           </SurfaceCard>
         ) : metrics ? (
@@ -292,7 +303,7 @@ export default function HomeScreen() {
             <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
               <StatCard
                 icon="bar-chart-2"
-                label="Kita Today"
+                label={language === "english" ? "Sales Today" : "Kita Today"}
                 tone="primary"
                 value={formatCurrencyFromCents(metrics.todaySalesCents)}
               />
@@ -304,13 +315,13 @@ export default function HomeScreen() {
               />
               <StatCard
                 icon="trending-up"
-                label="Profit Today"
+                label={language === "english" ? "Profit Today" : "Profit Today"}
                 tone="primary"
                 value={formatCurrencyFromCents(metrics.todayProfitCents)}
               />
               <StatCard
                 icon="alert-circle"
-                label="Outstanding Utang"
+                label={language === "english" ? "Outstanding Credit" : "Outstanding Utang"}
                 tone="warning"
                 value={formatCurrencyFromCents(metrics.totalUtangCents)}
               />
@@ -326,7 +337,7 @@ export default function HomeScreen() {
                     fontWeight: "700",
                   }}
                 >
-                  Run-out Radar
+                  {t("home.runout.title")}
                 </Text>
                 <Text
                   style={{
@@ -335,7 +346,7 @@ export default function HomeScreen() {
                     fontSize: 14,
                   }}
                 >
-                  Estimated days left based on recent sales velocity.
+                  {t("home.runout.subtitle")}
                 </Text>
               </View>
 
@@ -376,7 +387,7 @@ export default function HomeScreen() {
                       </Text>
                     </View>
                     <StatusBadge
-                      label={`${item.daysUntilOutOfStock} days left`}
+                      label={t("home.runout.daysLeft", { days: item.daysUntilOutOfStock ?? 0 })}
                       tone={(item.daysUntilOutOfStock ?? 99) <= 3 ? "danger" : "warning"}
                     />
                   </View>
@@ -389,7 +400,7 @@ export default function HomeScreen() {
                     fontSize: 14,
                   }}
                 >
-                  Not enough recent sales data to estimate stockout dates yet.
+                  {t("home.runout.noData")}
                 </Text>
               )}
             </SurfaceCard>
@@ -404,7 +415,7 @@ export default function HomeScreen() {
                     fontWeight: "700",
                   }}
                 >
-                  Payment Mix Today
+                  {t("home.paymentMix.title")}
                 </Text>
                 <Text
                   style={{
@@ -413,7 +424,7 @@ export default function HomeScreen() {
                     fontSize: 14,
                   }}
                 >
-                  Cash and digital flow saved per checkout.
+                  {t("home.paymentMix.subtitle")}
                 </Text>
               </View>
 
@@ -435,7 +446,7 @@ export default function HomeScreen() {
                     fontWeight: "700",
                   }}
                 >
-                  Weekly Sales Report
+                  {t("home.weekly.title")}
                 </Text>
                 <Text
                   style={{
@@ -444,7 +455,7 @@ export default function HomeScreen() {
                     fontSize: 14,
                   }}
                 >
-                  Cash vs GCash vs Maya vs Utang by week.
+                  {t("home.weekly.subtitle")}
                 </Text>
               </View>
 
@@ -512,7 +523,7 @@ export default function HomeScreen() {
                     fontSize: 14,
                   }}
                 >
-                  No sales recorded in the last 4 weeks yet.
+                  {t("home.weekly.noData")}
                 </Text>
               )}
 
@@ -546,7 +557,7 @@ export default function HomeScreen() {
                     fontWeight: "700",
                   }}
                 >
-                  Delikado Customers
+                  {t("home.risk.title")}
                 </Text>
                 <Text
                   style={{
@@ -555,7 +566,7 @@ export default function HomeScreen() {
                     fontSize: 14,
                   }}
                 >
-                  AI trust scores from Palista flow into this warning strip.
+                  {t("home.risk.subtitle")}
                 </Text>
               </View>
 
@@ -590,8 +601,8 @@ export default function HomeScreen() {
               ) : (
                 <EmptyState
                   icon="shield"
-                  message="No customers are currently flagged as Delikado."
-                  title="No High-Risk Alerts"
+                  message={t("home.risk.emptyMessage")}
+                  title={t("home.risk.emptyTitle")}
                 />
               )}
             </SurfaceCard>
@@ -606,7 +617,7 @@ export default function HomeScreen() {
                     fontWeight: "700",
                   }}
                 >
-                  Low Stock Alerts
+                  {t("home.lowStock.title")}
                 </Text>
                 <Text
                   style={{
@@ -615,7 +626,7 @@ export default function HomeScreen() {
                     fontSize: 14,
                   }}
                 >
-                  Products at or below their reorder threshold.
+                  {t("home.lowStock.subtitle")}
                 </Text>
               </View>
 
@@ -659,8 +670,8 @@ export default function HomeScreen() {
               ) : (
                 <EmptyState
                   icon="check-circle"
-                  message="Everything looks healthy right now. No products are below their minimum stock."
-                  title="Inventory Looks Good"
+                  message={t("home.lowStock.emptyMessage")}
+                  title={t("home.lowStock.emptyTitle")}
                 />
               )}
             </SurfaceCard>
@@ -678,7 +689,7 @@ export default function HomeScreen() {
                   fontWeight: "700",
                 }}
               >
-                Cloud Backup
+                {t("home.cloud.title")}
               </Text>
               <Text
                 style={{
@@ -687,20 +698,20 @@ export default function HomeScreen() {
                   fontSize: 14,
                 }}
               >
-                {lastSync ? `Last backup: ${lastSync}` : "Hindi pa naka-backup sa cloud."}
+                {lastSync ? t("home.cloud.lastBackup", { time: lastSync }) : t("home.cloud.none")}
               </Text>
             </View>
             <ActionButton
               disabled={syncing}
-              label={syncing ? "Syncing..." : "I-backup ngayon"}
+              label={syncing ? "Syncing..." : t("home.cloud.backupNow")}
               onPress={async () => {
                 setSyncing(true);
                 try {
                   const msg = await syncToCloud(db);
-                  Alert.alert("Backup", msg);
+                  Alert.alert(t("home.cloud.backupTitle"), msg);
                   setLastSync(await getLastSyncTime());
                 } catch (err) {
-                  Alert.alert("Backup failed", String(err));
+                  Alert.alert(t("home.cloud.backupFailed"), String(err));
                 } finally {
                   setSyncing(false);
                 }
@@ -708,25 +719,25 @@ export default function HomeScreen() {
             />
             <ActionButton
               disabled={syncing}
-              label="Restore from Cloud"
+              label={t("home.cloud.restore")}
               onPress={() => {
                 Alert.alert(
-                  "Restore Data?",
-                  "I-o-overwrite nito ang local data mo. Sigurado ka ba?",
+                  t("home.cloud.restoreTitle"),
+                  t("home.cloud.restoreMessage"),
                   [
-                    { text: "Cancel", style: "cancel" },
+                    { text: t("home.cloud.cancel"), style: "cancel" },
                     {
-                      text: "Restore",
+                      text: t("home.cloud.confirmRestore"),
                       style: "destructive",
                       onPress: async () => {
                         setSyncing(true);
                         try {
                           const msg = await restoreFromCloud(db);
-                          Alert.alert("Restore", msg);
+                          Alert.alert(t("home.cloud.restoreResult"), msg);
                           void loadDashboard();
                           setLastSync(await getLastSyncTime());
                         } catch (err) {
-                          Alert.alert("Restore failed", String(err));
+                          Alert.alert(t("home.cloud.restoreFailed"), String(err));
                         } finally {
                           setSyncing(false);
                         }
@@ -756,21 +767,21 @@ export default function HomeScreen() {
                 fontWeight: "700",
               }}
             >
-              Dev Tools
+              {t("home.dev.title")}
             </Text>
             <ActionButton
               disabled={seeding}
-              label={seeding ? "Seeding..." : "Seed Store Data"}
+              label={seeding ? "Seeding..." : t("home.dev.seed")}
               onPress={async () => {
                 setSeeding(true);
                 try {
                   const result = await seedStoreData(db);
-                  Alert.alert(result.skipped ? "Skipped" : "Done", result.message);
+                  Alert.alert(result.skipped ? t("home.dev.skipped") : t("home.dev.done"), result.message);
                   if (!result.skipped) {
                     void loadDashboard();
                   }
                 } catch (err) {
-                  Alert.alert("Error", String(err));
+                  Alert.alert(t("home.dev.error"), String(err));
                 } finally {
                   setSeeding(false);
                 }
@@ -785,22 +796,22 @@ export default function HomeScreen() {
         footer={
           <View style={{ gap: theme.spacing.sm }}>
             <InputField
-              label="Ask Aling AI"
+              label={t("home.chat.ask")}
               multiline
               onChangeText={setChatInput}
-              placeholder="Example: Anong produkto ang dapat kong i-restock?"
+              placeholder={t("home.chat.placeholder")}
               value={chatInput}
             />
             <ActionButton
               disabled={sendingChat || chatInput.trim().length === 0}
-              label={sendingChat ? "Thinking..." : "Send"}
+              label={sendingChat ? t("home.chat.thinking") : t("home.chat.send")}
               onPress={() => void handleSendChat()}
             />
           </View>
         }
         onClose={() => setChatVisible(false)}
-        subtitle="Store-aware answers powered by Gemini when configured."
-        title="Aling AI Chat"
+        subtitle={t("home.chat.subtitle")}
+        title={t("home.chat.title")}
         visible={chatVisible}
       >
         <ScrollView
@@ -851,9 +862,9 @@ export default function HomeScreen() {
                   fontSize: 14,
                 }}
               >
-                Aling AI is thinking...
-              </Text>
-            </View>
+                  {t("home.chat.aiThinking")}
+                </Text>
+              </View>
           ) : null}
         </ScrollView>
       </ModalSheet>

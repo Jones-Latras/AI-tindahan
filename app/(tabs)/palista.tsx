@@ -21,6 +21,7 @@ import { ModalSheet } from "@/components/ModalSheet";
 import { Screen } from "@/components/Screen";
 import { StatusBadge } from "@/components/StatusBadge";
 import { SurfaceCard } from "@/components/SurfaceCard";
+import { useAppLanguage } from "@/contexts/LanguageContext";
 import { useAppTheme } from "@/contexts/ThemeContext";
 import {
   addUtangEntry,
@@ -56,14 +57,14 @@ const emptyUtangForm: UtangFormState = {
 
 function getOverdueTone(level: CustomerSummary["overdueLevel"]) {
   if (level === "critical") {
-    return { label: "2+ weeks", tone: "danger" as const };
+    return "danger" as const;
   }
 
   if (level === "attention") {
-    return { label: "1 week", tone: "warning" as const };
+    return "warning" as const;
   }
 
-  return { label: "Fresh", tone: "success" as const };
+  return "success" as const;
 }
 
 function getTrustTone(trustScore: CustomerSummary["trustScore"]) {
@@ -85,6 +86,7 @@ function getTrustTone(trustScore: CustomerSummary["trustScore"]) {
 export default function PalistaScreen() {
   const db = useSQLiteContext();
   const { theme } = useAppTheme();
+  const { t } = useAppLanguage();
   const [customers, setCustomers] = useState<CustomerSummary[]>([]);
   const [ledgerEntries, setLedgerEntries] = useState<UtangLedgerEntry[]>([]);
   const [customerModalVisible, setCustomerModalVisible] = useState(false);
@@ -101,6 +103,8 @@ export default function PalistaScreen() {
   const [saving, setSaving] = useState(false);
   const [refreshingScores, setRefreshingScores] = useState(false);
   const [refreshingList, setRefreshingList] = useState(false);
+  const [searchVisible, setSearchVisible] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
   const hasLoadedCustomersRef = useRef(false);
   const customerListOpacity = useRef(new Animated.Value(1)).current;
 
@@ -175,6 +179,71 @@ export default function PalistaScreen() {
       ledgerEntries.reduce((total, entry) => total + Math.max(0, entry.amountCents - entry.amountPaidCents), 0),
     [ledgerEntries],
   );
+  const selectedEntryOutstanding = selectedEntry
+    ? Math.max(0, selectedEntry.amountCents - selectedEntry.amountPaidCents)
+    : 0;
+  const paymentAmountCents = parseCurrencyToCents(paymentAmount);
+  const hasValidPaymentAmount = Number.isFinite(paymentAmountCents) && paymentAmountCents > 0;
+  const appliedPaymentCents = hasValidPaymentAmount
+    ? Math.min(paymentAmountCents, selectedEntryOutstanding)
+    : 0;
+  const remainingBalanceCents = Math.max(0, selectedEntryOutstanding - appliedPaymentCents);
+  const changeDueCents = hasValidPaymentAmount
+    ? Math.max(0, paymentAmountCents - selectedEntryOutstanding)
+    : 0;
+
+  const getTrustLabel = useCallback(
+    (trustScore: CustomerSummary["trustScore"]) => {
+      if (trustScore === "Delikado") {
+        return t("palista.trust.delikado");
+      }
+
+      if (trustScore === "Bantayan") {
+        return t("palista.trust.bantayan");
+      }
+
+      if (trustScore === "Maaasahan") {
+        return t("palista.trust.maaasahan");
+      }
+
+      return t("palista.trust.bago");
+    },
+    [t],
+  );
+
+  const getOverdueLabel = useCallback(
+    (level: CustomerSummary["overdueLevel"]) => {
+      if (level === "critical") {
+        return t("palista.overdue.critical");
+      }
+
+      if (level === "attention") {
+        return t("palista.overdue.attention");
+      }
+
+      return t("palista.overdue.fresh");
+    },
+    [t],
+  );
+
+  const filteredCustomers = useMemo(() => {
+    const query = searchTerm.trim().toLowerCase();
+
+    if (!query) {
+      return customers;
+    }
+
+    return customers.filter((customer) => {
+      const searchFields = [
+        customer.name,
+        customer.phone ?? "",
+        customer.trustScore,
+        getTrustLabel(customer.trustScore),
+      ];
+
+      return searchFields.some((field) => field.toLowerCase().includes(query));
+    });
+  }, [customers, getTrustLabel, searchTerm]);
 
   const openCustomerModal = useCallback((customer?: CustomerSummary) => {
     setEditingCustomer(customer ?? null);
@@ -214,12 +283,12 @@ export default function PalistaScreen() {
       const message =
         error instanceof Error
           ? error.message
-          : "The customer could not be saved. Please review the form values.";
-      Alert.alert("Save failed", message);
+          : t("palista.alert.saveFailedCustomer");
+      Alert.alert(t("palista.alert.saveFailedTitle"), message);
     } finally {
       setSaving(false);
     }
-  }, [customerForm.name, customerForm.phone, db, editingCustomer?.id, refreshCustomers]);
+  }, [customerForm.name, customerForm.phone, db, editingCustomer?.id, refreshCustomers, t]);
 
   const refreshSingleTrustScore = useCallback(
     async (customerId: number) => {
@@ -237,7 +306,7 @@ export default function PalistaScreen() {
     const amountCents = parseCurrencyToCents(utangForm.amount);
 
     if (!Number.isFinite(amountCents) || amountCents <= 0) {
-      Alert.alert("Invalid amount", "Enter a valid peso amount for the utang entry.");
+      Alert.alert(t("palista.alert.invalidAmountTitle"), t("palista.alert.invalidUtangAmount"));
       return;
     }
 
@@ -255,12 +324,12 @@ export default function PalistaScreen() {
       await refreshSingleTrustScore(selectedCustomer.id);
       await refreshLedger(selectedCustomer.id);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "The utang entry could not be saved.";
-      Alert.alert("Save failed", message);
+      const message = error instanceof Error ? error.message : t("palista.alert.saveFailedUtang");
+      Alert.alert(t("palista.alert.saveFailedTitle"), message);
     } finally {
       setSaving(false);
     }
-  }, [db, refreshLedger, refreshSingleTrustScore, selectedCustomer, utangForm.amount, utangForm.description]);
+  }, [db, refreshLedger, refreshSingleTrustScore, selectedCustomer, t, utangForm.amount, utangForm.description]);
 
   const handlePayment = useCallback(async () => {
     if (!selectedEntry || !selectedCustomer) {
@@ -270,7 +339,7 @@ export default function PalistaScreen() {
     const amountCents = parseCurrencyToCents(paymentAmount);
 
     if (!Number.isFinite(amountCents) || amountCents <= 0) {
-      Alert.alert("Invalid amount", "Enter a valid peso amount for the payment.");
+      Alert.alert(t("palista.alert.invalidAmountTitle"), t("palista.alert.invalidPaymentAmount"));
       return;
     }
 
@@ -284,12 +353,12 @@ export default function PalistaScreen() {
       await refreshSingleTrustScore(selectedCustomer.id);
       await refreshLedger(selectedCustomer.id);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "The payment could not be recorded.";
-      Alert.alert("Payment failed", message);
+      const message = error instanceof Error ? error.message : t("palista.alert.paymentFailed");
+      Alert.alert(t("palista.alert.paymentFailedTitle"), message);
     } finally {
       setSaving(false);
     }
-  }, [db, paymentAmount, refreshLedger, refreshSingleTrustScore, selectedCustomer, selectedEntry]);
+  }, [db, paymentAmount, refreshLedger, refreshSingleTrustScore, selectedCustomer, selectedEntry, t]);
 
   const handleRefreshAllScores = useCallback(async () => {
     setRefreshingScores(true);
@@ -297,16 +366,16 @@ export default function PalistaScreen() {
     try {
       await refreshAllCustomerTrustScores(db);
       await refreshCustomers("background");
-      Alert.alert("AI scores refreshed", "Customer trust scores have been updated.");
+      Alert.alert(t("palista.alert.refreshDoneTitle"), t("palista.alert.refreshDoneMessage"));
     } catch {
-      Alert.alert("Refresh failed", "Trust scores could not be refreshed right now.");
+      Alert.alert(t("palista.alert.refreshFailedTitle"), t("palista.alert.refreshFailedMessage"));
     } finally {
       setRefreshingScores(false);
     }
-  }, [db, refreshCustomers]);
+  }, [db, refreshCustomers, t]);
 
   return (
-    <Screen subtitle="Track customers, outstanding balances, partial payments, and AI trust score updates." title="Palista">
+    <Screen subtitle={t("palista.subtitle")} title={t("palista.title")}>
       <SurfaceCard style={{ gap: theme.spacing.md }}>
         <View style={{ alignItems: "center", flexDirection: "row", justifyContent: "space-between", gap: theme.spacing.md }}>
           <Text
@@ -318,7 +387,7 @@ export default function PalistaScreen() {
               fontWeight: "700",
             }}
           >
-            Customer Ledger
+            {t("palista.ledgerTitle")}
           </Text>
           {refreshingList ? (
             <View style={{ alignItems: "center", flexDirection: "row", gap: theme.spacing.xs }}>
@@ -331,7 +400,7 @@ export default function PalistaScreen() {
                   fontWeight: "700",
                 }}
               >
-                Updating
+                {t("palista.updating")}
               </Text>
             </View>
           ) : null}
@@ -339,18 +408,41 @@ export default function PalistaScreen() {
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
           <ActionButton
             icon={<Feather color={theme.colors.primaryText} name="user-plus" size={16} />}
-            label="Bagong Customer"
+            label={t("palista.newCustomerButton")}
             onPress={() => openCustomerModal()}
             style={{ flex: 1, minWidth: 150 }}
           />
           <ActionButton
+            icon={<Feather color={theme.colors.primary} name="search" size={16} />}
+            label={searchVisible ? t("palista.search.hide") : t("palista.search.show")}
+            onPress={() => {
+              setSearchVisible((current) => {
+                if (current) {
+                  setSearchTerm("");
+                }
+
+                return !current;
+              });
+            }}
+            style={{ flex: 1, minWidth: 150 }}
+            variant="ghost"
+          />
+          <ActionButton
             icon={<Feather color={theme.colors.primary} name="refresh-cw" size={16} />}
-            label={refreshingScores ? "Refreshing..." : "Refresh AI Scores"}
+            label={refreshingScores ? t("palista.refreshingScores") : t("palista.refreshScores")}
             onPress={() => void handleRefreshAllScores()}
             style={{ flex: 1, minWidth: 150 }}
             variant="secondary"
           />
         </View>
+        {searchVisible ? (
+          <InputField
+            label={t("palista.search.label")}
+            onChangeText={setSearchTerm}
+            placeholder={t("palista.search.placeholder")}
+            value={searchTerm}
+          />
+        ) : null}
       </SurfaceCard>
 
       {loading ? (
@@ -363,13 +455,14 @@ export default function PalistaScreen() {
               fontSize: 14,
             }}
           >
-            Loading customer balances...
+            {t("palista.loadingBalances")}
           </Text>
         </SurfaceCard>
-      ) : customers.length > 0 ? (
+      ) : filteredCustomers.length > 0 ? (
         <Animated.View style={{ gap: theme.spacing.md, opacity: customerListOpacity }}>
-          {customers.map((customer) => {
-            const overdue = getOverdueTone(customer.overdueLevel);
+          {filteredCustomers.map((customer) => {
+            const overdueTone = getOverdueTone(customer.overdueLevel);
+            const overdueLabel = getOverdueLabel(customer.overdueLevel);
             const daysSince = getDaysBetween(customer.lastUtangDate);
 
             return (
@@ -393,12 +486,12 @@ export default function PalistaScreen() {
                         fontSize: 14,
                       }}
                     >
-                      {customer.phone || "No phone number"}
+                      {customer.phone || t("palista.noPhone")}
                     </Text>
                   </View>
                   <View style={{ alignItems: "flex-end", gap: theme.spacing.xs }}>
-                    <StatusBadge label={customer.trustScore} tone={getTrustTone(customer.trustScore)} />
-                    <StatusBadge label={overdue.label} tone={overdue.tone} />
+                    <StatusBadge label={getTrustLabel(customer.trustScore)} tone={getTrustTone(customer.trustScore)} />
+                    <StatusBadge label={overdueLabel} tone={overdueTone} />
                   </View>
                 </View>
 
@@ -411,7 +504,7 @@ export default function PalistaScreen() {
                         fontSize: 12,
                       }}
                     >
-                      Outstanding balance
+                      {t("palista.outstandingBalance")}
                     </Text>
                     <Text
                       style={{
@@ -432,7 +525,7 @@ export default function PalistaScreen() {
                         fontSize: 12,
                       }}
                     >
-                      Last utang
+                      {t("palista.lastUtang")}
                     </Text>
                     <Text
                       style={{
@@ -442,25 +535,25 @@ export default function PalistaScreen() {
                         fontWeight: "700",
                       }}
                     >
-                      {customer.lastUtangDate ? `${daysSince} day(s)` : "No record"}
+                      {customer.lastUtangDate ? `${daysSince} day(s)` : t("palista.noRecord")}
                     </Text>
                   </View>
                 </View>
 
                 <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
                   <ActionButton
-                    label="View History"
+                    label={t("palista.viewHistory")}
                     onPress={() => void openCustomerDetail(customer)}
                     style={{ flex: 1, minWidth: 150 }}
                   />
                   <ActionButton
-                    label="Refresh Score"
+                    label={t("palista.refreshScore")}
                     onPress={() => void refreshSingleTrustScore(customer.id)}
                     style={{ flex: 1, minWidth: 150 }}
                     variant="secondary"
                   />
                   <ActionButton
-                    label="Edit Customer"
+                    label={t("palista.editCustomerButton")}
                     onPress={() => openCustomerModal(customer)}
                     style={{ flex: 1, minWidth: 150 }}
                     variant="ghost"
@@ -474,8 +567,8 @@ export default function PalistaScreen() {
         <Animated.View style={{ opacity: customerListOpacity }}>
           <EmptyState
             icon="book-open"
-            message="Add your first customer and start logging balances instead of relying on a handwritten notebook."
-            title="No Utang Records Yet"
+            message={customers.length > 0 ? t("palista.search.emptyMessage") : t("palista.emptyMessage")}
+            title={customers.length > 0 ? t("palista.search.emptyTitle") : t("palista.noUtangTitle")}
           />
         </Animated.View>
       )}
@@ -484,26 +577,26 @@ export default function PalistaScreen() {
         footer={
           <ActionButton
             disabled={saving}
-            label={saving ? "Saving..." : editingCustomer ? "Update Customer" : "Create Customer"}
+            label={saving ? t("palista.save.saving") : editingCustomer ? t("palista.save.updateCustomer") : t("palista.save.createCustomer")}
             onPress={() => void handleSaveCustomer()}
           />
         }
         onClose={() => setCustomerModalVisible(false)}
-        subtitle="A clean customer list makes credit tracking much easier later on."
-        title={editingCustomer ? "Edit Customer" : "New Customer"}
+        subtitle={t("palista.customerSubtitle")}
+        title={editingCustomer ? t("palista.customerTitle.edit") : t("palista.customerTitle.new")}
         visible={customerModalVisible}
       >
         <InputField
-          label="Customer name"
+          label={t("palista.field.customerName")}
           onChangeText={(value) => setCustomerForm((current) => ({ ...current, name: value }))}
-          placeholder="Example: Aling Nena"
+          placeholder={t("palista.field.customerNamePlaceholder")}
           value={customerForm.name}
         />
         <InputField
           keyboardType="phone-pad"
-          label="Phone number"
+          label={t("palista.field.phoneNumber")}
           onChangeText={(value) => setCustomerForm((current) => ({ ...current, phone: value }))}
-          placeholder="Optional"
+          placeholder={t("palista.field.optional")}
           value={customerForm.phone}
         />
       </ModalSheet>
@@ -512,22 +605,25 @@ export default function PalistaScreen() {
         footer={
           <View style={{ gap: theme.spacing.sm }}>
             <ActionButton
-              label="Bagong Utang"
+              label={t("palista.newUtangButton")}
               onPress={() => {
                 setUtangForm(emptyUtangForm);
                 setUtangModalVisible(true);
               }}
             />
-            <ActionButton label="Close" onPress={() => setDetailVisible(false)} variant="ghost" />
+            <ActionButton label={t("palista.close")} onPress={() => setDetailVisible(false)} variant="ghost" />
           </View>
         }
         onClose={() => setDetailVisible(false)}
         subtitle={
           selectedCustomer
-            ? `${selectedCustomer.name} | Outstanding ${formatCurrencyFromCents(selectedOutstandingTotal)}`
-            : undefined
+            ? t("palista.historySubtitle.selected", {
+                amount: formatCurrencyFromCents(selectedOutstandingTotal),
+                name: selectedCustomer.name,
+              })
+            : t("palista.historySubtitle.empty")
         }
-        title="Customer History"
+        title={t("palista.historyTitle")}
         visible={detailVisible}
       >
         {selectedCustomer ? (
@@ -543,7 +639,7 @@ export default function PalistaScreen() {
                       fontWeight: "600",
                     }}
                   >
-                    Last entry
+                    {t("palista.lastEntry")}
                   </Text>
                   <Text
                     style={{
@@ -556,7 +652,7 @@ export default function PalistaScreen() {
                     {formatDateLabel(selectedCustomer.lastUtangDate)}
                   </Text>
                 </View>
-                <StatusBadge label={selectedCustomer.trustScore} tone={getTrustTone(selectedCustomer.trustScore)} />
+                <StatusBadge label={getTrustLabel(selectedCustomer.trustScore)} tone={getTrustTone(selectedCustomer.trustScore)} />
               </View>
             </SurfaceCard>
 
@@ -577,7 +673,7 @@ export default function PalistaScreen() {
                             fontWeight: "700",
                           }}
                         >
-                          {entry.description || "General credit purchase"}
+                          {entry.description || t("palista.generalCreditPurchase")}
                         </Text>
                         <Text
                           style={{
@@ -608,14 +704,18 @@ export default function PalistaScreen() {
                             fontWeight: "700",
                           }}
                         >
-                          {isPaid ? "Paid" : `Paid ${formatCurrencyFromCents(entry.amountPaidCents)}`}
+                          {isPaid
+                            ? t("palista.paid")
+                            : t("palista.paidAmount", {
+                                amount: formatCurrencyFromCents(entry.amountPaidCents),
+                              })}
                         </Text>
                       </View>
                     </View>
 
                     {!isPaid ? (
                       <ActionButton
-                        label="Receive Payment"
+                        label={t("palista.receivePaymentTitle")}
                         onPress={() => {
                           setSelectedEntry(entry);
                           setPaymentAmount("");
@@ -630,8 +730,8 @@ export default function PalistaScreen() {
             ) : (
               <EmptyState
                 icon="file-text"
-                message="No utang entries for this customer yet. Add the first one from the button below."
-                title="No History Yet"
+                message={t("palista.noHistoryMessage")}
+                title={t("palista.noHistoryTitle")}
               />
             )}
           </>
@@ -642,27 +742,27 @@ export default function PalistaScreen() {
         footer={
           <ActionButton
             disabled={saving}
-            label={saving ? "Saving..." : "Save Utang"}
+            label={saving ? t("palista.save.saving") : t("palista.saveUtang")}
             onPress={() => void handleAddUtang()}
           />
         }
         onClose={() => setUtangModalVisible(false)}
-        subtitle="Record what was borrowed and how much is still owed."
-        title="Bagong Utang"
+        subtitle={t("palista.bagongUtangSubtitle")}
+        title={t("palista.bagongUtangTitle")}
         visible={utangModalVisible}
       >
         <InputField
           keyboardType="decimal-pad"
-          label="Amount"
+          label={t("palista.field.amount")}
           onChangeText={(value) => setUtangForm((current) => ({ ...current, amount: value }))}
           placeholder="0.00"
           value={utangForm.amount}
         />
         <InputField
-          label="Description"
+          label={t("palista.field.description")}
           multiline
           onChangeText={(value) => setUtangForm((current) => ({ ...current, description: value }))}
-          placeholder="Examples: bigas, noodles, softdrinks"
+          placeholder={t("palista.field.descriptionPlaceholder")}
           value={utangForm.description}
         />
       </ModalSheet>
@@ -671,28 +771,159 @@ export default function PalistaScreen() {
         footer={
           <ActionButton
             disabled={saving}
-            label={saving ? "Recording..." : "Record Payment"}
+            label={saving ? t("palista.recording") : t("palista.recordPayment")}
             onPress={() => void handlePayment()}
           />
         }
         onClose={() => setPaymentModalVisible(false)}
         subtitle={
           selectedEntry
-            ? `Outstanding ${formatCurrencyFromCents(
-                Math.max(0, selectedEntry.amountCents - selectedEntry.amountPaidCents),
-              )}`
-            : undefined
+            ? t("palista.receivePaymentSubtitle.selected", {
+                amount: formatCurrencyFromCents(
+                  Math.max(0, selectedEntry.amountCents - selectedEntry.amountPaidCents),
+                ),
+              })
+            : t("palista.receivePaymentSubtitle.empty")
         }
-        title="Receive Payment"
+        title={t("palista.receivePaymentTitle")}
         visible={paymentModalVisible}
       >
         <InputField
           keyboardType="decimal-pad"
-          label="Payment amount"
+          label={t("palista.field.paymentAmount")}
           onChangeText={setPaymentAmount}
           placeholder="0.00"
           value={paymentAmount}
         />
+        {selectedEntry ? (
+          <SurfaceCard style={{ gap: theme.spacing.sm }}>
+            <Text
+              style={{
+                color: theme.colors.text,
+                fontFamily: theme.typography.body,
+                fontSize: 14,
+                fontWeight: "700",
+              }}
+            >
+              {t("palista.paymentSummary.title")}
+            </Text>
+
+            <View style={{ flexDirection: "row", justifyContent: "space-between", gap: theme.spacing.md }}>
+              <Text
+                style={{
+                  color: theme.colors.textMuted,
+                  flex: 1,
+                  fontFamily: theme.typography.body,
+                  fontSize: 13,
+                }}
+              >
+                {t("palista.paymentSummary.outstanding")}
+              </Text>
+              <Text
+                style={{
+                  color: theme.colors.text,
+                  fontFamily: theme.typography.body,
+                  fontSize: 13,
+                  fontWeight: "700",
+                }}
+              >
+                {formatCurrencyFromCents(selectedEntryOutstanding)}
+              </Text>
+            </View>
+
+            <View style={{ flexDirection: "row", justifyContent: "space-between", gap: theme.spacing.md }}>
+              <Text
+                style={{
+                  color: theme.colors.textMuted,
+                  flex: 1,
+                  fontFamily: theme.typography.body,
+                  fontSize: 13,
+                }}
+              >
+                {t("palista.paymentSummary.received")}
+              </Text>
+              <Text
+                style={{
+                  color: theme.colors.text,
+                  fontFamily: theme.typography.body,
+                  fontSize: 13,
+                  fontWeight: "700",
+                }}
+              >
+                {formatCurrencyFromCents(hasValidPaymentAmount ? paymentAmountCents : 0)}
+              </Text>
+            </View>
+
+            <View style={{ flexDirection: "row", justifyContent: "space-between", gap: theme.spacing.md }}>
+              <Text
+                style={{
+                  color: theme.colors.textMuted,
+                  flex: 1,
+                  fontFamily: theme.typography.body,
+                  fontSize: 13,
+                }}
+              >
+                {t("palista.paymentSummary.applied")}
+              </Text>
+              <Text
+                style={{
+                  color: theme.colors.text,
+                  fontFamily: theme.typography.body,
+                  fontSize: 13,
+                  fontWeight: "700",
+                }}
+              >
+                {formatCurrencyFromCents(appliedPaymentCents)}
+              </Text>
+            </View>
+
+            <View style={{ flexDirection: "row", justifyContent: "space-between", gap: theme.spacing.md }}>
+              <Text
+                style={{
+                  color: theme.colors.textMuted,
+                  flex: 1,
+                  fontFamily: theme.typography.body,
+                  fontSize: 13,
+                }}
+              >
+                {t("palista.paymentSummary.remaining")}
+              </Text>
+              <Text
+                style={{
+                  color: remainingBalanceCents === 0 ? theme.colors.success : theme.colors.text,
+                  fontFamily: theme.typography.body,
+                  fontSize: 13,
+                  fontWeight: "700",
+                }}
+              >
+                {formatCurrencyFromCents(remainingBalanceCents)}
+              </Text>
+            </View>
+
+            <View style={{ flexDirection: "row", justifyContent: "space-between", gap: theme.spacing.md }}>
+              <Text
+                style={{
+                  color: theme.colors.textMuted,
+                  flex: 1,
+                  fontFamily: theme.typography.body,
+                  fontSize: 13,
+                }}
+              >
+                {t("palista.paymentSummary.change")}
+              </Text>
+              <Text
+                style={{
+                  color: changeDueCents > 0 ? theme.colors.warning : theme.colors.text,
+                  fontFamily: theme.typography.display,
+                  fontSize: 18,
+                  fontWeight: "700",
+                }}
+              >
+                {formatCurrencyFromCents(changeDueCents)}
+              </Text>
+            </View>
+          </SurfaceCard>
+        ) : null}
       </ModalSheet>
     </Screen>
   );

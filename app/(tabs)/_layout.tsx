@@ -1,10 +1,12 @@
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
 
+import { useAppLanguage } from "@/contexts/LanguageContext";
 import { useAppTheme } from "@/contexts/ThemeContext";
 
 export default function TabLayout() {
   const { theme } = useAppTheme();
+  const { t } = useAppLanguage();
 
   return (
     <Tabs
@@ -35,14 +37,14 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: "Home",
+          title: t("tabs.home"),
           tabBarIcon: ({ color, size }) => <Feather color={color} name="home" size={size} />,
         }}
       />
       <Tabs.Screen
         name="benta"
         options={{
-          title: "Benta",
+          title: t("tabs.benta"),
           tabBarIcon: ({ color, size }) => (
             <MaterialCommunityIcons color={color} name="cash-register" size={size} />
           ),
@@ -51,14 +53,14 @@ export default function TabLayout() {
       <Tabs.Screen
         name="produkto"
         options={{
-          title: "Produkto",
+          title: t("tabs.produkto"),
           tabBarIcon: ({ color, size }) => <Feather color={color} name="package" size={size} />,
         }}
       />
       <Tabs.Screen
         name="palista"
         options={{
-          title: "Palista",
+          title: t("tabs.palista"),
           tabBarIcon: ({ color, size }) => <Feather color={color} name="users" size={size} />,
         }}
       />

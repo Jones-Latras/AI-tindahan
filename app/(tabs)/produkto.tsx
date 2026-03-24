@@ -13,6 +13,7 @@ import { ModalSheet } from "@/components/ModalSheet";
 import { ProductCard } from "@/components/ProductCard";
 import { Screen } from "@/components/Screen";
 import { SurfaceCard } from "@/components/SurfaceCard";
+import { useAppLanguage } from "@/contexts/LanguageContext";
 import { useAppTheme } from "@/contexts/ThemeContext";
 import { deleteProduct, listProductCategories, listProducts, saveProduct } from "@/db/repositories";
 import type { Product } from "@/types/models";
@@ -94,6 +95,7 @@ function parseStoredCategories(rawValue: string | null) {
 export default function ProduktoScreen() {
   const db = useSQLiteContext();
   const { theme } = useAppTheme();
+  const { t } = useAppLanguage();
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
@@ -366,7 +368,7 @@ export default function ProduktoScreen() {
   const categoryCountLabel = categories.length === 1 ? "1 saved category" : `${categories.length} saved categories`;
 
   return (
-    <Screen subtitle="Secure CRUD for your product catalog, with low-stock context built in." title="Produkto">
+    <Screen subtitle={t("produkto.subtitle")} title={t("produkto.title")}>
       <SurfaceCard style={{ gap: theme.spacing.md }}>
         <InputField
           label="Search catalog"
@@ -516,11 +518,11 @@ export default function ProduktoScreen() {
           })
         ) : (
           <View style={{ width: "100%" }}>
-            <EmptyState
-              icon="package"
-              message="Create your first item here. Once products exist, the Benta screen can sell them instantly."
-              title="Catalog Is Empty"
-            />
+              <EmptyState
+                icon="package"
+                message="Create your first item here. Once products exist, the Benta screen can sell them instantly."
+                title={t("produkto.emptyTitle")}
+              />
           </View>
         )}
       </View>
@@ -543,8 +545,8 @@ export default function ProduktoScreen() {
           setCategoryModalVisible(false);
           setModalVisible(false);
         }}
-        subtitle="Keep names clear, prices accurate, and stock values realistic so checkout stays reliable."
-        title={editingProduct ? "Edit Product" : "New Product"}
+        subtitle={t("produkto.productModalSubtitle")}
+        title={editingProduct ? t("produkto.editProduct") : t("produkto.newProduct")}
         visible={modalVisible}
       >
         <InputField
@@ -785,10 +787,10 @@ export default function ProduktoScreen() {
         onClose={() => setPhotoSheetVisible(false)}
         subtitle={
           hasImage
-            ? "Swap the current product photo without cluttering the main form. New picks stay lighter and upload during your next cloud backup."
-            : "Add a clean product shot here. The picker opens the built-in crop tool, then saves a lighter image before backup."
+            ? t("produkto.photoSubtitle.hasImage")
+            : t("produkto.photoSubtitle.empty")
         }
-        title={hasImage ? "Replace Product Photo" : "Add Product Photo"}
+        title={hasImage ? t("produkto.replacePhoto") : t("produkto.addPhoto")}
         visible={photoSheetVisible}
       >
         <View
@@ -995,10 +997,10 @@ export default function ProduktoScreen() {
         onClose={() => setCategoryModalVisible(false)}
         subtitle={
           categoryModalTarget === "product"
-            ? "Create a reusable category and apply it to the product you are editing."
-            : "Create category buttons so the catalog is easier to filter and browse."
+            ? t("produkto.categorySubtitle.product")
+            : t("produkto.categorySubtitle.catalog")
         }
-        title="New Category"
+        title={t("produkto.newCategory")}
         visible={categoryModalVisible}
       >
         <InputField

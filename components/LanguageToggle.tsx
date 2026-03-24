@@ -1,16 +1,17 @@
 import { Feather } from "@expo/vector-icons";
 import { Pressable, Text, View } from "react-native";
 
+import { languageDisplayNames } from "@/constants/translations";
 import { useAppLanguage } from "@/contexts/LanguageContext";
 import { useAppTheme } from "@/contexts/ThemeContext";
 
-export function ThemeToggle() {
-  const { mode, theme, toggleMode } = useAppTheme();
-  const { t } = useAppLanguage();
+export function LanguageToggle() {
+  const { language, toggleLanguage } = useAppLanguage();
+  const { theme } = useAppTheme();
 
   return (
     <Pressable
-      onPress={toggleMode}
+      onPress={toggleLanguage}
       style={({ pressed }) => ({
         alignItems: "center",
         backgroundColor: theme.colors.surface,
@@ -27,18 +28,14 @@ export function ThemeToggle() {
       <View
         style={{
           alignItems: "center",
-          backgroundColor: mode === "dark" ? theme.colors.primaryMuted : theme.colors.accentMuted,
+          backgroundColor: theme.colors.primaryMuted,
           borderRadius: theme.radius.pill,
           height: 28,
           justifyContent: "center",
           width: 28,
         }}
       >
-        <Feather
-          color={mode === "dark" ? theme.colors.primary : theme.colors.accent}
-          name={mode === "dark" ? "moon" : "sun"}
-          size={14}
-        />
+        <Feather color={theme.colors.primary} name="globe" size={14} />
       </View>
       <Text
         style={{
@@ -48,9 +45,8 @@ export function ThemeToggle() {
           fontWeight: "700",
         }}
       >
-        {mode === "dark" ? t("theme.dark") : t("theme.light")}
+        {languageDisplayNames[language]}
       </Text>
     </Pressable>
   );
 }
-

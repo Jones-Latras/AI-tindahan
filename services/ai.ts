@@ -1,8 +1,10 @@
+import Constants from "expo-constants";
 import Storage from "expo-sqlite/kv-store";
 import type { SQLiteDatabase } from "expo-sqlite";
 
 import {
   getCustomerRiskProfile,
+  getHomeMetrics,
   getProductSalesVelocity,
   getSalesInsightContext,
   getStoreAiContext,
@@ -10,17 +12,19 @@ import {
   updateCustomerTrustScore,
 } from "@/db/repositories";
 import type {
+  AppLanguage,
   ChatMessage,
   CustomerRiskProfile,
   HomeAiBrief,
   PaymentBreakdown,
+  Product,
+  ProductVelocity,
   TrustScore,
 } from "@/types/models";
 import { formatCurrencyFromCents } from "@/utils/money";
 
 const GEMINI_MODEL = "gemini-2.5-flash";
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
-const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_KEY?.trim();
 const REQUEST_TIMEOUT_MS = 18_000;
 const HOME_AI_BRIEF_KEY_PREFIX = "ai.home-brief";
 
@@ -46,15 +50,108 @@ type TrustScoreResult = {
   source: "ai" | "fallback";
 };
 
-function getTodayCacheKey() {
+type GeminiFailure = {
+  kind: "quota" | "network" | "config" | "generic";
+  retryAfterSeconds?: number;
+};
+
+function getTodayCacheKey(language: AppLanguage) {
   const day = new Intl.DateTimeFormat("en-CA").format(new Date());
-  return `${HOME_AI_BRIEF_KEY_PREFIX}.${day}`;
+  return `${HOME_AI_BRIEF_KEY_PREFIX}.${language}.${day}`;
+}
+
+function getGeminiApiKey() {
+  const fromEnv = process.env.EXPO_PUBLIC_GEMINI_KEY?.trim();
+
+  if (fromEnv) {
+    return fromEnv;
+  }
+
+  const fromExpoConfig = typeof Constants.expoConfig?.extra?.geminiKey === "string"
+    ? Constants.expoConfig.extra.geminiKey.trim()
+    : "";
+
+  if (fromExpoConfig) {
+    return fromExpoConfig;
+  }
+
+  const manifestExtra = (Constants as { manifest?: { extra?: Record<string, unknown> } }).manifest?.extra;
+  const fromManifest = typeof manifestExtra?.geminiKey === "string" ? manifestExtra.geminiKey.trim() : "";
+
+  if (fromManifest) {
+    return fromManifest;
+  }
+
+  const manifest2Extra = (Constants as {
+    manifest2?: { extra?: { expoClient?: { extra?: Record<string, unknown> } } };
+  }).manifest2?.extra?.expoClient?.extra;
+
+  return typeof manifest2Extra?.geminiKey === "string" ? manifest2Extra.geminiKey.trim() : "";
+}
+
+function getGeminiErrorMessage(error: unknown) {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return typeof error === "string" ? error : "";
+}
+
+function parseGeminiFailure(error: unknown): GeminiFailure {
+  const message = getGeminiErrorMessage(error);
+  const retryMatch =
+    message.match(/retry(?: in)?[^\d]*(\d+)(?:\.\d+)?s?/i) ?? message.match(/"retryDelay"\s*:\s*"(\d+)s"/i);
+  const retryAfterSeconds = retryMatch ? Number.parseInt(retryMatch[1] ?? "", 10) : undefined;
+  const normalized = message.toLowerCase();
+
+  if (
+    normalized.includes("resource_exhausted") ||
+    normalized.includes("quota exceeded") ||
+    normalized.includes("rate limit") ||
+    normalized.includes("429")
+  ) {
+    return { kind: "quota", retryAfterSeconds };
+  }
+
+  if (normalized.includes("not configured")) {
+    return { kind: "config" };
+  }
+
+  if (
+    normalized.includes("network request failed") ||
+    normalized.includes("unable to connect") ||
+    normalized.includes("aborted") ||
+    normalized.includes("timed out")
+  ) {
+    return { kind: "network" };
+  }
+
+  return { kind: "generic", retryAfterSeconds };
+}
+
+function formatRetryHint(language: AppLanguage, retryAfterSeconds?: number) {
+  if (!retryAfterSeconds || retryAfterSeconds <= 0) {
+    return language === "english" ? "after the limit resets" : "pag-reset ng limit";
+  }
+
+  if (retryAfterSeconds < 90) {
+    return language === "english" ? "in about 1 minute" : "mga 1 minuto mula ngayon";
+  }
+
+  const minutes = Math.ceil(retryAfterSeconds / 60);
+  return language === "english"
+    ? `in about ${minutes} minutes`
+    : `mga ${minutes} minuto mula ngayon`;
 }
 
 function ensureGeminiConfigured() {
-  if (!GEMINI_API_KEY) {
+  const geminiApiKey = getGeminiApiKey();
+
+  if (!geminiApiKey) {
     throw new Error("Gemini API key is not configured. Add EXPO_PUBLIC_GEMINI_KEY to your local .env file.");
   }
+
+  return geminiApiKey;
 }
 
 function extractGeminiText(payload: any) {
@@ -82,7 +179,7 @@ function extractGeminiText(payload: any) {
 }
 
 async function callGeminiText(options: GeminiTextOptions) {
-  ensureGeminiConfigured();
+  const geminiApiKey = ensureGeminiConfigured();
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -92,7 +189,7 @@ async function callGeminiText(options: GeminiTextOptions) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-goog-api-key": GEMINI_API_KEY!,
+        "x-goog-api-key": geminiApiKey,
       },
       body: JSON.stringify({
         system_instruction: options.systemInstruction
@@ -125,7 +222,7 @@ async function callGeminiText(options: GeminiTextOptions) {
 }
 
 async function callGeminiJson<T>(options: GeminiJsonOptions<T>) {
-  ensureGeminiConfigured();
+  const geminiApiKey = ensureGeminiConfigured();
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -135,7 +232,7 @@ async function callGeminiJson<T>(options: GeminiJsonOptions<T>) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-goog-api-key": GEMINI_API_KEY!,
+        "x-goog-api-key": geminiApiKey,
       },
       body: JSON.stringify({
         system_instruction: options.systemInstruction
@@ -212,14 +309,99 @@ function summarizePaymentBreakdown(paymentBreakdown: PaymentBreakdown) {
   ].join(", ");
 }
 
-function buildFallbackHomeAiBrief(): HomeAiBrief {
+function buildHeuristicRestockSuggestions(language: AppLanguage, atRiskProducts: ProductVelocity[]) {
+  return atRiskProducts.slice(0, 5).map((product) => {
+    const daysLeft = product.daysUntilOutOfStock ?? 0;
+
+    if (language === "english") {
+      return `${product.name}: restock soon. Only ${product.currentStock} left, selling ${product.unitsPerDay.toFixed(1)} per day, around ${daysLeft} day${daysLeft === 1 ? "" : "s"} left.`;
+    }
+
+    return `${product.name}: mag-restock na soon. ${product.currentStock} na lang ang stock, benta na ${product.unitsPerDay.toFixed(1)} kada araw, mga ${daysLeft} araw na lang ang tira.`;
+  });
+}
+
+function buildLowStockRestockSuggestions(language: AppLanguage, lowStockProducts: Product[]) {
+  return lowStockProducts.slice(0, 5).map((product) => {
+    if (language === "english") {
+      if (product.stock <= 0) {
+        return `${product.name}: out of stock. Restock immediately.`;
+      }
+
+      return `${product.name}: low stock with only ${product.stock} left. Restock soon to stay above the ${product.minStock} minimum.`;
+    }
+
+    if (product.stock <= 0) {
+      return `${product.name}: ubos na ang stock. Mag-restock agad.`;
+    }
+
+    return `${product.name}: paubos na, ${product.stock} na lang ang natitira. Mag-restock na para lampas sa ${product.minStock} minimum.`;
+  });
+}
+
+function buildFallbackRestockSuggestions(
+  language: AppLanguage,
+  atRiskProducts: ProductVelocity[],
+  lowStockProducts: Product[],
+) {
+  const atRiskSuggestions = buildHeuristicRestockSuggestions(language, atRiskProducts);
+
+  if (atRiskSuggestions.length >= 5) {
+    return atRiskSuggestions.slice(0, 5);
+  }
+
+  const atRiskIds = new Set(atRiskProducts.map((product) => product.id));
+  const lowStockSuggestions = buildLowStockRestockSuggestions(
+    language,
+    lowStockProducts.filter((product) => !atRiskIds.has(product.id)),
+  );
+
+  return [...atRiskSuggestions, ...lowStockSuggestions].slice(0, 5);
+}
+
+function buildFallbackHomeAiBrief(
+  language: AppLanguage,
+  restockSuggestions: string[] = [],
+  error?: unknown,
+): HomeAiBrief {
+  const failure = error ? parseGeminiFailure(error) : null;
+  let insight: string;
+
+  if (failure?.kind === "quota") {
+    const retryHint = formatRetryHint(language, failure.retryAfterSeconds);
+    insight =
+      language === "english"
+        ? `Aling AI hit the current Gemini request limit. Core POS features still work, and the AI brief should recover ${retryHint}.`
+        : `Naabot ni Aling AI ang current Gemini request limit. Gumagana pa rin ang core POS features, at babalik ang AI brief ${retryHint}.`;
+  } else if (failure?.kind === "network") {
+    insight =
+      language === "english"
+        ? "Aling AI can't reach Gemini right now. Core POS features still work, and the daily brief will return once the connection is back."
+        : "Hindi makakonekta si Aling AI sa Gemini ngayon. Gumagana pa rin ang core POS features, at babalik ang daily brief pag maayos na ang connection.";
+  } else if (failure?.kind === "config") {
+    insight =
+      language === "english"
+        ? "Gemini is not configured in this app build yet. Core POS features still work, and you can restart Expo after updating the Gemini key."
+        : "Hindi pa configured ang Gemini sa app build na ito. Gumagana pa rin ang core POS features, at puwede mong i-restart ang Expo pagkatapos i-update ang Gemini key.";
+  } else {
+    insight =
+      language === "english"
+        ? "Aling AI is unavailable right now. Core POS features still work, and you can try again shortly."
+        : "Unavailable si Aling AI ngayon. Gumagana pa rin ang core POS features, at puwede kang sumubok ulit mamaya.";
+  }
+
   return {
-    insight:
-      "Aling AI is offline right now. Core POS features still work, and you can add your Gemini key later to unlock daily insights.",
-    restockSuggestions: [],
+    insight,
+    restockSuggestions,
     generatedOn: new Date().toISOString(),
     source: "fallback",
   };
+}
+
+function getReplyLanguageInstruction(language: AppLanguage) {
+  return language === "english"
+    ? "Reply in clear English."
+    : "Reply in warm Taglish.";
 }
 
 function computeHeuristicTrustScore(profile: CustomerRiskProfile): TrustScoreResult {
@@ -263,17 +445,26 @@ function computeHeuristicTrustScore(profile: CustomerRiskProfile): TrustScoreRes
 }
 
 export function isGeminiReady() {
-  return Boolean(GEMINI_API_KEY);
+  return Boolean(getGeminiApiKey());
 }
 
-export async function getOrCreateHomeAiBrief(db: SQLiteDatabase) {
-  const cacheKey = getTodayCacheKey();
+export async function getOrCreateHomeAiBrief(db: SQLiteDatabase, language: AppLanguage = "taglish") {
+  const cacheKey = getTodayCacheKey(language);
   const cached = await Storage.getItem(cacheKey);
+  const geminiReady = isGeminiReady();
 
   if (cached) {
     try {
       const parsed = JSON.parse(cached) as HomeAiBrief;
-      if (parsed?.insight && Array.isArray(parsed?.restockSuggestions)) {
+      const hasUsableSuggestions =
+        Boolean(parsed?.insight) &&
+        Array.isArray(parsed?.restockSuggestions) &&
+        parsed.restockSuggestions.length > 0;
+
+      if (
+        hasUsableSuggestions &&
+        ((parsed.source === "ai" && geminiReady) || (parsed.source === "fallback" && !geminiReady))
+      ) {
         return parsed;
       }
     } catch {
@@ -281,20 +472,39 @@ export async function getOrCreateHomeAiBrief(db: SQLiteDatabase) {
     }
   }
 
-  if (!isGeminiReady()) {
-    return buildFallbackHomeAiBrief();
+  const [salesContext, velocity, homeMetrics] = await Promise.all([
+    getSalesInsightContext(db),
+    getProductSalesVelocity(db),
+    getHomeMetrics(db),
+  ]);
+  const atRiskProducts = velocity
+    .filter(
+      (item) =>
+        (item.currentStock > 0 && item.unitsPerDay > 0 && (item.daysUntilOutOfStock ?? Infinity) <= 3) ||
+        item.currentStock <= 0,
+    )
+    .slice(0, 5);
+  const heuristicRestockSuggestions = buildFallbackRestockSuggestions(
+    language,
+    atRiskProducts,
+    homeMetrics.lowStockProducts,
+  );
+
+  if (!geminiReady) {
+    const fallback = buildFallbackHomeAiBrief(language, heuristicRestockSuggestions);
+    await Storage.setItem(cacheKey, JSON.stringify(fallback));
+    return fallback;
   }
 
   try {
-    const salesContext = await getSalesInsightContext(db);
-    const velocity = await getProductSalesVelocity(db);
-    const atRiskProducts = velocity
-      .filter((item) => item.currentStock > 0 && item.unitsPerDay > 0 && (item.daysUntilOutOfStock ?? Infinity) <= 3)
-      .slice(0, 5);
-
     const brief = await callGeminiJson<HomeAiBrief>({
       systemInstruction:
-        "You are Aling AI, a practical business assistant for a sari-sari store in the Philippines. Reply in warm Taglish, stay concise, and never invent store data that was not provided.",
+        [
+          "You are Aling AI, a practical business assistant for a sari-sari store in the Philippines.",
+          getReplyLanguageInstruction(language),
+          "If products are low stock, out of stock, or at risk of running out soon, include concrete restock suggestions.",
+          "Stay concise and never invent store data that was not provided.",
+        ].join(" "),
       contents: [
         {
           parts: [
@@ -317,6 +527,13 @@ export async function getOrCreateHomeAiBrief(db: SQLiteDatabase) {
                         .join("; ")
                     : "None"
                 }`,
+                `Low stock products right now: ${
+                  homeMetrics.lowStockProducts.length > 0
+                    ? homeMetrics.lowStockProducts
+                        .map((item) => `${item.name}: ${item.stock} stock, ${item.minStock} minimum`)
+                        .join("; ")
+                    : "None"
+                }`,
                 "Return JSON only.",
               ].join("\n"),
             },
@@ -329,11 +546,17 @@ export async function getOrCreateHomeAiBrief(db: SQLiteDatabase) {
         properties: {
           insight: {
             type: "string",
-            description: "A friendly Taglish insight in 2 or 3 short sentences.",
+            description:
+              language === "english"
+                ? "A friendly English insight in 2 or 3 short sentences."
+                : "A friendly Taglish insight in 2 or 3 short sentences.",
           },
           restockSuggestions: {
             type: "array",
-            description: "Up to 5 Taglish restock suggestions. Each item should be actionable.",
+            description:
+              language === "english"
+                ? "Up to 5 English restock suggestions. Each item should be actionable."
+                : "Up to 5 Taglish restock suggestions. Each item should be actionable.",
             items: {
               type: "string",
             },
@@ -345,17 +568,31 @@ export async function getOrCreateHomeAiBrief(db: SQLiteDatabase) {
       temperature: 0.5,
       validate: validateHomeAiBrief,
     });
+    const finalizedBrief = {
+      ...brief,
+      restockSuggestions:
+        brief.restockSuggestions.length > 0 ? brief.restockSuggestions : heuristicRestockSuggestions,
+    };
 
-    await Storage.setItem(cacheKey, JSON.stringify(brief));
-    return brief;
-  } catch {
-    return buildFallbackHomeAiBrief();
+    await Storage.setItem(cacheKey, JSON.stringify(finalizedBrief));
+    return finalizedBrief;
+  } catch (error) {
+    console.warn("Gemini home brief failed:", getGeminiErrorMessage(error));
+    const fallback = buildFallbackHomeAiBrief(language, heuristicRestockSuggestions, error);
+    return fallback;
   }
 }
 
-export async function chatWithAlingAi(db: SQLiteDatabase, history: ChatMessage[], userMessage: string) {
+export async function chatWithAlingAi(
+  db: SQLiteDatabase,
+  history: ChatMessage[],
+  userMessage: string,
+  language: AppLanguage = "taglish",
+) {
   if (!isGeminiReady()) {
-    return "Hindi pa naka-connect ang Gemini key. Add EXPO_PUBLIC_GEMINI_KEY in your local .env to unlock Aling AI.";
+    return language === "english"
+      ? "Gemini is not connected yet. Add EXPO_PUBLIC_GEMINI_KEY to your local .env to unlock Aling AI."
+      : "Hindi pa naka-connect ang Gemini key. Add EXPO_PUBLIC_GEMINI_KEY sa local .env mo para ma-unlock si Aling AI.";
   }
 
   const context = await getStoreAiContext(db);
@@ -365,7 +602,7 @@ export async function chatWithAlingAi(db: SQLiteDatabase, history: ChatMessage[]
     return await callGeminiText({
       systemInstruction: [
         "You are Aling AI, the smart assistant inside TindaHan AI.",
-        "Reply in practical Taglish.",
+        getReplyLanguageInstruction(language),
         "Be encouraging, brief, and specific to the store data provided.",
         "Never mention phone numbers. Only use the names and summaries provided.",
       ].join(" "),
@@ -403,8 +640,26 @@ export async function chatWithAlingAi(db: SQLiteDatabase, history: ChatMessage[]
       ],
       temperature: 0.6,
     });
-  } catch {
-    return "Hindi ako makakonekta ngayon. Gumagana pa rin ang POS at palista features habang offline.";
+  } catch (error) {
+    console.warn("Gemini chat failed:", getGeminiErrorMessage(error));
+    const failure = parseGeminiFailure(error);
+
+    if (failure.kind === "quota") {
+      const retryHint = formatRetryHint(language, failure.retryAfterSeconds);
+      return language === "english"
+        ? `Gemini hit the current request limit. Please try again ${retryHint}. POS and credit features still work.`
+        : `Naabot ng Gemini ang current request limit. Pakisubukan ulit ${retryHint}. Gumagana pa rin ang POS at palista features.`;
+    }
+
+    if (failure.kind === "network") {
+      return language === "english"
+        ? "Gemini can't be reached right now. POS and credit features still work while the connection is down."
+        : "Hindi ma-reach ang Gemini ngayon. Gumagana pa rin ang POS at palista features habang may problema sa connection.";
+    }
+
+    return language === "english"
+      ? "Aling AI is unavailable right now, but POS and credit features still work."
+      : "Unavailable si Aling AI ngayon, pero gumagana pa rin ang POS at palista features.";
   }
 }
 

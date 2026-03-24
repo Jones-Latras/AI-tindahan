@@ -6,12 +6,14 @@ import { useEffect, useState } from "react";
 import { ActivityIndicator, Text, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
+import { LanguageProvider, useAppLanguage } from "@/contexts/LanguageContext";
 import { ThemeProvider, useAppTheme } from "@/contexts/ThemeContext";
 import { DATABASE_NAME, migrateDbIfNeeded } from "@/db/database";
 import { ONBOARDED_KEY } from "@/app/onboarding";
 
 function AppShell() {
   const { isReady, mode, theme } = useAppTheme();
+  const { isReady: isLanguageReady, t } = useAppLanguage();
   const [hasOnboarded, setHasOnboarded] = useState<boolean | null>(null);
 
   useEffect(() => {
@@ -28,7 +30,7 @@ function AppShell() {
     return () => { mounted = false; };
   }, []);
 
-  if (!isReady || hasOnboarded === null) {
+  if (!isReady || !isLanguageReady || hasOnboarded === null) {
     return (
       <View
         style={{
@@ -47,7 +49,7 @@ function AppShell() {
             fontSize: 15,
           }}
         >
-          Preparing TindaHan AI...
+          {t("app.preparing")}
         </Text>
       </View>
     );
@@ -77,8 +79,9 @@ function AppShell() {
 export default function RootLayout() {
   return (
     <ThemeProvider>
-      <AppShell />
+      <LanguageProvider>
+        <AppShell />
+      </LanguageProvider>
     </ThemeProvider>
   );
 }
-
