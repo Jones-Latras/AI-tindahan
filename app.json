@@ -21,6 +21,14 @@
         }
       ],
       [
+        "expo-media-library",
+        {
+          "photosPermission": "Allow TindaHan AI to access photos in your library",
+          "savePhotosPermission": "Allow TindaHan AI to save receipt images to your library",
+          "granularPermissions": ["photo"]
+        }
+      ],
+      [
         "expo-camera",
         {
           "cameraPermission": "Allow TindaHan AI to scan product barcodes",

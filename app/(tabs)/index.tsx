@@ -1,9 +1,13 @@
 import { Feather } from "@expo/vector-icons";
+import Constants, { ExecutionEnvironment } from "expo-constants";
+import * as MediaLibrary from "expo-media-library";
+import * as Sharing from "expo-sharing";
 import { useFocusEffect } from "expo-router";
 import { useSQLiteContext } from "expo-sqlite";
 import Storage from "expo-sqlite/kv-store";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from "react-native";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, Text, View } from "react-native";
+import { captureRef } from "react-native-view-shot";
 
 import { ActionButton } from "@/components/ActionButton";
 import { AutoSwipeSuggestionCarousel } from "@/components/AutoSwipeSuggestionCarousel";
@@ -34,6 +38,68 @@ function createChatMessage(role: ChatMessage["role"], text: string): ChatMessage
 }
 
 type HomePanel = "analytics" | "inventory" | "credit" | "history";
+type HistorySort = "latest" | "oldest" | "highest-total" | "lowest-total" | "most-quantity" | "least-quantity";
+type HistorySaleMatch = {
+  sale: StoreAiSale;
+  matchedItems: StoreAiSale["items"];
+  totalQuantity: number;
+};
+
+function normalizeSearchValue(value: string) {
+  return value.trim().toLowerCase();
+}
+
+function getSaleItemQuantity(sale: StoreAiSale) {
+  return sale.items.reduce((sum, item) => sum + item.quantity, 0);
+}
+
+function compareSalesByNewest(left: StoreAiSale, right: StoreAiSale) {
+  const timeDifference = Date.parse(right.createdAt) - Date.parse(left.createdAt);
+
+  if (timeDifference !== 0) {
+    return timeDifference;
+  }
+
+  return right.id - left.id;
+}
+
+function sortHistoryMatches(left: HistorySaleMatch, right: HistorySaleMatch, sort: HistorySort) {
+  if (sort === "oldest") {
+    const timeDifference = Date.parse(left.sale.createdAt) - Date.parse(right.sale.createdAt);
+    return timeDifference !== 0 ? timeDifference : left.sale.id - right.sale.id;
+  }
+
+  if (sort === "highest-total") {
+    const totalDifference = right.sale.totalCents - left.sale.totalCents;
+    return totalDifference !== 0 ? totalDifference : compareSalesByNewest(left.sale, right.sale);
+  }
+
+  if (sort === "lowest-total") {
+    const totalDifference = left.sale.totalCents - right.sale.totalCents;
+    return totalDifference !== 0 ? totalDifference : compareSalesByNewest(left.sale, right.sale);
+  }
+
+  if (sort === "most-quantity") {
+    const quantityDifference = right.totalQuantity - left.totalQuantity;
+    return quantityDifference !== 0 ? quantityDifference : compareSalesByNewest(left.sale, right.sale);
+  }
+
+  if (sort === "least-quantity") {
+    const quantityDifference = left.totalQuantity - right.totalQuantity;
+    return quantityDifference !== 0 ? quantityDifference : compareSalesByNewest(left.sale, right.sale);
+  }
+
+  return compareSalesByNewest(left.sale, right.sale);
+}
+
+function createReceiptFileName(storeName: string, saleId: number) {
+  const normalizedStoreName = (storeName || "TindaHan AI")
+    .replace(/[^a-z0-9]+/gi, "-")
+    .replace(/^-+|-+$/g, "")
+    .toLowerCase();
+
+  return `${normalizedStoreName || "tindahan-ai"}-receipt-${saleId}.png`;
+}
 
 type HomeShortcutCardProps = {
   icon: keyof typeof Feather.glyphMap;
@@ -166,9 +232,13 @@ export default function HomeScreen() {
   const [sendingChat, setSendingChat] = useState(false);
   const [activePanel, setActivePanel] = useState<HomePanel | null>(null);
   const [salesHistory, setSalesHistory] = useState<StoreAiSale[]>([]);
+  const [historySearch, setHistorySearch] = useState("");
+  const [historySort, setHistorySort] = useState<HistorySort>("latest");
   const [historyLoading, setHistoryLoading] = useState(false);
   const [receiptSale, setReceiptSale] = useState<StoreAiSale | null>(null);
+  const [receiptAction, setReceiptAction] = useState<"share" | "download" | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>(() => [createChatMessage("assistant", t("home.aiWelcome"))]);
+  const receiptCaptureRef = useRef<View>(null);
   const compactCardStyle = {
     gap: theme.spacing.sm,
     padding: theme.spacing.md,
@@ -214,6 +284,48 @@ export default function HomeScreen() {
     return items;
   }, [t]);
   const activeShortcut = shortcutItems.find((item) => item.key === activePanel) ?? null;
+  const historySortOptions = useMemo(
+    () => [
+      { key: "latest" as const, label: t("home.history.sort.latest") },
+      { key: "oldest" as const, label: t("home.history.sort.oldest") },
+      { key: "highest-total" as const, label: t("home.history.sort.highestTotal") },
+      { key: "lowest-total" as const, label: t("home.history.sort.lowestTotal") },
+      { key: "most-quantity" as const, label: t("home.history.sort.mostQuantity") },
+      { key: "least-quantity" as const, label: t("home.history.sort.leastQuantity") },
+    ],
+    [t],
+  );
+  const normalizedHistorySearch = useMemo(() => normalizeSearchValue(historySearch), [historySearch]);
+  const filteredSalesHistory = useMemo(() => {
+    const nextHistory = salesHistory
+      .map((sale) => {
+        const matchedItems =
+          normalizedHistorySearch.length > 0
+            ? sale.items.filter((item) => normalizeSearchValue(item.productName).includes(normalizedHistorySearch))
+            : [];
+
+        return {
+          sale,
+          matchedItems,
+          totalQuantity: getSaleItemQuantity(sale),
+        };
+      })
+      .filter(({ sale, matchedItems }) => {
+        if (normalizedHistorySearch.length === 0) {
+          return true;
+        }
+
+        return (
+          sale.id.toString().includes(normalizedHistorySearch) ||
+          normalizeSearchValue(sale.customerName ?? "").includes(normalizedHistorySearch) ||
+          matchedItems.length > 0
+        );
+      });
+
+    nextHistory.sort((left, right) => sortHistoryMatches(left, right, historySort));
+
+    return nextHistory;
+  }, [historySort, normalizedHistorySearch, salesHistory]);
 
   useEffect(() => {
     setMessages((current) =>
@@ -309,6 +421,107 @@ export default function HomeScreen() {
       void loadSalesHistory();
     }
   }, [activePanel, loadSalesHistory]);
+
+  const captureReceiptImage = useCallback(async () => {
+    if (!receiptSale || !receiptCaptureRef.current) {
+      throw new Error(t("home.history.receiptUnavailable"));
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 180));
+
+    return captureRef(receiptCaptureRef.current, {
+      format: "png",
+      quality: 1,
+      result: Platform.OS === "web" ? "data-uri" : "tmpfile",
+    });
+  }, [receiptSale, t]);
+
+  const downloadReceiptOnWeb = useCallback((uri: string, fileName: string) => {
+    if (!("document" in globalThis) || !globalThis.document?.body) {
+      throw new Error(t("home.history.downloadUnavailable"));
+    }
+
+    const link = globalThis.document.createElement("a");
+    link.href = uri;
+    link.download = fileName;
+    globalThis.document.body.appendChild(link);
+    link.click();
+    globalThis.document.body.removeChild(link);
+  }, [t]);
+
+  const shareReceiptImage = useCallback(
+    async (receiptImageUri: string) => {
+      const sharingAvailable = await Sharing.isAvailableAsync();
+
+      if (!sharingAvailable) {
+        throw new Error(t("home.history.shareUnavailable"));
+      }
+
+      await Sharing.shareAsync(receiptImageUri, {
+        dialogTitle: `${storeName || "TindaHan AI"} Receipt`,
+        mimeType: "image/png",
+        UTI: "public.png",
+      });
+    },
+    [storeName, t],
+  );
+
+  const handleExportReceipt = useCallback(
+    async (mode: "share" | "download") => {
+      if (!receiptSale) {
+        Alert.alert(
+          t("home.history.receiptUnavailableTitle"),
+          t("home.history.receiptUnavailable"),
+        );
+        return;
+      }
+
+      setReceiptAction(mode);
+
+      try {
+        const receiptImageUri = await captureReceiptImage();
+        const fileName = createReceiptFileName(storeName, receiptSale.id);
+
+        if (mode === "download") {
+          if (Platform.OS === "web") {
+            downloadReceiptOnWeb(receiptImageUri, fileName);
+            return;
+          }
+
+          if (
+            Platform.OS === "android" &&
+            Constants.executionEnvironment === ExecutionEnvironment.StoreClient
+          ) {
+            throw new Error(t("home.history.downloadExpoGoUnsupported"));
+          }
+
+          const nextPermission = await MediaLibrary.requestPermissionsAsync(true, ["photo"]);
+
+          if (!nextPermission.granted) {
+            throw new Error(t("home.history.downloadPermissionDenied"));
+          }
+
+          await MediaLibrary.saveToLibraryAsync(receiptImageUri);
+          Alert.alert(t("home.history.downloadSavedTitle"), t("home.history.downloadSavedMessage"));
+          return;
+        }
+
+        await shareReceiptImage(receiptImageUri);
+      } catch (error) {
+        Alert.alert(
+          mode === "share" ? t("home.history.shareFailedTitle") : t("home.history.downloadFailedTitle"),
+          error instanceof Error
+            ? error.message
+            : mode === "share"
+              ? t("home.history.shareFailedMessage")
+              : t("home.history.downloadFailedMessage"),
+        );
+      } finally {
+        setReceiptAction(null);
+      }
+    },
+    [captureReceiptImage, downloadReceiptOnWeb, receiptSale, shareReceiptImage, storeName, t],
+  );
 
   const renderAnalyticsPanel = () => {
     if (!metrics) {
@@ -759,12 +972,97 @@ export default function HomeScreen() {
 
     return (
       <>
-        {salesHistory.map((sale) => {
+        <SurfaceCard style={compactCardStyle}>
+          <InputField
+            label={t("home.history.searchLabel")}
+            onChangeText={setHistorySearch}
+            placeholder={t("home.history.searchPlaceholder")}
+            value={historySearch}
+          />
+
+          <View style={{ gap: theme.spacing.sm }}>
+            <Text
+              style={{
+                color: theme.colors.textMuted,
+                fontFamily: theme.typography.body,
+                fontSize: 13,
+                fontWeight: "600",
+              }}
+            >
+              {t("home.history.sortLabel")}
+            </Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
+                {historySortOptions.map((option) => {
+                  const active = option.key === historySort;
+
+                  return (
+                    <Pressable
+                      key={option.key}
+                      onPress={() => setHistorySort(option.key)}
+                      style={({ pressed }) => ({
+                        backgroundColor: active ? theme.colors.primaryMuted : theme.colors.surface,
+                        borderColor: active ? theme.colors.primary : theme.colors.border,
+                        borderRadius: theme.radius.pill,
+                        borderWidth: 1,
+                        opacity: pressed ? 0.9 : 1,
+                        paddingHorizontal: theme.spacing.md,
+                        paddingVertical: 10,
+                      })}
+                    >
+                      <Text
+                        style={{
+                          color: active ? theme.colors.primary : theme.colors.textMuted,
+                          fontFamily: theme.typography.body,
+                          fontSize: 13,
+                          fontWeight: "700",
+                        }}
+                      >
+                        {option.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </ScrollView>
+          </View>
+
+          <Text
+            style={{
+              color: theme.colors.textMuted,
+              fontFamily: theme.typography.body,
+              fontSize: 13,
+              lineHeight: 19,
+            }}
+          >
+            {t("home.history.showingResults", {
+              count: filteredSalesHistory.length,
+              total: salesHistory.length,
+            })}
+          </Text>
+        </SurfaceCard>
+
+        {filteredSalesHistory.length === 0 ? (
+          <EmptyState
+            icon="search"
+            message={t("home.history.noResultsMessage")}
+            title={t("home.history.noResultsTitle")}
+          />
+        ) : null}
+
+        {filteredSalesHistory.map(({ sale, matchedItems, totalQuantity }) => {
           const subtotalCents = sale.totalCents + sale.discountCents;
           const paymentLabel = getPaymentMethodLabel(sale.paymentMethod);
+          const hasMatchedProducts = normalizedHistorySearch.length > 0 && matchedItems.length > 0;
 
           return (
-            <SurfaceCard key={sale.id} style={compactCardStyle}>
+            <SurfaceCard
+              key={sale.id}
+              style={[
+                compactCardStyle,
+                hasMatchedProducts ? { borderColor: theme.colors.primary, borderWidth: 1.5 } : null,
+              ]}
+            >
               <View style={{ alignItems: "flex-start", flexDirection: "row", gap: theme.spacing.md, justifyContent: "space-between" }}>
                 <View style={{ flex: 1, gap: 4 }}>
                   <Text
@@ -810,9 +1108,19 @@ export default function HomeScreen() {
                   tone="neutral"
                 />
                 <StatusBadge
+                  label={`${t("home.history.quantity")}: ${totalQuantity}`}
+                  tone="primary"
+                />
+                <StatusBadge
                   label={`${t("home.history.customer")}: ${sale.customerName ?? t("home.history.walkIn")}`}
                   tone={sale.customerName ? "warning" : "neutral"}
                 />
+                {hasMatchedProducts ? (
+                  <StatusBadge
+                    label={t("home.history.productMatches", { count: matchedItems.length })}
+                    tone="primary"
+                  />
+                ) : null}
                 {sale.discountCents > 0 ? (
                   <StatusBadge
                     label={`${t("home.history.discount")}: ${formatCurrencyFromCents(sale.discountCents)}`}
@@ -831,14 +1139,24 @@ export default function HomeScreen() {
                   padding: theme.spacing.md,
                 }}
               >
-                {sale.items.map((item) => (
+                {sale.items.map((item) => {
+                  const isMatchedProduct =
+                    normalizedHistorySearch.length > 0 &&
+                    normalizeSearchValue(item.productName).includes(normalizedHistorySearch);
+
+                  return (
                   <View
                     key={item.id}
                     style={{
                       alignItems: "flex-start",
+                      backgroundColor: isMatchedProduct ? theme.colors.primaryMuted : "transparent",
+                      borderColor: isMatchedProduct ? theme.colors.primary : "transparent",
+                      borderRadius: theme.radius.sm,
+                      borderWidth: isMatchedProduct ? 1 : 0,
                       flexDirection: "row",
                       gap: theme.spacing.md,
                       justifyContent: "space-between",
+                      padding: isMatchedProduct ? theme.spacing.sm : 0,
                     }}
                   >
                     <View style={{ flex: 1, gap: 2 }}>
@@ -876,7 +1194,8 @@ export default function HomeScreen() {
                       {formatCurrencyFromCents(item.lineTotalCents)}
                     </Text>
                   </View>
-                ))}
+                  );
+                })}
               </View>
 
               <View
@@ -1236,7 +1555,38 @@ export default function HomeScreen() {
 
       <ModalSheet
         fullHeight
-        footer={<ActionButton label={t("home.history.closeReceipt")} onPress={() => setReceiptSale(null)} variant="ghost" />}
+        footer={
+          receiptSale ? (
+            <View style={{ gap: theme.spacing.sm }}>
+              <ActionButton
+                disabled={receiptAction !== null}
+                icon={
+                  receiptAction === "download" ? (
+                    <ActivityIndicator color={theme.colors.primary} />
+                  ) : (
+                    <Feather color={theme.colors.primary} name="download" size={16} />
+                  )
+                }
+                label={receiptAction === "download" ? t("home.history.exporting") : t("home.history.downloadReceipt")}
+                onPress={() => void handleExportReceipt("download")}
+                variant="secondary"
+              />
+              <ActionButton
+                disabled={receiptAction !== null}
+                icon={
+                  receiptAction === "share" ? (
+                    <ActivityIndicator color={theme.colors.primaryText} />
+                  ) : (
+                    <Feather color={theme.colors.primaryText} name="share-2" size={16} />
+                  )
+                }
+                label={receiptAction === "share" ? t("home.history.exporting") : t("home.history.shareReceipt")}
+                onPress={() => void handleExportReceipt("share")}
+              />
+              <ActionButton label={t("home.history.closeReceipt")} onPress={() => setReceiptSale(null)} variant="ghost" />
+            </View>
+          ) : undefined
+        }
         onClose={() => setReceiptSale(null)}
         subtitle={
           receiptSale
@@ -1255,28 +1605,30 @@ export default function HomeScreen() {
       >
         {receiptSale ? (
           <View style={{ alignItems: "center", paddingBottom: theme.spacing.md }}>
-            <ReceiptView
-              cashPaidCents={receiptSale.cashPaidCents}
-              changeCents={receiptSale.changeGivenCents}
-              date={new Date(receiptSale.createdAt).toLocaleString(language === "english" ? "en-PH" : "fil-PH", {
-                dateStyle: "medium",
-                timeStyle: "short",
-              })}
-              discountCents={receiptSale.discountCents}
-              items={receiptSale.items.map((item) => ({
-                name: item.productName,
-                quantity: item.quantity,
-                weightKg: item.weightKg,
-                priceCents: item.unitPriceCents,
-                lineTotalCents: item.lineTotalCents,
-                isWeightBased: item.isWeightBased,
-              }))}
-              paymentMethod={receiptSale.paymentMethod}
-              saleId={receiptSale.id}
-              storeName={storeName}
-              subtotalCents={receiptSale.totalCents + receiptSale.discountCents}
-              totalCents={receiptSale.totalCents}
-            />
+            <View collapsable={false} ref={receiptCaptureRef}>
+              <ReceiptView
+                cashPaidCents={receiptSale.cashPaidCents}
+                changeCents={receiptSale.changeGivenCents}
+                date={new Date(receiptSale.createdAt).toLocaleString(language === "english" ? "en-PH" : "fil-PH", {
+                  dateStyle: "medium",
+                  timeStyle: "short",
+                })}
+                discountCents={receiptSale.discountCents}
+                items={receiptSale.items.map((item) => ({
+                  name: item.productName,
+                  quantity: item.quantity,
+                  weightKg: item.weightKg,
+                  priceCents: item.unitPriceCents,
+                  lineTotalCents: item.lineTotalCents,
+                  isWeightBased: item.isWeightBased,
+                }))}
+                paymentMethod={receiptSale.paymentMethod}
+                saleId={receiptSale.id}
+                storeName={storeName}
+                subtotalCents={receiptSale.totalCents + receiptSale.discountCents}
+                totalCents={receiptSale.totalCents}
+              />
+            </View>
           </View>
         ) : null}
       </ModalSheet>

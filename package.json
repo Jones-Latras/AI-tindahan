@@ -20,6 +20,7 @@
     "expo-image-manipulator": "~14.0.8",
     "expo-image-picker": "~17.0.10",
     "expo-linking": "^8.0.0",
+    "expo-media-library": "~18.2.1",
     "expo-router": "^6.0.0",
     "expo-sharing": "~14.0.8",
     "expo-sqlite": "^16.0.0",

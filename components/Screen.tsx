@@ -28,14 +28,20 @@ function LiveDateTime() {
   }, []);
 
   const locale = language === "english" ? "en-PH" : "fil-PH";
+  const weekdayLocale = "en-PH";
   const dateLabel = useMemo(
-    () =>
-      new Intl.DateTimeFormat(locale, {
+    () => {
+      const weekdayLabel = new Intl.DateTimeFormat(weekdayLocale, {
+        weekday: "short",
+      }).format(now);
+      const dateValueLabel = new Intl.DateTimeFormat(locale, {
         day: "numeric",
         month: "short",
-        weekday: "short",
         year: "numeric",
-      }).format(now),
+      }).format(now);
+
+      return `${weekdayLabel}, ${dateValueLabel}`;
+    },
     [locale, now],
   );
   const timeLabel = useMemo(

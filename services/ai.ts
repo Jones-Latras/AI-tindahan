@@ -324,13 +324,39 @@ function validateTrustScore(value: unknown): { trustScore: TrustScore; reason: s
   };
 }
 
+function centsToPesoAmount(cents: number) {
+  return Number(((Number.isFinite(cents) ? cents : 0) / 100).toFixed(2));
+}
+
+function convertMoneyFieldsForAi(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => convertMoneyFieldsForAi(item));
+  }
+
+  if (!value || typeof value !== "object") {
+    return value;
+  }
+
+  return Object.fromEntries(
+    Object.entries(value).map(([key, entryValue]) => {
+      if (key.endsWith("Cents") && typeof entryValue === "number") {
+        return [`${key.slice(0, -"Cents".length)}Pesos`, centsToPesoAmount(entryValue)];
+      }
+
+      return [key, convertMoneyFieldsForAi(entryValue)];
+    }),
+  );
+}
+
 function buildStoreAiPromptContext(context: StoreAiContext) {
   return JSON.stringify(
     {
+      currency: "PHP",
+      moneyUnit: "All monetary values below are in Philippine pesos, not cents.",
       storeProfile: {
         storeName: context.storeName,
       },
-      dashboard: {
+      dashboard: convertMoneyFieldsForAi({
         todaySalesCents: context.todaySalesCents,
         todayTransactions: context.todayTransactions,
         todayProfitCents: context.todayProfitCents,
@@ -342,10 +368,10 @@ function buildStoreAiPromptContext(context: StoreAiContext) {
         weeklyReports: context.weeklyReports,
         topProducts: context.topProducts,
         productVelocity: context.productVelocity,
-      },
-      catalog: context.products,
-      customers: context.customers,
-      sales: context.sales,
+      }),
+      catalog: convertMoneyFieldsForAi(context.products),
+      customers: convertMoneyFieldsForAi(context.customers),
+      sales: convertMoneyFieldsForAi(context.sales),
     },
     null,
     2,
@@ -655,6 +681,7 @@ export async function chatWithAlingAi(
         getReplyLanguageInstruction(language),
         "Be encouraging, brief, and specific to the store data provided.",
         "The store data provided is authoritative. Use it as your source of truth for products, stock, sales, utang, customers, pricing, and payment mix.",
+        "All money in the provided context is already in Philippine pesos (PHP). Never reply in cents unless the user explicitly asks for cents.",
         "When the user asks about specific products, customers, balances, stock, or sales, inspect the provided data carefully before answering.",
         "Do not volunteer phone numbers unless the user explicitly asks for them.",
         "You may use light markdown for structure and emphasis, including **bold**, short bullet lists, and numbered lists.",
