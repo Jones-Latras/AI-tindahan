@@ -2,8 +2,12 @@
   "expo": {
     "name": "TindaHan AI",
     "slug": "tindahan-ai",
+    "owner": "jltrs",
     "scheme": "tindahanai",
     "version": "0.1.0",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
@@ -25,7 +29,9 @@
         {
           "photosPermission": "Allow TindaHan AI to access photos in your library",
           "savePhotosPermission": "Allow TindaHan AI to save receipt images to your library",
-          "granularPermissions": ["photo"]
+          "granularPermissions": [
+            "photo"
+          ]
         }
       ],
       [
@@ -42,8 +48,18 @@
         "backgroundColor": "#0D6A54"
       }
     },
+    "updates": {
+      "url": "https://u.expo.dev/ef18d9d5-fbb0-464b-b179-af5560597e27"
+    },
     "web": {
       "bundler": "metro"
+    },
+    "extra": {
+      "geminiKey": "",
+      "router": {},
+      "eas": {
+        "projectId": "ef18d9d5-fbb0-464b-b179-af5560597e27"
+      }
     }
   }
 }
