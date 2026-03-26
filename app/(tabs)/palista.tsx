@@ -10,6 +10,7 @@ import {
   LayoutAnimation,
   Pressable,
   Text,
+  TextInput,
   View,
 } from "react-native";
 
@@ -102,11 +103,14 @@ export default function PalistaScreen() {
   const [saving, setSaving] = useState(false);
   const [refreshingScores, setRefreshingScores] = useState(false);
   const [refreshingList, setRefreshingList] = useState(false);
-  const [searchVisible, setSearchVisible] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [expandedCustomerId, setExpandedCustomerId] = useState<number | null>(null);
   const hasLoadedCustomersRef = useRef(false);
   const customerListOpacity = useRef(new Animated.Value(1)).current;
+  const compactCustomerControlsStyle = {
+    gap: theme.spacing.sm,
+    padding: theme.spacing.sm,
+  } as const;
 
   const animateCustomerList = useCallback(
     (toValue: number, duration: number) => {
@@ -219,6 +223,21 @@ export default function PalistaScreen() {
       }
 
       return t("palista.overdue.fresh");
+    },
+    [t],
+  );
+  const getCustomerActivityLabel = useCallback(
+    (lastUtangDate: string | null) => {
+      if (!lastUtangDate) {
+        return null;
+      }
+
+      const daysSince = getDaysBetween(lastUtangDate);
+      if (daysSince <= 0) {
+        return t("palista.lastActive.today");
+      }
+
+      return t("palista.lastCreditDate", { date: formatDateLabel(lastUtangDate) });
     },
     [t],
   );
@@ -378,86 +397,88 @@ export default function PalistaScreen() {
 
   return (
     <Screen title={t("palista.title")}>
-      <SurfaceCard style={{ gap: theme.spacing.lg }}>
-        <View style={{ alignItems: "center", flexDirection: "row", justifyContent: "space-between", gap: theme.spacing.md }}>
-          <View style={{ flex: 1, gap: 4 }}>
-            <Text
+      <SurfaceCard style={compactCustomerControlsStyle}>
+        <View style={{ alignItems: "center", flexDirection: "row", gap: theme.spacing.sm }}>
+          <View
+            style={{
+              alignItems: "center",
+              backgroundColor: theme.colors.surface,
+              borderColor: theme.colors.border,
+              borderRadius: theme.radius.sm,
+              borderWidth: 1,
+              flex: 1,
+              flexDirection: "row",
+              minHeight: 52,
+              paddingHorizontal: theme.spacing.md,
+            }}
+          >
+            <Feather color={theme.colors.textSoft} name="search" size={16} />
+            <TextInput
+              onChangeText={setSearchTerm}
+              placeholder={t("palista.search.placeholder")}
+              placeholderTextColor={theme.colors.textSoft}
               style={{
                 color: theme.colors.text,
-                fontFamily: theme.typography.display,
-                fontSize: 24,
+                flex: 1,
+                fontFamily: theme.typography.body,
+                fontSize: 15,
+                minHeight: 50,
+                paddingLeft: theme.spacing.sm,
+              }}
+              value={searchTerm}
+            />
+          </View>
+          <Pressable
+            accessibilityLabel={t("palista.newCustomerButton")}
+            onPress={() => openCustomerModal()}
+            style={({ pressed }) => ({
+              alignItems: "center",
+              backgroundColor: theme.colors.primary,
+              borderColor: theme.colors.primary,
+              borderRadius: theme.radius.pill,
+              borderWidth: 1,
+              flexDirection: "row",
+              gap: theme.spacing.xs,
+              opacity: pressed ? 0.9 : 1,
+              paddingHorizontal: theme.spacing.md,
+              paddingVertical: 12,
+            })}
+          >
+            <Feather color={theme.colors.primaryText} name="plus" size={14} />
+            <Text
+              style={{
+                color: theme.colors.primaryText,
+                fontFamily: theme.typography.body,
+                fontSize: 12,
                 fontWeight: "700",
               }}
             >
-              {t("palista.ledgerTitle")}
+              {t("palista.newCustomerCompact")}
             </Text>
-            <Text
-              style={{
-                color: theme.colors.textMuted,
-                fontFamily: theme.typography.body,
-                fontSize: 13,
-                lineHeight: 19,
-              }}
-            >
-              {t("palista.ledgerSubtitle")}
-            </Text>
-          </View>
-          {refreshingList ? (
-            <View style={{ alignItems: "center", flexDirection: "row", gap: theme.spacing.xs }}>
-              <ActivityIndicator color={theme.colors.primary} size="small" />
-              <Text
-                style={{
-                  color: theme.colors.textMuted,
-                  fontFamily: theme.typography.body,
-                  fontSize: 12,
-                  fontWeight: "700",
-                }}
-              >
-                {t("palista.updating")}
-              </Text>
-            </View>
-          ) : null}
-        </View>
-
-        <ActionButton
-          icon={<Feather color={theme.colors.primaryText} name="user-plus" size={16} />}
-          label={t("palista.newCustomerButton")}
-          onPress={() => openCustomerModal()}
-        />
-
-        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
-          <ActionButton
-            icon={<Feather color={theme.colors.primary} name="search" size={16} />}
-            label={searchVisible ? t("palista.search.hide") : t("palista.search.show")}
-            onPress={() => {
-              setSearchVisible((current) => {
-                if (current) {
-                  setSearchTerm("");
-                }
-
-                return !current;
-              });
-            }}
-            style={{ flex: 1, minWidth: 150 }}
-            variant="ghost"
-          />
-          <ActionButton
-            icon={<Feather color={theme.colors.primary} name="refresh-cw" size={16} />}
-            label={refreshingScores ? t("palista.refreshingScores") : t("palista.refreshScores")}
+          </Pressable>
+          <Pressable
+            accessibilityLabel={t("palista.refreshScores")}
+            disabled={refreshingScores}
             onPress={() => void handleRefreshAllScores()}
-            style={{ flex: 1, minWidth: 150 }}
-            variant="secondary"
-          />
+            style={({ pressed }) => ({
+              alignItems: "center",
+              backgroundColor: theme.colors.surface,
+              borderColor: theme.colors.border,
+              borderRadius: theme.radius.pill,
+              borderWidth: 1,
+              height: 44,
+              justifyContent: "center",
+              opacity: pressed ? 0.9 : 1,
+              width: 44,
+            })}
+          >
+            {refreshingScores || refreshingList ? (
+              <ActivityIndicator color={theme.colors.primary} size="small" />
+            ) : (
+              <Feather color={theme.colors.primary} name="refresh-cw" size={16} />
+            )}
+          </Pressable>
         </View>
-
-        {searchVisible ? (
-          <InputField
-            label={t("palista.search.label")}
-            onChangeText={setSearchTerm}
-            placeholder={t("palista.search.placeholder")}
-            value={searchTerm}
-          />
-        ) : null}
       </SurfaceCard>
 
       {loading ? (
@@ -474,12 +495,12 @@ export default function PalistaScreen() {
           </Text>
         </SurfaceCard>
       ) : filteredCustomers.length > 0 ? (
-        <Animated.View style={{ gap: theme.spacing.lg, opacity: customerListOpacity }}>
+        <Animated.View style={{ gap: theme.spacing.sm, opacity: customerListOpacity }}>
           {filteredCustomers.map((customer) => {
             const overdueTone = getOverdueTone(customer.overdueLevel);
             const overdueLabel = getOverdueLabel(customer.overdueLevel);
-            const daysSince = getDaysBetween(customer.lastUtangDate);
             const isExpanded = expandedCustomerId === customer.id;
+            const activityLabel = getCustomerActivityLabel(customer.lastUtangDate);
 
             return (
               <Pressable
@@ -489,17 +510,23 @@ export default function PalistaScreen() {
                   opacity: pressed ? 0.96 : 1,
                 })}
               >
-                <SurfaceCard style={{ gap: theme.spacing.sm, paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.sm }}>
+                <SurfaceCard style={{ gap: theme.spacing.xs, paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.sm }}>
                   <View
                     style={{
-                      alignItems: "center",
                       flexDirection: "row",
                       gap: theme.spacing.sm,
                       justifyContent: "space-between",
                     }}
                   >
-                    <View style={{ flex: 1.15, gap: 4 }}>
-                      <View style={{ gap: 4 }}>
+                    <View style={{ flex: 1, gap: theme.spacing.xs, paddingRight: theme.spacing.sm }}>
+                      <View
+                        style={{
+                          alignItems: "center",
+                          flexDirection: "row",
+                          flexWrap: "wrap",
+                          gap: 6,
+                        }}
+                      >
                         <Text
                           style={{
                             color: theme.colors.text,
@@ -507,10 +534,13 @@ export default function PalistaScreen() {
                             fontSize: 18,
                             fontWeight: "700",
                           }}
-                          numberOfLines={1}
                         >
                           {customer.name}
                         </Text>
+                        <StatusBadge label={getTrustLabel(customer.trustScore)} tone={getTrustTone(customer.trustScore)} />
+                        <StatusBadge label={overdueLabel} tone={overdueTone} />
+                      </View>
+                      {customer.phone ? (
                         <Text
                           style={{
                             color: theme.colors.textMuted,
@@ -519,25 +549,21 @@ export default function PalistaScreen() {
                           }}
                           numberOfLines={1}
                         >
-                          {customer.phone || t("palista.noPhone")}
+                          {customer.phone}
                         </Text>
-                      </View>
-                    </View>
-
-                    <View
-                      style={{
-                        alignItems: "center",
-                        flex: 1,
-                        gap: 6,
-                        justifyContent: "center",
-                      }}
-                    >
-                      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, justifyContent: "center" }}>
-                        <StatusBadge label={getTrustLabel(customer.trustScore)} tone={getTrustTone(customer.trustScore)} />
-                      </View>
-                      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, justifyContent: "center" }}>
-                        <StatusBadge label={overdueLabel} tone={overdueTone} />
-                      </View>
+                      ) : null}
+                      {activityLabel ? (
+                        <Text
+                          style={{
+                            color: theme.colors.textSoft,
+                            fontFamily: theme.typography.body,
+                            fontSize: 12,
+                          }}
+                          numberOfLines={1}
+                        >
+                          {activityLabel}
+                        </Text>
+                      ) : null}
                     </View>
 
                     <View style={{ alignItems: "flex-end", gap: 4 }}>
@@ -557,59 +583,6 @@ export default function PalistaScreen() {
                         name={isExpanded ? "chevron-up" : "chevron-down"}
                         size={18}
                       />
-                    </View>
-                  </View>
-
-                  <View
-                    style={{
-                      alignItems: "center",
-                      flexDirection: "row",
-                      gap: theme.spacing.md,
-                      justifyContent: "space-between",
-                    }}
-                  >
-                    <View style={{ flex: 1, gap: 2 }}>
-                      <Text
-                        style={{
-                          color: theme.colors.textSoft,
-                          fontFamily: theme.typography.body,
-                          fontSize: 11,
-                        }}
-                      >
-                        {t("palista.lastUtang")}
-                      </Text>
-                      <Text
-                        style={{
-                          color: theme.colors.text,
-                          fontFamily: theme.typography.body,
-                          fontSize: 13,
-                          fontWeight: "700",
-                        }}
-                      >
-                        {formatDateLabel(customer.lastUtangDate)}
-                      </Text>
-                    </View>
-
-                    <View style={{ alignItems: "flex-end", gap: 2 }}>
-                      <Text
-                        style={{
-                          color: theme.colors.textSoft,
-                          fontFamily: theme.typography.body,
-                          fontSize: 11,
-                        }}
-                      >
-                        {t("palista.lastEntry")}
-                      </Text>
-                      <Text
-                        style={{
-                          color: theme.colors.text,
-                          fontFamily: theme.typography.body,
-                          fontSize: 13,
-                          fontWeight: "700",
-                        }}
-                      >
-                        {customer.lastUtangDate ? `${daysSince} day(s)` : t("palista.noRecord")}
-                      </Text>
                     </View>
                   </View>
 
