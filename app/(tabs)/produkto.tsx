@@ -1,4 +1,5 @@
 import { Feather } from "@expo/vector-icons";
+import { CameraView, useCameraPermissions as useBarcodeCameraPermissions, type BarcodeScanningResult } from "expo-camera";
 import * as ImagePicker from "expo-image-picker";
 import { useFocusEffect } from "expo-router";
 import { useSQLiteContext } from "expo-sqlite";
@@ -178,10 +179,13 @@ export default function ProduktoScreen() {
   const [pickingImage, setPickingImage] = useState(false);
   const [photoSheetVisible, setPhotoSheetVisible] = useState(false);
   const [categoryModalVisible, setCategoryModalVisible] = useState(false);
+  const [barcodeScannerVisible, setBarcodeScannerVisible] = useState(false);
+  const [barcodeScannerBusy, setBarcodeScannerBusy] = useState(false);
   const [categoryDraft, setCategoryDraft] = useState("");
   const [categoryModalTarget, setCategoryModalTarget] = useState<CategoryModalTarget>("catalog");
   const [mediaPermission, requestMediaPermission] = ImagePicker.useMediaLibraryPermissions();
   const [cameraPermission, requestCameraPermission] = ImagePicker.useCameraPermissions();
+  const [barcodePermission, requestBarcodePermission] = useBarcodeCameraPermissions();
   const removeCartItem = useCartStore((state) => state.removeItem);
   const compactCatalogControlsStyle = {
     gap: theme.spacing.sm,
@@ -323,6 +327,7 @@ export default function ProduktoScreen() {
     setForm(emptyForm);
     setPhotoSheetVisible(false);
     setCategoryModalVisible(false);
+    setBarcodeScannerVisible(false);
     setModalVisible(true);
   }, []);
 
@@ -353,6 +358,7 @@ export default function ProduktoScreen() {
     });
     setPhotoSheetVisible(false);
     setCategoryModalVisible(false);
+    setBarcodeScannerVisible(false);
     setModalVisible(true);
   }, []);
 
@@ -554,6 +560,33 @@ export default function ProduktoScreen() {
       }
     },
     [cameraPermission?.granted, mediaPermission?.granted, pickingImage, requestCameraPermission, requestMediaPermission],
+  );
+
+  const handleOpenBarcodeScanner = useCallback(async () => {
+    if (!barcodePermission || !barcodePermission.granted) {
+      const permission = await requestBarcodePermission();
+      if (!permission.granted) {
+        Alert.alert("Camera needed", "Allow camera access so you can scan a product barcode.");
+        return;
+      }
+    }
+
+    setBarcodeScannerBusy(false);
+    setBarcodeScannerVisible(true);
+  }, [barcodePermission, requestBarcodePermission]);
+
+  const handleBarcodeScanned = useCallback(
+    (result: BarcodeScanningResult) => {
+      if (barcodeScannerBusy) {
+        return;
+      }
+
+      setBarcodeScannerBusy(true);
+      setBarcodeScannerVisible(false);
+      setForm((current) => ({ ...current, barcode: result.data }));
+      setTimeout(() => setBarcodeScannerBusy(false), 180);
+    },
+    [barcodeScannerBusy],
   );
 
   const hasImage = form.imageUri.trim().length > 0;
@@ -891,34 +924,81 @@ export default function ProduktoScreen() {
         onClose={() => {
           setPhotoSheetVisible(false);
           setCategoryModalVisible(false);
+          setBarcodeScannerVisible(false);
           setModalVisible(false);
         }}
-        subtitle={t("produkto.productModalSubtitle")}
         title={editingProduct ? t("produkto.editProduct") : t("produkto.newProduct")}
         visible={modalVisible}
       >
-        <InputField
-          label="Product name"
-          onChangeText={(value) => setForm((current) => ({ ...current, name: value }))}
-          placeholder="Example: Lucky Me Pancit Canton"
-          error={
-            shouldShowValidationMessage && form.name.trim().length > 0 && form.name.trim().length < 2
-              ? "Use at least 2 characters."
-              : null
-          }
-          value={form.name}
-        />
-        <SurfaceCard style={{ gap: theme.spacing.sm }}>
-          <Text
-            style={{
-              color: theme.colors.text,
-              fontFamily: theme.typography.body,
-              fontSize: 14,
-              fontWeight: "700",
-            }}
-          >
-            Selling setup
-          </Text>
+        <View style={{ gap: theme.spacing.sm }}>
+          <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
+            <Pressable
+              onPress={() => setPhotoSheetVisible(true)}
+              style={({ pressed }) => ({
+                alignItems: "center",
+                backgroundColor: theme.colors.surface,
+                borderColor: theme.colors.border,
+                borderRadius: theme.radius.md,
+                borderWidth: 1,
+                height: 72,
+                justifyContent: "center",
+                opacity: pressed ? 0.9 : 1,
+                overflow: "hidden",
+                width: 72,
+              })}
+            >
+              {hasImage ? (
+                <Image
+                  resizeMode="cover"
+                  source={{ uri: form.imageUri }}
+                  style={{ height: "100%", width: "100%" }}
+                />
+              ) : (
+                <Feather color={theme.colors.primary} name="camera" size={22} />
+              )}
+            </Pressable>
+            <View style={{ flex: 1, gap: theme.spacing.xs }}>
+              <View
+                style={{
+                  backgroundColor: theme.colors.surface,
+                  borderColor:
+                    shouldShowValidationMessage && form.name.trim().length > 0 && form.name.trim().length < 2
+                      ? theme.colors.danger
+                      : theme.colors.border,
+                  borderRadius: theme.radius.sm,
+                  borderWidth: 1,
+                  minHeight: 72,
+                  paddingHorizontal: theme.spacing.md,
+                }}
+              >
+                <TextInput
+                  onChangeText={(value) => setForm((current) => ({ ...current, name: value }))}
+                  placeholder="Product name"
+                  placeholderTextColor={theme.colors.textSoft}
+                  style={{
+                    color: theme.colors.text,
+                    fontFamily: theme.typography.body,
+                    fontSize: 15,
+                    minHeight: 70,
+                  }}
+                  value={form.name}
+                />
+              </View>
+              {shouldShowValidationMessage && form.name.trim().length > 0 && form.name.trim().length < 2 ? (
+                <Text
+                  style={{
+                    color: theme.colors.danger,
+                    fontFamily: theme.typography.body,
+                    fontSize: 12,
+                    lineHeight: 18,
+                  }}
+                >
+                  Use at least 2 characters.
+                </Text>
+              ) : null}
+            </View>
+          </View>
+
           <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
             {[
               { label: "Per piece", value: false },
@@ -933,7 +1013,7 @@ export default function ProduktoScreen() {
                   style={({ pressed }) => ({
                     backgroundColor: active ? theme.colors.primary : theme.colors.surface,
                     borderColor: active ? theme.colors.primary : theme.colors.border,
-                    borderRadius: theme.radius.sm,
+                    borderRadius: theme.radius.pill,
                     borderWidth: 1,
                     flex: 1,
                     opacity: pressed ? 0.9 : 1,
@@ -956,7 +1036,7 @@ export default function ProduktoScreen() {
               );
             })}
           </View>
-        </SurfaceCard>
+        </View>
 
         {form.isWeightBased ? (
           <>
@@ -1339,106 +1419,6 @@ export default function ProduktoScreen() {
             </View>
           </SurfaceCard>
         ) : null}
-        <InputField
-          label="Category"
-          onChangeText={(value) => setForm((current) => ({ ...current, category: value }))}
-          placeholder="Snacks, Drinks, Household"
-          value={form.category}
-        />
-        <View style={{ gap: theme.spacing.sm }}>
-          <View
-            style={{
-              alignItems: "center",
-              flexDirection: "row",
-              gap: theme.spacing.sm,
-              justifyContent: "space-between",
-            }}
-          >
-            <Text
-              style={{
-                color: theme.colors.textMuted,
-                fontFamily: theme.typography.body,
-                fontSize: 12,
-                fontWeight: "700",
-              }}
-            >
-              Quick category picks
-            </Text>
-            <Pressable
-              onPress={() => openCategoryModal("product")}
-              style={({ pressed }) => ({
-                alignItems: "center",
-                flexDirection: "row",
-                gap: theme.spacing.xs,
-                opacity: pressed ? 0.84 : 1,
-              })}
-            >
-              <Feather color={theme.colors.primary} name="plus-circle" size={14} />
-              <Text
-                style={{
-                  color: theme.colors.primary,
-                  fontFamily: theme.typography.body,
-                  fontSize: 12,
-                  fontWeight: "700",
-                }}
-              >
-                Add new
-              </Text>
-            </Pressable>
-          </View>
-
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
-            {categories.length > 0 ? (
-              categories.map((category) => {
-                const active =
-                  normalizeCategoryName(form.category).toLocaleLowerCase() === category.toLocaleLowerCase();
-
-                return (
-                  <Pressable
-                    key={category}
-                    onPress={() => setForm((current) => ({ ...current, category }))}
-                    style={({ pressed }) => ({
-                      backgroundColor: active ? theme.colors.primaryMuted : theme.colors.surface,
-                      borderColor: active ? theme.colors.primary : theme.colors.border,
-                      borderRadius: theme.radius.pill,
-                      borderWidth: 1,
-                      opacity: pressed ? 0.9 : 1,
-                      paddingHorizontal: theme.spacing.md,
-                      paddingVertical: 10,
-                    })}
-                  >
-                    <Text
-                      style={{
-                        color: active ? theme.colors.primary : theme.colors.text,
-                        fontFamily: theme.typography.body,
-                        fontSize: 12,
-                        fontWeight: "700",
-                      }}
-                    >
-                      {category}
-                    </Text>
-                  </Pressable>
-                );
-              })
-            ) : (
-              <Text
-                style={{
-                  color: theme.colors.textSoft,
-                  fontFamily: theme.typography.body,
-                  fontSize: 12,
-                }}
-              >
-                No saved categories yet. Add one to reuse it quickly.
-              </Text>
-            )}
-          </View>
-        </View>
-        <InputField
-          label="Barcode"
-          onChangeText={(value) => setForm((current) => ({ ...current, barcode: value }))}
-          placeholder="Optional"
-          value={form.barcode}
-        />
         <View style={{ gap: theme.spacing.sm }}>
           <Text
             style={{
@@ -1448,74 +1428,182 @@ export default function ProduktoScreen() {
               fontWeight: "700",
             }}
           >
-            Product image
+            Category
           </Text>
-          <Pressable
-            onPress={() => setPhotoSheetVisible(true)}
-            style={({ pressed }) => ({
-              backgroundColor: theme.colors.surface,
-              borderColor: theme.colors.border,
-              borderRadius: theme.radius.md,
-              borderWidth: 1,
-              flexDirection: "row",
-              gap: theme.spacing.md,
-              opacity: pressed ? 0.9 : 1,
-              padding: theme.spacing.md,
-            })}
+          <ScrollView
+            horizontal
+            keyboardShouldPersistTaps="handled"
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{
+              alignItems: "center",
+              gap: theme.spacing.sm,
+              paddingRight: theme.spacing.sm,
+            }}
           >
-            <View
-              style={{
+            <Pressable
+              onPress={() => openCategoryModal("product")}
+              style={({ pressed }) => ({
                 alignItems: "center",
-                backgroundColor: theme.colors.card,
-                borderRadius: theme.radius.md,
-                height: 72,
-                justifyContent: "center",
-                overflow: "hidden",
-                width: 72,
-              }}
+                backgroundColor: pressed ? theme.colors.primaryMuted : theme.colors.surface,
+                borderColor: theme.colors.primary,
+                borderRadius: theme.radius.pill,
+                borderWidth: 1,
+                flexDirection: "row",
+                gap: theme.spacing.xs,
+                opacity: pressed ? 0.92 : 1,
+                paddingHorizontal: theme.spacing.md,
+                paddingVertical: 10,
+              })}
             >
-              {hasImage ? (
-                <Image
-                  resizeMode="cover"
-                  source={{ uri: form.imageUri }}
-                  style={{ height: "100%", width: "100%" }}
-                />
-              ) : (
-                <Feather color={theme.colors.primary} name="image" size={20} />
-              )}
-            </View>
-
-            <View style={{ flex: 1, gap: theme.spacing.xs, justifyContent: "center" }}>
+              <Feather color={theme.colors.primary} name="plus" size={14} />
               <Text
                 style={{
-                  color: theme.colors.text,
+                  color: theme.colors.primary,
                   fontFamily: theme.typography.body,
-                  fontSize: 15,
+                  fontSize: 12,
                   fontWeight: "700",
                 }}
               >
-                {hasImage ? "Replace product photo" : "Add product photo"}
+                Add New
               </Text>
+            </Pressable>
+            {categories.map((category) => {
+              const active = normalizeCategoryName(form.category).toLocaleLowerCase() === category.toLocaleLowerCase();
+
+              return (
+                <Pressable
+                  key={category}
+                  onPress={() => setForm((current) => ({ ...current, category }))}
+                  style={({ pressed }) => ({
+                    backgroundColor: active ? theme.colors.primary : theme.colors.surface,
+                    borderColor: active ? theme.colors.primary : theme.colors.border,
+                    borderRadius: theme.radius.pill,
+                    borderWidth: 1,
+                    opacity: pressed ? 0.9 : 1,
+                    paddingHorizontal: theme.spacing.md,
+                    paddingVertical: 10,
+                  })}
+                >
+                  <Text
+                    style={{
+                      color: active ? theme.colors.primaryText : theme.colors.text,
+                      fontFamily: theme.typography.body,
+                      fontSize: 12,
+                      fontWeight: "700",
+                    }}
+                  >
+                    {category}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </View>
+
+        <View style={{ gap: theme.spacing.xs }}>
+          <Text
+            style={{
+              color: theme.colors.textMuted,
+              fontFamily: theme.typography.body,
+              fontSize: 13,
+              fontWeight: "600",
+            }}
+          >
+            Barcode
+          </Text>
+          <View
+            style={{
+              alignItems: "center",
+              backgroundColor: theme.colors.surface,
+              borderColor: theme.colors.border,
+              borderRadius: theme.radius.sm,
+              borderWidth: 1,
+              flexDirection: "row",
+              minHeight: 52,
+              paddingLeft: theme.spacing.md,
+              paddingRight: theme.spacing.xs,
+            }}
+          >
+            <TextInput
+              onChangeText={(value) => setForm((current) => ({ ...current, barcode: value }))}
+              placeholder="Optional"
+              placeholderTextColor={theme.colors.textSoft}
+              style={{
+                color: theme.colors.text,
+                flex: 1,
+                fontFamily: theme.typography.body,
+                fontSize: 15,
+                minHeight: 50,
+                paddingRight: theme.spacing.sm,
+              }}
+              value={form.barcode}
+            />
+            <Pressable
+              accessibilityLabel="Scan barcode"
+              hitSlop={6}
+              onPress={() => void handleOpenBarcodeScanner()}
+              style={({ pressed }) => ({
+                alignItems: "center",
+                backgroundColor: pressed ? theme.colors.primaryMuted : "transparent",
+                borderRadius: theme.radius.pill,
+                height: 40,
+                justifyContent: "center",
+                width: 40,
+              })}
+            >
+              <Feather color={theme.colors.primary} name="camera" size={18} />
+            </Pressable>
+          </View>
+        </View>
+      </ModalSheet>
+
+      <ModalSheet
+        footer={<ActionButton label="Close Scanner" onPress={() => setBarcodeScannerVisible(false)} variant="ghost" />}
+        onClose={() => setBarcodeScannerVisible(false)}
+        subtitle="Scan a product code to fill the barcode field instantly."
+        title="Scan Barcode"
+        visible={barcodeScannerVisible}
+      >
+        <View
+          style={{
+            borderColor: theme.colors.border,
+            borderRadius: theme.radius.md,
+            borderWidth: 1,
+            overflow: "hidden",
+          }}
+        >
+          {barcodePermission?.granted ? (
+            <CameraView
+              barcodeScannerSettings={{
+                barcodeTypes: ["ean13", "ean8", "upc_a", "upc_e", "code128", "code39", "qr"],
+              }}
+              onBarcodeScanned={barcodeScannerVisible ? handleBarcodeScanned : undefined}
+              style={{ height: 340, width: "100%" }}
+            />
+          ) : (
+            <View
+              style={{
+                alignItems: "center",
+                backgroundColor: theme.colors.surface,
+                gap: theme.spacing.md,
+                justifyContent: "center",
+                minHeight: 220,
+                padding: theme.spacing.lg,
+              }}
+            >
               <Text
                 style={{
                   color: theme.colors.textMuted,
                   fontFamily: theme.typography.body,
-                  fontSize: 13,
-                  lineHeight: 19,
+                  fontSize: 14,
+                  textAlign: "center",
                 }}
               >
-                {hasImage
-                  ? imageAlreadyBackedUp
-                    ? "This image is already in cloud backup. Replacing it uploads a new lighter copy next time you back up."
-                    : "Saved locally and ready for cloud backup. Tap to replace, remove, or review the photo."
-                  : "Open the photo sheet to take or choose a clean product image. The picker saves a lighter copy before backup."}
+                Camera permission is required before barcode scanning can start.
               </Text>
+              <ActionButton label="Grant Camera Access" onPress={() => void handleOpenBarcodeScanner()} />
             </View>
-
-            <View style={{ justifyContent: "center" }}>
-              <Feather color={theme.colors.textMuted} name="chevron-right" size={18} />
-            </View>
-          </Pressable>
+          )}
         </View>
       </ModalSheet>
 
