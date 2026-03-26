@@ -132,6 +132,7 @@ export default function BentaScreen() {
   } | null>(null);
   const [storeName, setStoreName] = useState("");
   const receiptCaptureRef = useRef<View>(null);
+  const cartActiveProgress = useRef(new Animated.Value(0)).current;
   const cartPulseScale = useRef(new Animated.Value(1)).current;
   const cartPulseLift = useRef(new Animated.Value(0)).current;
   const cartFeedbackOpacity = useRef(new Animated.Value(0)).current;
@@ -278,6 +279,18 @@ export default function BentaScreen() {
     };
   }, []);
 
+  useEffect(() => {
+    cartActiveProgress.stopAnimation();
+
+    Animated.spring(cartActiveProgress, {
+      damping: 18,
+      mass: 0.85,
+      stiffness: 180,
+      toValue: cartItems.length > 0 ? 1 : 0,
+      useNativeDriver: true,
+    }).start();
+  }, [cartActiveProgress, cartItems.length]);
+
   const cashPaidCents = parseCurrencyToCents(cashInput);
   const hasValidCash = Number.isFinite(cashPaidCents);
 
@@ -291,11 +304,11 @@ export default function BentaScreen() {
     (runningTotal, item) => runningTotal + (item.isWeightBased ? 1 : Math.max(1, Math.trunc(item.quantity))),
     0,
   );
+  const hasActiveCart = cartItems.length > 0;
 
   const changeCents = paymentMethod === "cash" && hasValidCash ? cashPaidCents - finalTotalCents : 0;
   const cartCountLabel =
     cartUnitCount === 1 ? t("benta.cartCount.single") : t("benta.cartCount.plural", { count: cartUnitCount });
-  const cartSummaryLabel = `${cartCountLabel} - ${formatCurrencyFromCents(finalTotalCents)}`;
   const categoryCountLabel = categories.length === 1 ? "1 category" : `${categories.length} categories`;
   const selectedCustomerName = selectedCustomer?.name ?? "";
   const selectedCustomerBalanceText = selectedCustomer ? formatCurrencyFromCents(selectedCustomer.balanceCents) : "";
@@ -778,7 +791,7 @@ export default function BentaScreen() {
       <Screen
         contentContainerStyle={{
           gap: theme.spacing.md,
-          paddingBottom: 104,
+          paddingBottom: hasActiveCart ? 104 : 84,
           paddingTop: theme.spacing.md,
         }}
         overlay={
@@ -864,82 +877,144 @@ export default function BentaScreen() {
             ) : null}
 
             <Animated.View
+              pointerEvents={hasActiveCart ? "none" : "auto"}
               style={{
                 bottom: theme.spacing.sm,
-                left: theme.spacing.lg,
+                opacity: cartActiveProgress.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [1, 0],
+                }),
                 position: "absolute",
                 right: theme.spacing.lg,
-                transform: [{ translateY: cartPulseLift }, { scale: cartPulseScale }],
+                transform: [
+                  {
+                    scale: cartActiveProgress.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [1, 0.84],
+                    }),
+                  },
+                  {
+                    translateY: cartActiveProgress.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0, 12],
+                    }),
+                  },
+                ],
               }}
             >
               <Pressable
+                accessibilityLabel={t("benta.cartBar.emptyTitle")}
                 onPress={() => setCartSheetVisible(true)}
                 style={({ pressed }) => ({
-                  backgroundColor: cartItems.length > 0 ? theme.colors.primary : theme.colors.card,
-                  borderColor: cartItems.length > 0 ? theme.colors.primary : theme.colors.border,
-                  borderRadius: theme.radius.md,
+                  alignItems: "center",
+                  backgroundColor: theme.colors.card,
+                  borderColor: theme.colors.border,
+                  borderRadius: theme.radius.pill,
                   borderWidth: 1,
-                  opacity: pressed ? 0.96 : 1,
-                  padding: theme.spacing.md,
+                  height: 58,
+                  justifyContent: "center",
+                  opacity: pressed ? 0.94 : 1,
                   shadowColor: theme.colors.shadow,
                   shadowOffset: { width: 0, height: 8 },
                   shadowOpacity: 1,
                   shadowRadius: 18,
                   elevation: 3,
+                  width: 58,
+                })}
+              >
+                <Feather color={theme.colors.textSoft} name="shopping-cart" size={20} />
+              </Pressable>
+            </Animated.View>
+
+            <Animated.View
+              pointerEvents={hasActiveCart ? "auto" : "none"}
+              style={{
+                bottom: theme.spacing.sm,
+                left: theme.spacing.lg,
+                opacity: cartActiveProgress,
+                position: "absolute",
+                right: theme.spacing.lg,
+                transform: [
+                  {
+                    translateY: Animated.add(
+                      cartPulseLift,
+                      cartActiveProgress.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [18, 0],
+                      }),
+                    ),
+                  },
+                  {
+                    scale: Animated.multiply(
+                      cartPulseScale,
+                      cartActiveProgress.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0.94, 1],
+                      }),
+                    ),
+                  },
+                ],
+              }}
+            >
+              <Pressable
+                onPress={() => setCartSheetVisible(true)}
+                style={({ pressed }) => ({
+                  backgroundColor: theme.colors.primary,
+                  borderRadius: theme.radius.pill,
+                  opacity: pressed ? 0.96 : 1,
+                  paddingHorizontal: theme.spacing.sm,
+                  paddingVertical: theme.spacing.sm,
+                  shadowColor: theme.colors.shadow,
+                  shadowOffset: { width: 0, height: 10 },
+                  shadowOpacity: 1,
+                  shadowRadius: 20,
+                  elevation: 4,
                 })}
               >
                 <View style={{ alignItems: "center", flexDirection: "row", gap: theme.spacing.md }}>
-                  <View
-                    style={{
-                      alignItems: "center",
-                      backgroundColor: cartItems.length > 0 ? "rgba(255, 255, 255, 0.14)" : theme.colors.surfaceMuted,
-                      borderRadius: theme.radius.pill,
-                      height: 42,
-                      justifyContent: "center",
-                      width: 42,
-                    }}
-                  >
-                    <Feather
-                      color={cartItems.length > 0 ? theme.colors.primaryText : theme.colors.textSoft}
-                      name="shopping-cart"
-                      size={18}
-                    />
-                  </View>
-                  <View style={{ flex: 1, gap: 2 }}>
+                  <View style={{ alignItems: "center", flex: 1, flexDirection: "row", gap: theme.spacing.sm }}>
                     <Text
                       style={{
-                        color: cartItems.length > 0 ? theme.colors.primaryText : theme.colors.text,
+                        color: theme.colors.primaryText,
                         fontFamily: theme.typography.body,
                         fontSize: 14,
                         fontWeight: "700",
                       }}
                     >
-                      {cartItems.length > 0 ? cartSummaryLabel : t("benta.cartBar.emptyTitle")}
+                      {cartCountLabel}
                     </Text>
                     <Text
                       style={{
-                        color: cartItems.length > 0 ? theme.colors.primaryText : theme.colors.textMuted,
+                        color: theme.colors.primaryText,
                         fontFamily: theme.typography.body,
-                        fontSize: 12,
-                        opacity: cartItems.length > 0 ? 0.86 : 1,
+                        fontSize: 14,
+                        opacity: 0.72,
                       }}
                     >
-                      {cartItems.length > 0
-                        ? t("benta.cartBar.activeSubtitle")
-                        : t("benta.cartBar.emptySubtitle")}
+                      |
+                    </Text>
+                    <Text
+                      style={{
+                        color: theme.colors.primaryText,
+                        fontFamily: theme.typography.display,
+                        fontSize: 18,
+                        fontWeight: "700",
+                      }}
+                    >
+                      {formatCurrencyFromCents(finalTotalCents)}
                     </Text>
                   </View>
                   <View
                     style={{
-                      backgroundColor: cartItems.length > 0 ? theme.colors.primaryText : theme.colors.primary,
+                      backgroundColor: theme.colors.primaryText,
                       borderRadius: theme.radius.pill,
-                      paddingHorizontal: theme.spacing.md,
+                      paddingHorizontal: theme.spacing.lg,
                       paddingVertical: 10,
                     }}
                   >
                     <Text
                       style={{
-                        color: cartItems.length > 0 ? theme.colors.primary : theme.colors.primaryText,
+                        color: theme.colors.primary,
                         fontFamily: theme.typography.body,
                         fontSize: 12,
                         fontWeight: "700",
