@@ -5,7 +5,7 @@ import { useSQLiteContext } from "expo-sqlite";
 import Storage from "expo-sqlite/kv-store";
 import * as Sharing from "expo-sharing";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Alert, Animated, Easing, Pressable, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Animated, Easing, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { captureRef } from "react-native-view-shot";
 
 import { ActionButton } from "@/components/ActionButton";
@@ -76,7 +76,6 @@ export default function BentaScreen() {
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [categoriesExpanded, setCategoriesExpanded] = useState(false);
   const [customers, setCustomers] = useState<CustomerSummary[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [cashInput, setCashInput] = useState("");
@@ -143,6 +142,10 @@ export default function BentaScreen() {
   const compactCardStyle = {
     gap: theme.spacing.sm,
     padding: theme.spacing.md,
+  } as const;
+  const compactCatalogControlsStyle = {
+    gap: theme.spacing.sm,
+    padding: theme.spacing.sm,
   } as const;
 
   const productById = useMemo(() => new Map(products.map((product) => [product.id, product])), [products]);
@@ -290,7 +293,6 @@ export default function BentaScreen() {
   const changeCents = paymentMethod === "cash" && hasValidCash ? cashPaidCents - finalTotalCents : 0;
   const cartCountLabel =
     cartUnitCount === 1 ? t("benta.cartCount.single") : t("benta.cartCount.plural", { count: cartUnitCount });
-  const categoryCountLabel = categories.length === 1 ? "1 category" : `${categories.length} categories`;
   const selectedCustomerName = selectedCustomer?.name ?? "";
   const selectedCustomerBalanceText = selectedCustomer ? formatCurrencyFromCents(selectedCustomer.balanceCents) : "";
   const isEnoughCash = paymentMethod === "cash" ? hasValidCash && cashPaidCents >= finalTotalCents : true;
@@ -864,151 +866,107 @@ export default function BentaScreen() {
         }
         title={t("benta.title")}
       >
-        <SurfaceCard style={compactCardStyle}>
-          <View style={{ alignItems: "center", flexDirection: "row", justifyContent: "space-between", gap: theme.spacing.sm }}>
-            <View style={{ flex: 1, gap: 4 }}>
-              <Text
-                style={{
-                  color: theme.colors.text,
-                  fontFamily: theme.typography.display,
-                  fontSize: 22,
-                  fontWeight: "700",
-                }}
-              >
-                Add Products
-              </Text>
-              <Text
-                style={{
-                  color: theme.colors.textMuted,
-                  fontFamily: theme.typography.body,
-                  fontSize: 13,
-                }}
-              >
-                {loading
-                  ? "Loading catalog..."
-                  : refreshingCatalog
-                    ? "Refreshing catalog in the background..."
-                    : `${visibleProducts.length} products ready to add.`}
-              </Text>
-            </View>
-          </View>
-          <InputField
-            label="Search products"
-            onChangeText={setSearchTerm}
-            placeholder="Find by name, category, or barcode"
-            value={searchTerm}
-          />
-          <View style={{ gap: theme.spacing.sm }}>
-            <View
+        <SurfaceCard style={compactCatalogControlsStyle}>
+          <View
+            style={{
+              alignItems: "center",
+              backgroundColor: theme.colors.surface,
+              borderColor: theme.colors.border,
+              borderRadius: theme.radius.sm,
+              borderWidth: 1,
+              flexDirection: "row",
+              minHeight: 52,
+              paddingLeft: theme.spacing.md,
+              paddingRight: theme.spacing.xs,
+            }}
+          >
+            <TextInput
+              onChangeText={setSearchTerm}
+              placeholder="Find by name, category, or barcode"
+              placeholderTextColor={theme.colors.textSoft}
               style={{
-                alignItems: "center",
-                flexDirection: "row",
-                gap: theme.spacing.sm,
-                justifyContent: "space-between",
+                color: theme.colors.text,
+                flex: 1,
+                fontFamily: theme.typography.body,
+                fontSize: 15,
+                minHeight: 50,
+                paddingRight: theme.spacing.sm,
               }}
+              value={searchTerm}
+            />
+            <Pressable
+              accessibilityLabel="Scan barcode"
+              hitSlop={6}
+              onPress={() => void handleOpenScanner()}
+              style={({ pressed }) => ({
+                alignItems: "center",
+                backgroundColor: pressed ? theme.colors.primaryMuted : "transparent",
+                borderRadius: theme.radius.pill,
+                height: 40,
+                justifyContent: "center",
+                width: 40,
+              })}
             >
-              <View style={{ flex: 1, gap: 2 }}>
-                <Text
-                  style={{
-                    color: theme.colors.textMuted,
-                    fontFamily: theme.typography.body,
-                    fontSize: 12,
-                    fontWeight: "700",
-                  }}
-                >
-                  Categories
-                </Text>
-                <Text
-                  style={{
-                    color: theme.colors.textSoft,
-                    fontFamily: theme.typography.body,
-                    fontSize: 12,
-                  }}
-                >
-                  {selectedCategory ? `Showing ${selectedCategory}` : `Showing all products - ${categoryCountLabel}`}
-                </Text>
-              </View>
-              <Pressable
-                onPress={() => setCategoriesExpanded((current) => !current)}
-                style={({ pressed }) => ({
-                  alignItems: "center",
-                  backgroundColor: theme.colors.surface,
-                  borderColor: theme.colors.border,
-                  borderRadius: theme.radius.pill,
-                  borderWidth: 1,
-                  flexDirection: "row",
-                  gap: theme.spacing.xs,
-                  opacity: pressed ? 0.88 : 1,
-                  paddingHorizontal: theme.spacing.md,
-                  paddingVertical: 10,
-                })}
-              >
-                <Feather
-                  color={theme.colors.textMuted}
-                  name={categoriesExpanded ? "chevron-up" : "chevron-down"}
-                  size={14}
-                />
-                <Text
-                  style={{
-                    color: theme.colors.text,
-                    fontFamily: theme.typography.body,
-                    fontSize: 12,
-                    fontWeight: "700",
-                  }}
-                >
-                  {categoriesExpanded ? "Hide" : "Show"}
-                </Text>
-              </Pressable>
-            </View>
-            {categoriesExpanded ? (
-              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
-                {[
-                  { label: "All", value: null as string | null },
-                  ...categories.map((category) => ({ label: category, value: category })),
-                ].map((option) => {
-                  const active = selectedCategory === option.value;
-
-                  return (
-                    <Pressable
-                      key={option.label}
-                      onPress={() => setSelectedCategory(option.value)}
-                      style={({ pressed }) => ({
-                        backgroundColor: active ? theme.colors.primary : theme.colors.surface,
-                        borderColor: active ? theme.colors.primary : theme.colors.border,
-                        borderRadius: theme.radius.pill,
-                        borderWidth: 1,
-                        opacity: pressed ? 0.9 : 1,
-                        paddingHorizontal: theme.spacing.md,
-                        paddingVertical: 10,
-                      })}
-                    >
-                      <Text
-                        style={{
-                          color: active ? theme.colors.primaryText : theme.colors.text,
-                          fontFamily: theme.typography.body,
-                          fontSize: 12,
-                          fontWeight: "700",
-                        }}
-                      >
-                        {option.label}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            ) : null}
+              <Feather color={theme.colors.primary} name="camera" size={18} />
+            </Pressable>
           </View>
-          <ActionButton
-            icon={<Feather color={theme.colors.primaryText} name="camera" size={16} />}
-            label="Scan Barcode"
-            onPress={() => void handleOpenScanner()}
-          />
+          <ScrollView
+            horizontal
+            keyboardShouldPersistTaps="handled"
+            nestedScrollEnabled
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{
+              alignItems: "center",
+              gap: theme.spacing.sm,
+              paddingRight: theme.spacing.sm,
+            }}
+          >
+            {[
+              { label: "All", value: null as string | null },
+              ...categories.map((category) => ({ label: category, value: category })),
+            ].map((option) => {
+              const active = selectedCategory === option.value;
+
+              return (
+                <Pressable
+                  key={option.label}
+                  onPress={() => setSelectedCategory(option.value)}
+                  style={({ pressed }) => ({
+                    backgroundColor: active ? theme.colors.primary : theme.colors.surface,
+                    borderColor: active ? theme.colors.primary : theme.colors.border,
+                    borderRadius: theme.radius.pill,
+                    borderWidth: 1,
+                    opacity: pressed ? 0.9 : 1,
+                    paddingHorizontal: theme.spacing.md,
+                    paddingVertical: 10,
+                  })}
+                >
+                  <Text
+                    style={{
+                      color: active ? theme.colors.primaryText : theme.colors.text,
+                      fontFamily: theme.typography.body,
+                      fontSize: 12,
+                      fontWeight: "700",
+                    }}
+                  >
+                    {option.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
         </SurfaceCard>
 
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
           {loading ? (
             <SurfaceCard style={[compactCardStyle, { width: "100%" }]}>
-              <View style={{ alignItems: "center", flexDirection: "row", gap: theme.spacing.sm }}>
+              <View
+                style={{
+                  alignItems: "center",
+                  flexDirection: "row",
+                  gap: theme.spacing.sm,
+                }}
+              >
                 <ActivityIndicator color={theme.colors.primary} />
                 <Text
                   style={{
