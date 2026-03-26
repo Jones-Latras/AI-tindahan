@@ -60,7 +60,7 @@ CREATE TABLE IF NOT EXISTS sales (
 CREATE TABLE IF NOT EXISTS sale_items (
   id BIGINT PRIMARY KEY,
   sale_id BIGINT NOT NULL REFERENCES sales(id) ON DELETE CASCADE,
-  product_id BIGINT NOT NULL,
+  product_id BIGINT,
   product_name TEXT NOT NULL,
   unit_price_cents INTEGER NOT NULL,
   unit_cost_cents INTEGER NOT NULL DEFAULT 0,
@@ -75,6 +75,7 @@ ALTER TABLE sale_items ADD COLUMN IF NOT EXISTS is_weight_based BOOLEAN NOT NULL
 ALTER TABLE sale_items ADD COLUMN IF NOT EXISTS weight_kg NUMERIC(10,4);
 ALTER TABLE sale_items ADD COLUMN IF NOT EXISTS line_total_cents INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE sale_items ADD COLUMN IF NOT EXISTS line_cost_total_cents INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE sale_items ALTER COLUMN product_id DROP NOT NULL;
 
 CREATE TABLE IF NOT EXISTS utang (
   id BIGINT PRIMARY KEY,
@@ -86,24 +87,33 @@ CREATE TABLE IF NOT EXISTS utang (
   paid_at TIMESTAMPTZ
 );
 
+CREATE TABLE IF NOT EXISTS app_settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- Enable Row Level Security (allow all for anon key -- single-user app)
 ALTER TABLE products ENABLE ROW LEVEL SECURITY;
 ALTER TABLE customers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sales ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sale_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE utang ENABLE ROW LEVEL SECURITY;
+ALTER TABLE app_settings ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Allow all" ON products;
 DROP POLICY IF EXISTS "Allow all" ON customers;
 DROP POLICY IF EXISTS "Allow all" ON sales;
 DROP POLICY IF EXISTS "Allow all" ON sale_items;
 DROP POLICY IF EXISTS "Allow all" ON utang;
+DROP POLICY IF EXISTS "Allow all" ON app_settings;
 
 CREATE POLICY "Allow all" ON products FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all" ON customers FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all" ON sales FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all" ON sale_items FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all" ON utang FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all" ON app_settings FOR ALL USING (true) WITH CHECK (true);
 
 -- Public bucket for compressed product photos stored during cloud backup.
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)

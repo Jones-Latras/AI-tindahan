@@ -145,6 +145,16 @@ export async function syncToCloud(db: SQLiteDatabase): Promise<string> {
     pushed += customers.length;
   }
 
+  // Sync app settings
+  const appSettings = await db.getAllAsync<Record<string, unknown>>(
+    "SELECT key, value, updated_at FROM app_settings WHERE synced = 0",
+  );
+  if (appSettings.length > 0) {
+    await supabaseUpsert("app_settings", appSettings, "key");
+    await db.runAsync("UPDATE app_settings SET synced = 1 WHERE synced = 0");
+    pushed += appSettings.length;
+  }
+
   // Sync sales
   const sales = await db.getAllAsync<Record<string, unknown>>(
     "SELECT id, total_cents, cash_paid_cents, change_given_cents, discount_cents, payment_method, customer_id, created_at FROM sales WHERE synced = 0",
@@ -209,6 +219,20 @@ export async function restoreFromCloud(db: SQLiteDatabase): Promise<string> {
   await db.execAsync("PRAGMA foreign_keys = OFF;");
 
   try {
+    // Restore app settings first so store metadata is ready immediately.
+    const appSettings = await supabaseSelectAll("app_settings");
+    for (const setting of appSettings) {
+      const row = setting as Record<string, unknown>;
+      await db.runAsync(
+        `INSERT OR REPLACE INTO app_settings (key, value, updated_at, synced)
+         VALUES (?, ?, ?, 1)`,
+        row.key as string,
+        row.value as string,
+        row.updated_at as string,
+      );
+      restored++;
+    }
+
     // Restore customers first (sales and utang reference them)
     const customers = await supabaseSelectAll("customers");
     for (const c of customers) {

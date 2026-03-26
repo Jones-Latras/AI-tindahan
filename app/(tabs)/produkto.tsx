@@ -22,6 +22,7 @@ import {
   saveProduct,
   type ProductInput,
 } from "@/db/repositories";
+import { useCartStore } from "@/store/useCartStore";
 import type { Product, ProductPricingMode, ProductPricingStrategy } from "@/types/models";
 import { centsToDisplayValue, parseCurrencyToCents } from "@/utils/money";
 import {
@@ -183,6 +184,7 @@ export default function ProduktoScreen() {
   const [categoryModalTarget, setCategoryModalTarget] = useState<CategoryModalTarget>("catalog");
   const [mediaPermission, requestMediaPermission] = ImagePicker.useMediaLibraryPermissions();
   const [cameraPermission, requestCameraPermission] = ImagePicker.useCameraPermissions();
+  const removeCartItem = useCartStore((state) => state.removeItem);
   const pricingPreview = useMemo<ProductFormPreview>(() => {
     const name = form.name.trim();
 
@@ -479,23 +481,24 @@ export default function ProduktoScreen() {
           onPress: async () => {
             try {
               await deleteProduct(db, editingProduct.id);
+              removeCartItem(editingProduct.id);
               setPhotoSheetVisible(false);
               setCategoryModalVisible(false);
               setModalVisible(false);
               setEditingProduct(null);
               setForm(emptyForm);
               await loadProducts();
-            } catch {
+            } catch (error) {
               Alert.alert(
-                "Delete blocked",
-                "This product may already be linked to sales history, so it cannot be removed safely.",
+                "Delete failed",
+                error instanceof Error ? error.message : "The product could not be removed right now.",
               );
             }
           },
         },
       ],
     );
-  }, [db, editingProduct, loadProducts]);
+  }, [db, editingProduct, loadProducts, removeCartItem]);
 
   const handlePickImage = useCallback(
     async (source: "camera" | "library") => {

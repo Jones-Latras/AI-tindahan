@@ -23,11 +23,13 @@ import { useAppLanguage } from "@/contexts/LanguageContext";
 import { useAppTheme } from "@/contexts/ThemeContext";
 import {
   checkoutSale,
+  getStoreName,
   getHomeMetrics,
   getProductByBarcode,
   listCustomersWithBalances,
   listProductCategories,
   listProducts,
+  saveStoreName,
   saveProduct,
 } from "@/db/repositories";
 import { useCartStore } from "@/store/useCartStore";
@@ -44,6 +46,7 @@ import {
 } from "@/utils/pricing";
 
 const QUICK_DISCOUNT_PERCENTS = [5, 10, 15, 20];
+const STORE_NAME_KEY = "tindahan.store-name";
 const PAYMENT_METHODS: Array<{ key: PaymentMethod; label: string }> = [
   { key: "cash", label: "Cash" },
   { key: "gcash", label: "GCash" },
@@ -88,6 +91,7 @@ export default function BentaScreen() {
   const [paymentMethodExpanded, setPaymentMethodExpanded] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerSummary | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshingCatalog, setRefreshingCatalog] = useState(false);
   const [processingCheckout, setProcessingCheckout] = useState(false);
   const [cartSheetVisible, setCartSheetVisible] = useState(false);
   const [customerPickerVisible, setCustomerPickerVisible] = useState(false);
@@ -133,6 +137,7 @@ export default function BentaScreen() {
   const cartFeedbackOpacity = useRef(new Animated.Value(0)).current;
   const cartFeedbackTranslateY = useRef(new Animated.Value(10)).current;
   const cartFeedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hasLoadedCatalogRef = useRef(false);
 
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
 
@@ -151,6 +156,15 @@ export default function BentaScreen() {
   } as const;
 
   const productById = useMemo(() => new Map(products.map((product) => [product.id, product])), [products]);
+  const reservedQuantityByProductId = useMemo(() => {
+    const reservedQuantity = new Map<number, number>();
+
+    for (const item of cartItems) {
+      reservedQuantity.set(item.id, (reservedQuantity.get(item.id) ?? 0) + item.quantity);
+    }
+
+    return reservedQuantity;
+  }, [cartItems]);
   const visibleProducts = useMemo(
     () =>
       selectedCategory
@@ -173,8 +187,61 @@ export default function BentaScreen() {
   const selectedPaymentMethodOption =
     PAYMENT_METHODS.find((method) => method.key === paymentMethod) ?? PAYMENT_METHODS[0];
 
-  const loadScreenData = useCallback(async () => {
-    setLoading(true);
+  const loadStoreName = useCallback(async () => {
+    const [dbStoreName, legacyStoreName] = await Promise.all([
+      getStoreName(db),
+      Storage.getItem(STORE_NAME_KEY),
+    ]);
+    const normalizedLegacyStoreName = legacyStoreName?.trim() ?? "";
+    const nextStoreName = dbStoreName ?? normalizedLegacyStoreName;
+
+    if (!dbStoreName && normalizedLegacyStoreName.length >= 2) {
+      await saveStoreName(db, normalizedLegacyStoreName);
+    }
+
+    setStoreName(nextStoreName);
+  }, [db]);
+
+  const getRemainingProductStock = useCallback(
+    (product: Product) => {
+      const totalAvailable = product.isWeightBased ? product.totalKgAvailable ?? 0 : product.stock;
+      const reservedQuantity = reservedQuantityByProductId.get(product.id) ?? 0;
+      const remainingQuantity = Math.max(0, totalAvailable - reservedQuantity);
+
+      return product.isWeightBased ? Number(remainingQuantity.toFixed(3)) : Math.trunc(remainingQuantity);
+    },
+    [reservedQuantityByProductId],
+  );
+
+  const getRemainingStockLabel = useCallback(
+    (product: Product) => {
+      const remainingStock = getRemainingProductStock(product);
+      const reservedQuantity = reservedQuantityByProductId.get(product.id) ?? 0;
+      const remainingLabel = product.isWeightBased
+        ? `${formatWeightKg(remainingStock)} kg left to add`
+        : `${remainingStock} left to add`;
+
+      if (reservedQuantity <= 0) {
+        return remainingLabel;
+      }
+
+      const reservedLabel = product.isWeightBased
+        ? `${formatWeightKg(reservedQuantity)} kg in cart`
+        : `${reservedQuantity} in cart`;
+
+      return `${remainingLabel} (${reservedLabel})`;
+    },
+    [getRemainingProductStock, reservedQuantityByProductId],
+  );
+
+  const loadScreenData = useCallback(async (mode: "foreground" | "background" = "background") => {
+    const showSkeleton = mode === "foreground" && !hasLoadedCatalogRef.current;
+
+    if (showSkeleton) {
+      setLoading(true);
+    } else {
+      setRefreshingCatalog(true);
+    }
 
     try {
       const [nextProducts, nextCustomers, nextCategories] = await Promise.all([
@@ -185,28 +252,31 @@ export default function BentaScreen() {
       setProducts(nextProducts);
       setCustomers(nextCustomers);
       setCategories(nextCategories);
-
-      if (selectedCustomer) {
-        const refreshedCustomer = nextCustomers.find((customer) => customer.id === selectedCustomer.id) ?? null;
-        setSelectedCustomer(refreshedCustomer);
-      }
+      setSelectedCustomer((currentSelected) =>
+        currentSelected
+          ? nextCustomers.find((customer) => customer.id === currentSelected.id) ?? null
+          : currentSelected,
+      );
+      hasLoadedCatalogRef.current = true;
     } finally {
-      setLoading(false);
+      if (showSkeleton) {
+        setLoading(false);
+      } else {
+        setRefreshingCatalog(false);
+      }
     }
-  }, [db, searchTerm, selectedCustomer]);
+  }, [db, searchTerm]);
 
   useFocusEffect(
     useCallback(() => {
-      void loadScreenData();
-      void Storage.getItem("tindahan.store-name").then((name) => {
-        setStoreName(name ?? "");
-      });
-    }, [loadScreenData]),
+      void loadScreenData(hasLoadedCatalogRef.current ? "background" : "foreground");
+      void loadStoreName();
+    }, [loadScreenData, loadStoreName]),
   );
 
   useEffect(() => {
     const timeout = setTimeout(() => {
-      void loadScreenData();
+      void loadScreenData(hasLoadedCatalogRef.current ? "background" : "foreground");
     }, 180);
 
     return () => clearTimeout(timeout);
@@ -339,9 +409,22 @@ export default function BentaScreen() {
 
   const handleAddToCart = useCallback(
     (product: Product) => {
-      const availableStock = product.isWeightBased ? product.totalKgAvailable ?? 0 : product.stock;
+      const totalStock = product.isWeightBased ? product.totalKgAvailable ?? 0 : product.stock;
+      const availableStock = getRemainingProductStock(product);
 
       if (availableStock <= 0) {
+        const reservedQuantity = reservedQuantityByProductId.get(product.id) ?? 0;
+
+        if (reservedQuantity > 0) {
+          triggerCartFeedback({
+            icon: "alert-triangle",
+            message: `${product.name} is already fully reserved in the cart.`,
+            title: "Cart already has all available stock",
+            tone: "warning",
+          });
+          return;
+        }
+
         Alert.alert("Out of stock", `${product.name} is currently out of stock.`);
         return;
       }
@@ -353,25 +436,15 @@ export default function BentaScreen() {
 
       const existingItem = cartItems.find((item) => item.id === product.id);
 
-      if (existingItem && existingItem.quantity >= availableStock) {
-        triggerCartFeedback({
-          icon: "alert-triangle",
-          message: `${product.name} is already at the max available quantity.`,
-          title: "Cart is full for this item",
-          tone: "warning",
-        });
-        return;
-      }
-
       addItem({
         id: product.id,
         name: product.name,
         priceCents: product.priceCents,
-        stock: availableStock,
+        stock: totalStock,
         isWeightBased: false,
       });
 
-      const nextQuantity = existingItem ? Math.min(existingItem.quantity + 1, availableStock) : 1;
+      const nextQuantity = existingItem ? Math.min(existingItem.quantity + 1, totalStock) : 1;
 
       triggerCartFeedback({
         icon: "check-circle",
@@ -383,7 +456,7 @@ export default function BentaScreen() {
         tone: "success",
       });
     },
-    [addItem, cartItems, openWeightModal, triggerCartFeedback],
+    [addItem, cartItems, getRemainingProductStock, openWeightModal, reservedQuantityByProductId, triggerCartFeedback],
   );
 
   const handleConfirmWeightItem = useCallback(() => {
@@ -491,7 +564,7 @@ export default function BentaScreen() {
       setQuickEditVisible(false);
       setQuickEditProduct(null);
       setQuickEditValue("");
-      await loadScreenData();
+      await loadScreenData("background");
     } catch (error) {
       Alert.alert("Quick edit failed", error instanceof Error ? error.message : "Could not update the product.");
     } finally {
@@ -630,7 +703,6 @@ export default function BentaScreen() {
         cashPaidCents: paymentMethod === "cash" && hasValidCash ? cashPaidCents : 0,
         paymentMethod,
         customerId: selectedCustomer?.id ?? null,
-        utangDescription: selectedCustomer ? `POS sale for ${selectedCustomer.name}` : undefined,
       });
 
       const receiptData = {
@@ -663,7 +735,7 @@ export default function BentaScreen() {
       setTawadActive(false);
       setTawadInput("");
       setTawadType("fixed");
-      await loadScreenData();
+      await loadScreenData("background");
 
       // Check for daily sales milestones
       const MILESTONES = [500000, 200000, 100000, 50000];
@@ -908,7 +980,11 @@ export default function BentaScreen() {
                   fontSize: 13,
                 }}
               >
-                {loading ? "Refreshing catalog..." : `${visibleProducts.length} products ready to add.`}
+                {loading
+                  ? "Loading catalog..."
+                  : refreshingCatalog
+                    ? "Refreshing catalog in the background..."
+                    : `${visibleProducts.length} products ready to add.`}
               </Text>
             </View>
             <StatusBadge label={cartItems.length > 0 ? `${cartCountLabel} in cart` : "Cart empty"} tone={cartItems.length > 0 ? "primary" : "neutral"} />
@@ -1045,7 +1121,7 @@ export default function BentaScreen() {
           ) : products.length > 0 ? (
             visibleProducts.length > 0 ? (
               visibleProducts.map((product) => {
-                const availableStock = product.isWeightBased ? product.totalKgAvailable ?? 0 : product.stock;
+                const availableStock = getRemainingProductStock(product);
 
                 return (
                   <ProductCard
@@ -1068,7 +1144,7 @@ export default function BentaScreen() {
                     priceLabel={formatProductPriceLabel(product)}
                     showInfoFlip
                     stock={availableStock}
-                    stockLabel={formatProductStockLabel(product)}
+                    stockLabel={getRemainingStockLabel(product)}
                     useRegularImageSizing
                     useRegularTextSizing
                   />

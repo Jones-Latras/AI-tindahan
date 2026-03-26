@@ -1,7 +1,7 @@
 import type { SQLiteDatabase } from "expo-sqlite";
 
 export const DATABASE_NAME = "tindahan-ai.db";
-export const DATABASE_VERSION = 6;
+export const DATABASE_VERSION = 8;
 
 export async function migrateDbIfNeeded(db: SQLiteDatabase) {
   await db.execAsync("PRAGMA journal_mode = WAL;");
@@ -57,7 +57,7 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
       CREATE TABLE IF NOT EXISTS sale_items (
         id INTEGER PRIMARY KEY NOT NULL,
         sale_id INTEGER NOT NULL REFERENCES sales(id) ON DELETE CASCADE,
-        product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE RESTRICT,
+        product_id INTEGER REFERENCES products(id) ON DELETE SET NULL,
         product_name TEXT NOT NULL,
         unit_price_cents INTEGER NOT NULL CHECK(unit_price_cents >= 0),
         unit_cost_cents INTEGER NOT NULL DEFAULT 0 CHECK(unit_cost_cents >= 0),
@@ -89,15 +89,24 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
         synced INTEGER NOT NULL DEFAULT 0
       );
 
+      CREATE TABLE IF NOT EXISTS app_settings (
+        key TEXT PRIMARY KEY NOT NULL,
+        value TEXT NOT NULL,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        synced INTEGER NOT NULL DEFAULT 0
+      );
+
       CREATE INDEX IF NOT EXISTS idx_products_name ON products(name);
       CREATE INDEX IF NOT EXISTS idx_products_stock ON products(stock, min_stock);
       CREATE INDEX IF NOT EXISTS idx_sales_payment_method ON sales(payment_method, created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_sales_customer_id ON sales(customer_id);
       CREATE INDEX IF NOT EXISTS idx_sale_items_sale_id ON sale_items(sale_id);
+      CREATE INDEX IF NOT EXISTS idx_sale_items_product_id ON sale_items(product_id);
       CREATE INDEX IF NOT EXISTS idx_utang_customer ON utang(customer_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_app_settings_updated_at ON app_settings(updated_at DESC);
     `);
 
-    currentVersion = 6;
+    currentVersion = 8;
   }
 
   if (currentVersion === 1) {
@@ -174,6 +183,79 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
     `);
 
     currentVersion = 6;
+  }
+
+  if (currentVersion < 7) {
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS app_settings (
+        key TEXT PRIMARY KEY NOT NULL,
+        value TEXT NOT NULL,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        synced INTEGER NOT NULL DEFAULT 0
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_app_settings_updated_at ON app_settings(updated_at DESC);
+    `);
+
+    currentVersion = 7;
+  }
+
+  if (currentVersion < 8) {
+    await db.execAsync(`
+      DROP TABLE IF EXISTS sale_items_next;
+
+      CREATE TABLE sale_items_next (
+        id INTEGER PRIMARY KEY NOT NULL,
+        sale_id INTEGER NOT NULL REFERENCES sales(id) ON DELETE CASCADE,
+        product_id INTEGER REFERENCES products(id) ON DELETE SET NULL,
+        product_name TEXT NOT NULL,
+        unit_price_cents INTEGER NOT NULL CHECK(unit_price_cents >= 0),
+        unit_cost_cents INTEGER NOT NULL DEFAULT 0 CHECK(unit_cost_cents >= 0),
+        quantity INTEGER NOT NULL CHECK(quantity > 0),
+        is_weight_based INTEGER NOT NULL DEFAULT 0 CHECK(is_weight_based IN (0, 1)),
+        weight_kg REAL,
+        line_total_cents INTEGER NOT NULL DEFAULT 0 CHECK(line_total_cents >= 0),
+        line_cost_total_cents INTEGER NOT NULL DEFAULT 0 CHECK(line_cost_total_cents >= 0),
+        synced INTEGER NOT NULL DEFAULT 0
+      );
+
+      INSERT INTO sale_items_next (
+        id,
+        sale_id,
+        product_id,
+        product_name,
+        unit_price_cents,
+        unit_cost_cents,
+        quantity,
+        is_weight_based,
+        weight_kg,
+        line_total_cents,
+        line_cost_total_cents,
+        synced
+      )
+      SELECT
+        id,
+        sale_id,
+        product_id,
+        product_name,
+        unit_price_cents,
+        unit_cost_cents,
+        quantity,
+        is_weight_based,
+        weight_kg,
+        line_total_cents,
+        line_cost_total_cents,
+        synced
+      FROM sale_items;
+
+      DROP TABLE sale_items;
+      ALTER TABLE sale_items_next RENAME TO sale_items;
+
+      CREATE INDEX IF NOT EXISTS idx_sale_items_sale_id ON sale_items(sale_id);
+      CREATE INDEX IF NOT EXISTS idx_sale_items_product_id ON sale_items(product_id);
+    `);
+
+    currentVersion = 8;
   }
 
   await db.execAsync(`PRAGMA user_version = ${currentVersion};`);

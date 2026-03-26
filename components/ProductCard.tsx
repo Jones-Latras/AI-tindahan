@@ -69,6 +69,12 @@ export function ProductCard({
   const resolvedActionLabel = actionLabel ?? "Add to cart";
   const shouldRenderFrontAction = Boolean(actionLabel && resolvedActionPress);
   const isLowStock = stock <= minStock;
+  const stockStatus =
+    stock <= 0
+      ? { label: "Out of stock", tone: "danger" as const }
+      : isLowStock
+        ? { label: "Low stock", tone: "warning" as const }
+        : null;
   const [imageFailed, setImageFailed] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
   const flipAnimation = useRef(new Animated.Value(0)).current;
@@ -98,6 +104,7 @@ export function ProductCard({
   const extraFrontActionHeight = shouldRenderFrontAction ? (compact ? (usesRegularTextSizing ? 44 : 40) : 48) : 0;
   const extraCompactImageHeight = compact && usesRegularImageSizing && hasImage ? 28 : 0;
   const extraCompactTypographyHeight = compact && usesRegularTextSizing ? 18 : 0;
+  const extraCompactBadgeWrapHeight = compact && isWeightBased && stockStatus ? 30 : 0;
   const estimatedBackNameLines = Math.max(2, Math.ceil(name.trim().length / (compact ? 16 : 20)));
   const extraBackNameHeight = Math.max(0, estimatedBackNameLines - 2) * (usesRegularTextSizing ? 22 : 18);
   const fallbackCardHeight =
@@ -105,7 +112,8 @@ export function ProductCard({
     extraBackNameHeight +
     extraFrontActionHeight +
     extraCompactImageHeight +
-    extraCompactTypographyHeight;
+    extraCompactTypographyHeight +
+    extraCompactBadgeWrapHeight;
 
   useEffect(() => {
     setImageFailed(false);
@@ -160,13 +168,6 @@ export function ProductCard({
     ...(showStockAndMargin ? [{ label: "Margin", value: marginPercent, tone: theme.colors.success }] : []),
     { label: "Barcode", value: barcode || "No barcode", tone: barcode ? theme.colors.text : theme.colors.textSoft },
   ];
-  const stockStatus =
-    stock <= 0
-      ? { label: "Out of stock", tone: "danger" as const }
-      : isLowStock
-        ? { label: "Low stock", tone: "warning" as const }
-        : null;
-
   const handleToggleDetails = (event: GestureResponderEvent) => {
     event.stopPropagation();
     setShowDetails((current) => !current);
@@ -247,7 +248,6 @@ export function ProductCard({
       <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
         <View
           style={{
-            flexDirection: "row",
             flex: 1,
             gap: theme.spacing.xs,
             paddingRight: showInfoFlip ? (compact ? 38 : 42) : 0,
@@ -255,72 +255,81 @@ export function ProductCard({
         >
           <View
             style={{
-              backgroundColor: theme.colors.primaryMuted,
-              borderRadius: theme.radius.pill,
-              paddingHorizontal: compact ? 8 : 10,
-              paddingVertical: compact ? 5 : 6,
+              alignItems: "flex-start",
+              flexDirection: "row",
+              flexWrap: "wrap",
+              gap: theme.spacing.xs,
             }}
           >
-            <Text
-              numberOfLines={1}
+            <View
               style={{
-                color: theme.colors.primary,
-                fontFamily: theme.typography.body,
-                fontSize: usesRegularTextSizing ? 12 : 11,
-                fontWeight: "700",
+                backgroundColor: theme.colors.primaryMuted,
+                borderRadius: theme.radius.pill,
+                paddingHorizontal: compact ? 8 : 10,
+                paddingVertical: compact ? 5 : 6,
               }}
             >
-              {category || "General"}
-            </Text>
+              <Text
+                numberOfLines={1}
+                style={{
+                  color: theme.colors.primary,
+                  fontFamily: theme.typography.body,
+                  fontSize: usesRegularTextSizing ? 12 : 11,
+                  fontWeight: "700",
+                }}
+              >
+                {category || "General"}
+              </Text>
+            </View>
+            {isWeightBased ? (
+              <View
+                style={{
+                  backgroundColor: theme.colors.accentMuted,
+                  borderRadius: theme.radius.pill,
+                  paddingHorizontal: compact ? 8 : 10,
+                  paddingVertical: compact ? 5 : 6,
+                }}
+              >
+                <Text
+                  numberOfLines={1}
+                  style={{
+                    color: theme.colors.accent,
+                    fontFamily: theme.typography.body,
+                    fontSize: usesRegularTextSizing ? 12 : 11,
+                    fontWeight: "700",
+                  }}
+                >
+                  By kg
+                </Text>
+              </View>
+            ) : null}
+            {stockStatus ? (
+              <View
+                style={{
+                  alignItems: "center",
+                  alignSelf: "flex-start",
+                  backgroundColor:
+                    stockStatus.tone === "danger" ? theme.colors.dangerMuted : theme.colors.warningMuted,
+                  borderRadius: theme.radius.pill,
+                  maxWidth: "100%",
+                  paddingHorizontal: compact ? 8 : 10,
+                  paddingVertical: compact ? 5 : 6,
+                }}
+              >
+                <Text
+                  style={{
+                    color: stockStatus.tone === "danger" ? theme.colors.danger : theme.colors.warning,
+                    flexShrink: 1,
+                    fontFamily: theme.typography.body,
+                    fontSize: usesRegularTextSizing ? 12 : 11,
+                    fontWeight: "700",
+                  }}
+                >
+                  {stockStatus.label}
+                </Text>
+              </View>
+            ) : null}
           </View>
-          {isWeightBased ? (
-            <View
-              style={{
-                backgroundColor: theme.colors.accentMuted,
-                borderRadius: theme.radius.pill,
-                paddingHorizontal: compact ? 8 : 10,
-                paddingVertical: compact ? 5 : 6,
-              }}
-            >
-              <Text
-                numberOfLines={1}
-                style={{
-                  color: theme.colors.accent,
-                  fontFamily: theme.typography.body,
-                  fontSize: usesRegularTextSizing ? 12 : 11,
-                  fontWeight: "700",
-                }}
-              >
-                By kg
-              </Text>
-            </View>
-          ) : null}
-          {stockStatus ? (
-            <View
-              style={{
-                alignItems: "center",
-                alignSelf: "flex-start",
-                backgroundColor:
-                  stockStatus.tone === "danger" ? theme.colors.dangerMuted : theme.colors.warningMuted,
-                borderRadius: theme.radius.pill,
-                marginLeft: "auto",
-                paddingHorizontal: compact ? 8 : 10,
-                paddingVertical: compact ? 5 : 6,
-              }}
-            >
-              <Text
-                numberOfLines={1}
-                style={{
-                  color: stockStatus.tone === "danger" ? theme.colors.danger : theme.colors.warning,
-                  fontFamily: theme.typography.body,
-                  fontSize: usesRegularTextSizing ? 12 : 11,
-                  fontWeight: "700",
-                }}
-              >
-                {stockStatus.label}
-              </Text>
-            </View>
-          ) : null}
         </View>
         {!stockStatus && !showInfoFlip ? (
           <Feather color={theme.colors.textSoft} name="plus-circle" size={compact ? 16 : 18} />

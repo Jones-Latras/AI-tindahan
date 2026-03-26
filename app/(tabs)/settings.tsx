@@ -12,6 +12,7 @@ import { SurfaceCard } from "@/components/SurfaceCard";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useAppLanguage } from "@/contexts/LanguageContext";
 import { useAppTheme } from "@/contexts/ThemeContext";
+import { getStoreName, saveStoreName } from "@/db/repositories";
 import { seedStoreData } from "@/scripts/seed-store";
 import { isSupabaseReady } from "@/utils/supabase";
 import { getLastSyncTime, restoreFromCloud, syncToCloud } from "@/utils/sync";
@@ -37,13 +38,23 @@ export default function SettingsScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      void Storage.getItem(STORE_NAME_KEY).then((name) => {
-        const nextStoreName = name ?? "";
+      void (async () => {
+        const [dbStoreName, legacyStoreName] = await Promise.all([
+          getStoreName(db),
+          Storage.getItem(STORE_NAME_KEY),
+        ]);
+        const normalizedLegacyStoreName = legacyStoreName?.trim() ?? "";
+        const nextStoreName = dbStoreName ?? normalizedLegacyStoreName;
+
+        if (!dbStoreName && normalizedLegacyStoreName.length >= 2) {
+          await saveStoreName(db, normalizedLegacyStoreName);
+        }
+
         setStoreName(nextStoreName);
         setStoreNameDraft(nextStoreName);
-      });
+      })();
       void getLastSyncTime().then(setLastSync);
-    }, []),
+    }, [db]),
   );
 
   const handleSaveStoreName = useCallback(async () => {
@@ -55,7 +66,10 @@ export default function SettingsScreen() {
     setSavingStoreName(true);
 
     try {
-      await Storage.setItem(STORE_NAME_KEY, normalizedStoreNameDraft);
+      await Promise.all([
+        saveStoreName(db, normalizedStoreNameDraft),
+        Storage.setItem(STORE_NAME_KEY, normalizedStoreNameDraft),
+      ]);
       setStoreName(normalizedStoreNameDraft);
       setStoreNameDraft(normalizedStoreNameDraft);
       Alert.alert(t("home.settings.store.savedTitle"), t("home.settings.store.savedMessage"));
@@ -67,7 +81,7 @@ export default function SettingsScreen() {
     } finally {
       setSavingStoreName(false);
     }
-  }, [normalizedStoreNameDraft, t]);
+  }, [db, normalizedStoreNameDraft, t]);
 
   return (
     <Screen

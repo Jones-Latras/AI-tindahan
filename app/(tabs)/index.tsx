@@ -22,7 +22,14 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { SurfaceCard } from "@/components/SurfaceCard";
 import { useAppLanguage } from "@/contexts/LanguageContext";
 import { useAppTheme } from "@/contexts/ThemeContext";
-import { getHomeMetrics, getProductSalesVelocity, getWeeklyPaymentBreakdown, listSalesHistory } from "@/db/repositories";
+import {
+  getHomeMetrics,
+  getProductSalesVelocity,
+  getStoreName,
+  getWeeklyPaymentBreakdown,
+  listSalesHistory,
+  saveStoreName,
+} from "@/db/repositories";
 import { chatWithAlingAi, getOrCreateHomeAiBrief, isGeminiReady } from "@/services/ai";
 import type { ChatMessage, HomeAiBrief, HomeMetrics, ProductVelocity, StoreAiSale, WeeklyPaymentReport } from "@/types/models";
 import { formatCurrencyFromCents } from "@/utils/money";
@@ -44,6 +51,8 @@ type HistorySaleMatch = {
   matchedItems: StoreAiSale["items"];
   totalQuantity: number;
 };
+
+const STORE_NAME_KEY = "tindahan.store-name";
 
 function normalizeSearchValue(value: string) {
   return value.trim().toLowerCase();
@@ -372,9 +381,20 @@ export default function HomeScreen() {
       };
 
       void loadDashboard();
-      void Storage.getItem("tindahan.store-name").then((name) => {
-        setStoreName(name ?? "");
-      });
+      void (async () => {
+        const [dbStoreName, legacyStoreName] = await Promise.all([
+          getStoreName(db),
+          Storage.getItem(STORE_NAME_KEY),
+        ]);
+        const normalizedLegacyStoreName = legacyStoreName?.trim() ?? "";
+        const nextStoreName = dbStoreName ?? normalizedLegacyStoreName;
+
+        if (!dbStoreName && normalizedLegacyStoreName.length >= 2) {
+          await saveStoreName(db, normalizedLegacyStoreName);
+        }
+
+        setStoreName(nextStoreName);
+      })();
       scheduleMidnightRefresh();
 
       return () => {
@@ -382,7 +402,7 @@ export default function HomeScreen() {
           clearTimeout(midnightRefreshTimeout);
         }
       };
-    }, [loadDashboard]),
+    }, [db, loadDashboard]),
   );
 
   const handleSendChat = useCallback(async () => {

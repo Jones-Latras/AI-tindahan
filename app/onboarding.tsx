@@ -1,5 +1,6 @@
 import Storage from "expo-sqlite/kv-store";
 import { useRouter } from "expo-router";
+import { useSQLiteContext } from "expo-sqlite";
 import { useCallback, useRef, useState } from "react";
 import {
   Dimensions,
@@ -15,6 +16,7 @@ import { InputField } from "@/components/InputField";
 import { LanguageToggle } from "@/components/LanguageToggle";
 import { useAppLanguage } from "@/contexts/LanguageContext";
 import { useAppTheme } from "@/contexts/ThemeContext";
+import { saveStoreName } from "@/db/repositories";
 
 export const ONBOARDED_KEY = "tindahan.has-onboarded";
 export const STORE_NAME_KEY = "tindahan.store-name";
@@ -30,6 +32,7 @@ type SlideData = {
 };
 
 export default function OnboardingScreen() {
+  const db = useSQLiteContext();
   const router = useRouter();
   const { theme } = useAppTheme();
   const { t } = useAppLanguage();
@@ -74,15 +77,20 @@ export default function OnboardingScreen() {
   }, [currentIndex, slides.length]);
 
   const finishOnboarding = useCallback(async () => {
-    if (storeName.trim()) {
-      await Storage.setItem(STORE_NAME_KEY, storeName.trim());
+    const normalizedStoreName = storeName.trim();
+
+    if (normalizedStoreName.length >= 2) {
+      await Promise.all([
+        Storage.setItem(STORE_NAME_KEY, normalizedStoreName),
+        saveStoreName(db, normalizedStoreName),
+      ]);
     }
     if (ownerName.trim()) {
       await Storage.setItem(OWNER_NAME_KEY, ownerName.trim());
     }
     await Storage.setItem(ONBOARDED_KEY, "true");
     router.replace("/(tabs)");
-  }, [ownerName, router, storeName]);
+  }, [db, ownerName, router, storeName]);
 
   const handleSkip = useCallback(async () => {
     await Storage.setItem(ONBOARDED_KEY, "true");

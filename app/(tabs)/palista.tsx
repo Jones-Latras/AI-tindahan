@@ -489,24 +489,25 @@ export default function PalistaScreen() {
                   opacity: pressed ? 0.96 : 1,
                 })}
               >
-                <SurfaceCard style={{ gap: theme.spacing.md, padding: theme.spacing.md }}>
+                <SurfaceCard style={{ gap: theme.spacing.sm, paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.sm }}>
                   <View
                     style={{
-                      alignItems: "flex-start",
+                      alignItems: "center",
                       flexDirection: "row",
-                      gap: theme.spacing.md,
+                      gap: theme.spacing.sm,
                       justifyContent: "space-between",
                     }}
                   >
-                    <View style={{ flex: 1, gap: theme.spacing.sm }}>
+                    <View style={{ flex: 1.15, gap: 4 }}>
                       <View style={{ gap: 4 }}>
                         <Text
                           style={{
                             color: theme.colors.text,
                             fontFamily: theme.typography.display,
-                            fontSize: 20,
+                            fontSize: 18,
                             fontWeight: "700",
                           }}
+                          numberOfLines={1}
                         >
                           {customer.name}
                         </Text>
@@ -514,36 +515,40 @@ export default function PalistaScreen() {
                           style={{
                             color: theme.colors.textMuted,
                             fontFamily: theme.typography.body,
-                            fontSize: 13,
+                            fontSize: 12,
                           }}
+                          numberOfLines={1}
                         >
                           {customer.phone || t("palista.noPhone")}
                         </Text>
                       </View>
+                    </View>
 
-                      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.xs }}>
+                    <View
+                      style={{
+                        alignItems: "center",
+                        flex: 1,
+                        gap: 6,
+                        justifyContent: "center",
+                      }}
+                    >
+                      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, justifyContent: "center" }}>
                         <StatusBadge label={getTrustLabel(customer.trustScore)} tone={getTrustTone(customer.trustScore)} />
+                      </View>
+                      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, justifyContent: "center" }}>
                         <StatusBadge label={overdueLabel} tone={overdueTone} />
                       </View>
                     </View>
 
-                    <View style={{ alignItems: "flex-end", gap: theme.spacing.xs }}>
-                      <Text
-                        style={{
-                          color: theme.colors.textSoft,
-                          fontFamily: theme.typography.body,
-                          fontSize: 11,
-                        }}
-                      >
-                        {t("palista.outstandingBalance")}
-                      </Text>
+                    <View style={{ alignItems: "flex-end", gap: 4 }}>
                       <Text
                         style={{
                           color: theme.colors.text,
                           fontFamily: theme.typography.display,
-                          fontSize: 22,
+                          fontSize: 20,
                           fontWeight: "700",
                         }}
+                        numberOfLines={1}
                       >
                         {formatCurrencyFromCents(customer.balanceCents)}
                       </Text>
@@ -568,7 +573,7 @@ export default function PalistaScreen() {
                         style={{
                           color: theme.colors.textSoft,
                           fontFamily: theme.typography.body,
-                          fontSize: 12,
+                          fontSize: 11,
                         }}
                       >
                         {t("palista.lastUtang")}
@@ -577,7 +582,7 @@ export default function PalistaScreen() {
                         style={{
                           color: theme.colors.text,
                           fontFamily: theme.typography.body,
-                          fontSize: 14,
+                          fontSize: 13,
                           fontWeight: "700",
                         }}
                       >
@@ -590,7 +595,7 @@ export default function PalistaScreen() {
                         style={{
                           color: theme.colors.textSoft,
                           fontFamily: theme.typography.body,
-                          fontSize: 12,
+                          fontSize: 11,
                         }}
                       >
                         {t("palista.lastEntry")}
@@ -599,7 +604,7 @@ export default function PalistaScreen() {
                         style={{
                           color: theme.colors.text,
                           fontFamily: theme.typography.body,
-                          fontSize: 14,
+                          fontSize: 13,
                           fontWeight: "700",
                         }}
                       >
@@ -639,19 +644,19 @@ export default function PalistaScreen() {
                             borderWidth: 1,
                             flex: 1,
                             flexDirection: "row",
-                            gap: theme.spacing.xs,
+                            gap: 6,
                             justifyContent: "center",
                             opacity: pressed ? 0.88 : 1,
-                            paddingHorizontal: 8,
-                            paddingVertical: 9,
+                            paddingHorizontal: 6,
+                            paddingVertical: 7,
                           })}
                         >
-                          <Feather color={theme.colors.primary} name="list" size={14} />
+                          <Feather color={theme.colors.primary} name="list" size={13} />
                           <Text
                             style={{
                               color: theme.colors.primary,
                               fontFamily: theme.typography.body,
-                              fontSize: 11,
+                              fontSize: 10,
                               fontWeight: "700",
                             }}
                             numberOfLines={1}
@@ -669,19 +674,19 @@ export default function PalistaScreen() {
                             borderWidth: 1,
                             flex: 1,
                             flexDirection: "row",
-                            gap: theme.spacing.xs,
+                            gap: 6,
                             justifyContent: "center",
                             opacity: pressed ? 0.88 : 1,
-                            paddingHorizontal: 8,
-                            paddingVertical: 9,
+                            paddingHorizontal: 6,
+                            paddingVertical: 7,
                           })}
                         >
-                          <Feather color={theme.colors.textMuted} name="refresh-cw" size={14} />
+                          <Feather color={theme.colors.textMuted} name="refresh-cw" size={13} />
                           <Text
                             style={{
                               color: theme.colors.text,
                               fontFamily: theme.typography.body,
-                              fontSize: 11,
+                              fontSize: 10,
                               fontWeight: "700",
                             }}
                             numberOfLines={1}
@@ -699,19 +704,19 @@ export default function PalistaScreen() {
                             borderWidth: 1,
                             flex: 1,
                             flexDirection: "row",
-                            gap: theme.spacing.xs,
+                            gap: 6,
                             justifyContent: "center",
                             opacity: pressed ? 0.88 : 1,
-                            paddingHorizontal: 8,
-                            paddingVertical: 9,
+                            paddingHorizontal: 6,
+                            paddingVertical: 7,
                           })}
                         >
-                          <Feather color={theme.colors.textMuted} name="edit-2" size={14} />
+                          <Feather color={theme.colors.textMuted} name="edit-2" size={13} />
                           <Text
                             style={{
                               color: theme.colors.text,
                               fontFamily: theme.typography.body,
-                              fontSize: 11,
+                              fontSize: 10,
                               fontWeight: "700",
                             }}
                             numberOfLines={1}

@@ -3,6 +3,7 @@ import type { SQLiteDatabase } from "expo-sqlite";
 import { getDaysBetween, getOverdueLevel } from "@/utils/date";
 import {
   computeTransactionTotal,
+  formatWeightKg,
   resolveWeightBasedPricing,
 } from "@/utils/pricing";
 import { sanitizeOptionalText, sanitizePhone, sanitizeText } from "@/utils/validation";
@@ -88,7 +89,7 @@ type SaleContextRow = {
 type SaleItemContextRow = {
   id: number;
   sale_id: number;
-  product_id: number;
+  product_id: number | null;
   product_name: string;
   unit_price_cents: number;
   unit_cost_cents: number;
@@ -134,6 +135,11 @@ type CustomerRiskRow = {
   max_days_unpaid: number | null;
   paid_entries: number | null;
   unpaid_entries: number | null;
+};
+
+type AppSettingRow = {
+  key: string;
+  value: string;
 };
 
 function mapProduct(row: ProductRow): Product {
@@ -212,6 +218,59 @@ function mapSalesHistory(salesRows: SaleContextRow[], saleItemRows: SaleItemCont
   }));
 }
 
+function truncateText(value: string, maxLength: number) {
+  if (value.length <= maxLength) {
+    return value;
+  }
+
+  if (maxLength <= 3) {
+    return value.slice(0, maxLength);
+  }
+
+  return `${value.slice(0, maxLength - 3).trimEnd()}...`;
+}
+
+function formatUtangSaleItemSummary(item: Pick<SaleItemInput, "isWeightBased" | "name" | "quantity" | "weightKg">) {
+  return item.isWeightBased
+    ? `${item.name} ${formatWeightKg(item.weightKg ?? item.quantity)}kg`
+    : `${item.name} x${item.quantity}`;
+}
+
+function buildUtangSaleDescription(items: Array<Pick<SaleItemInput, "isWeightBased" | "name" | "quantity" | "weightKg">>) {
+  const prefix = "POS sale: ";
+  const maxLength = 140;
+  const labels = items.map(formatUtangSaleItemSummary).filter((label) => label.length > 0);
+
+  if (labels.length === 0) {
+    return "POS sale";
+  }
+
+  let summary = "";
+
+  for (let index = 0; index < labels.length; index += 1) {
+    const baseSummary = labels.slice(0, index + 1).join(", ");
+    const remainingCount = labels.length - index - 1;
+    const suffix = remainingCount > 0 ? ` +${remainingCount} more` : "";
+    const candidate = `${prefix}${baseSummary}${suffix}`;
+
+    if (candidate.length <= maxLength) {
+      summary = `${baseSummary}${suffix}`;
+      continue;
+    }
+
+    break;
+  }
+
+  if (!summary) {
+    const remainingCount = labels.length - 1;
+    const suffix = remainingCount > 0 ? ` +${remainingCount} more` : "";
+    const firstLabelMaxLength = Math.max(1, maxLength - prefix.length - suffix.length);
+    summary = `${truncateText(labels[0] ?? "POS sale", firstLabelMaxLength)}${suffix}`;
+  }
+
+  return `${prefix}${summary}`;
+}
+
 function assertMoney(value: number, label: string) {
   if (!Number.isInteger(value) || value < 0) {
     throw new Error(`${label} must be a non-negative amount.`);
@@ -272,6 +331,8 @@ export type CheckoutInput = {
   customerId?: number | null;
   utangDescription?: string;
 };
+
+export const STORE_NAME_SETTING_KEY = "store_name";
 
 export async function listProducts(db: SQLiteDatabase, searchTerm = "") {
   const safeTerm = sanitizeText(searchTerm, 40);
@@ -498,6 +559,51 @@ export async function deleteProduct(db: SQLiteDatabase, productId: number) {
   await db.runAsync("DELETE FROM products WHERE id = ?", productId);
 }
 
+export async function getAppSetting(db: SQLiteDatabase, key: string) {
+  const row = await db.getFirstAsync<AppSettingRow>(
+    `
+      SELECT key, value
+      FROM app_settings
+      WHERE key = ?
+      LIMIT 1
+    `,
+    key,
+  );
+
+  return row?.value ?? null;
+}
+
+async function setAppSetting(db: SQLiteDatabase, key: string, value: string) {
+  await db.runAsync(
+    `
+      INSERT INTO app_settings (key, value, updated_at, synced)
+      VALUES (?, ?, CURRENT_TIMESTAMP, 0)
+      ON CONFLICT(key) DO UPDATE SET
+        value = excluded.value,
+        updated_at = CURRENT_TIMESTAMP,
+        synced = 0
+    `,
+    key,
+    value,
+  );
+}
+
+export async function getStoreName(db: SQLiteDatabase) {
+  const value = await getAppSetting(db, STORE_NAME_SETTING_KEY);
+  return value?.trim() || null;
+}
+
+export async function saveStoreName(db: SQLiteDatabase, storeName: string) {
+  const normalizedStoreName = sanitizeText(storeName, 80);
+
+  if (normalizedStoreName.length < 2) {
+    throw new Error("Store name must be at least 2 characters.");
+  }
+
+  await setAppSetting(db, STORE_NAME_SETTING_KEY, normalizedStoreName);
+  return normalizedStoreName;
+}
+
 export async function getHomeMetrics(db: SQLiteDatabase): Promise<HomeMetrics> {
   const salesRow = await db.getFirstAsync<{ today_sales_cents: number | null; transaction_count: number | null }>(
     `
@@ -712,6 +818,7 @@ export async function getStoreAiContext(db: SQLiteDatabase): Promise<StoreAiCont
     ledgerRows,
     salesRows,
     saleItemRows,
+    storeName,
   ] = await Promise.all([
     getHomeMetrics(db),
     getSalesInsightContext(db),
@@ -768,6 +875,7 @@ export async function getStoreAiContext(db: SQLiteDatabase): Promise<StoreAiCont
         ORDER BY sale_id DESC, id ASC
       `,
     ),
+    getStoreName(db),
   ]);
 
   const ledgerByCustomer = new Map<number, Array<{
@@ -799,7 +907,7 @@ export async function getStoreAiContext(db: SQLiteDatabase): Promise<StoreAiCont
   const sales = mapSalesHistory(salesRows, saleItemRows);
 
   return {
-    storeName: null,
+    storeName,
     todaySalesCents: homeMetrics.todaySalesCents,
     todayTransactions: homeMetrics.todayTransactions,
     todayProfitCents: homeMetrics.todayProfitCents,
@@ -1173,6 +1281,7 @@ export async function checkoutSale(db: SQLiteDatabase, input: CheckoutInput) {
   const cashPaidCents = input.paymentMethod === "cash" ? input.cashPaidCents : 0;
   const changeGivenCents = input.paymentMethod === "cash" ? input.cashPaidCents - input.totalCents : 0;
   const utangDescription = sanitizeOptionalText(input.utangDescription ?? "", 140);
+  const fallbackUtangDescription = sanitizeOptionalText(buildUtangSaleDescription(safeItems), 140);
 
   let saleId = 0;
 
@@ -1281,7 +1390,7 @@ export async function checkoutSale(db: SQLiteDatabase, input: CheckoutInput) {
         `,
         input.customerId,
         input.totalCents,
-        utangDescription ?? `POS sale #${saleId}`,
+        utangDescription || fallbackUtangDescription || `POS sale #${saleId}`,
       );
     }
   });

@@ -184,7 +184,7 @@ export interface StoreAiCustomer {
 
 export interface StoreAiSaleItem {
   id: number;
-  productId: number;
+  productId: number | null;
   productName: string;
   unitPriceCents: number;
   unitCostCents: number;
