@@ -480,6 +480,15 @@ export default function BentaScreen() {
             quickEditProduct.pricingStrategy === "manual" ? (quickEditNumericValue as number) : undefined,
           targetMarginPercent:
             quickEditProduct.pricingStrategy === "margin_based" ? parseDecimalInput(quickEditValue) : undefined,
+          inventoryMode: quickEditProduct.inventoryMode,
+          inventoryPoolId: quickEditProduct.inventoryPoolId,
+          inventoryPoolName: quickEditProduct.inventoryPoolName ?? "",
+          inventoryPoolBaseUnitLabel: quickEditProduct.inventoryBaseUnitLabel ?? "gram",
+          inventoryPoolQuantityAvailable: quickEditProduct.inventoryQuantityAvailable,
+          inventoryPoolReorderThreshold: quickEditProduct.inventoryReorderThreshold,
+          linkedUnitsPerSale: quickEditProduct.linkedUnitsPerSale,
+          linkedDisplayUnitLabel: quickEditProduct.linkedDisplayUnitLabel ?? "kg",
+          isPrimaryRestockProduct: quickEditProduct.isPrimaryRestockProduct,
         },
         quickEditProduct.id,
       );

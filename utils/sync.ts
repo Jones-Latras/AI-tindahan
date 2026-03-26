@@ -135,6 +135,44 @@ export async function syncToCloud(db: SQLiteDatabase): Promise<string> {
     pushed += products.length;
   }
 
+  // Sync inventory_pools
+  const inventoryPools = await db.getAllAsync<Record<string, unknown>>(
+    `SELECT
+      id,
+      name,
+      base_unit_label,
+      quantity_available,
+      reorder_threshold,
+      created_at,
+      updated_at
+    FROM inventory_pools
+    WHERE synced = 0`,
+  );
+  if (inventoryPools.length > 0) {
+    await supabaseUpsert("inventory_pools", inventoryPools);
+    await db.runAsync("UPDATE inventory_pools SET synced = 1 WHERE synced = 0");
+    pushed += inventoryPools.length;
+  }
+
+  // Sync product_inventory_links
+  const productInventoryLinks = await db.getAllAsync<Record<string, unknown>>(
+    `SELECT
+      id,
+      product_id,
+      inventory_pool_id,
+      units_per_sale,
+      display_unit_label,
+      is_primary_restock_product,
+      created_at
+    FROM product_inventory_links
+    WHERE synced = 0`,
+  );
+  if (productInventoryLinks.length > 0) {
+    await supabaseUpsert("product_inventory_links", productInventoryLinks);
+    await db.runAsync("UPDATE product_inventory_links SET synced = 1 WHERE synced = 0");
+    pushed += productInventoryLinks.length;
+  }
+
   // Sync customers
   const customers = await db.getAllAsync<Record<string, unknown>>(
     "SELECT id, name, COALESCE(phone, '') AS phone, trust_score, created_at FROM customers WHERE synced = 0",
@@ -186,6 +224,27 @@ export async function syncToCloud(db: SQLiteDatabase): Promise<string> {
     await supabaseUpsert("sale_items", saleItems);
     await db.runAsync("UPDATE sale_items SET synced = 1 WHERE synced = 0");
     pushed += saleItems.length;
+  }
+
+  // Sync repack_sessions
+  const repackSessions = await db.getAllAsync<Record<string, unknown>>(
+    `SELECT
+      id,
+      inventory_pool_id,
+      source_product_id,
+      output_product_id,
+      source_quantity_used,
+      output_units_created,
+      wastage_units,
+      created_at,
+      note
+    FROM repack_sessions
+    WHERE synced = 0`,
+  );
+  if (repackSessions.length > 0) {
+    await supabaseUpsert("repack_sessions", repackSessions);
+    await db.runAsync("UPDATE repack_sessions SET synced = 1 WHERE synced = 0");
+    pushed += repackSessions.length;
   }
 
   // Sync utang
@@ -368,6 +427,60 @@ export async function restoreFromCloud(db: SQLiteDatabase): Promise<string> {
       restored++;
     }
 
+    // Restore inventory pools before linked-product mappings
+    const inventoryPools = await supabaseSelectAll("inventory_pools");
+    for (const pool of inventoryPools) {
+      const row = pool as Record<string, unknown>;
+      await db.runAsync(
+        `INSERT OR REPLACE INTO inventory_pools (
+          id,
+          name,
+          base_unit_label,
+          quantity_available,
+          reorder_threshold,
+          created_at,
+          updated_at,
+          synced
+        )
+         VALUES (?, ?, ?, ?, ?, ?, ?, 1)`,
+        row.id as number,
+        row.name as string,
+        row.base_unit_label as string,
+        row.quantity_available as number,
+        row.reorder_threshold as number,
+        row.created_at as string,
+        row.updated_at as string,
+      );
+      restored++;
+    }
+
+    // Restore product inventory links after products and pools exist
+    const productInventoryLinks = await supabaseSelectAll("product_inventory_links");
+    for (const link of productInventoryLinks) {
+      const row = link as Record<string, unknown>;
+      await db.runAsync(
+        `INSERT OR REPLACE INTO product_inventory_links (
+          id,
+          product_id,
+          inventory_pool_id,
+          units_per_sale,
+          display_unit_label,
+          is_primary_restock_product,
+          created_at,
+          synced
+        )
+         VALUES (?, ?, ?, ?, ?, ?, ?, 1)`,
+        row.id as number,
+        row.product_id as number,
+        row.inventory_pool_id as number,
+        row.units_per_sale as number,
+        row.display_unit_label as string,
+        row.is_primary_restock_product as number,
+        row.created_at as string,
+      );
+      restored++;
+    }
+
     // Restore expenses
     const expenses = await supabaseSelectAll("expenses");
     for (const expense of expenses) {
@@ -391,6 +504,37 @@ export async function restoreFromCloud(db: SQLiteDatabase): Promise<string> {
         row.expense_date as string,
         row.created_at as string,
         row.updated_at as string,
+      );
+      restored++;
+    }
+
+    // Restore repack sessions after products and inventory pools exist
+    const repackSessions = await supabaseSelectAll("repack_sessions");
+    for (const session of repackSessions) {
+      const row = session as Record<string, unknown>;
+      await db.runAsync(
+        `INSERT OR REPLACE INTO repack_sessions (
+          id,
+          inventory_pool_id,
+          source_product_id,
+          output_product_id,
+          source_quantity_used,
+          output_units_created,
+          wastage_units,
+          created_at,
+          note,
+          synced
+        )
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+        row.id as number,
+        row.inventory_pool_id as number,
+        row.source_product_id as number,
+        row.output_product_id as number,
+        row.source_quantity_used as number,
+        row.output_units_created as number,
+        row.wastage_units as number,
+        row.created_at as string,
+        (row.note as string | null) ?? null,
       );
       restored++;
     }

@@ -1,7 +1,7 @@
 import type { SQLiteDatabase } from "expo-sqlite";
 
 export const DATABASE_NAME = "tindahan-ai.db";
-export const DATABASE_VERSION = 11;
+export const DATABASE_VERSION = 12;
 
 export async function migrateDbIfNeeded(db: SQLiteDatabase) {
   await db.execAsync("PRAGMA journal_mode = WAL;");
@@ -136,6 +136,41 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
         synced INTEGER NOT NULL DEFAULT 0
       );
 
+      CREATE TABLE IF NOT EXISTS inventory_pools (
+        id INTEGER PRIMARY KEY NOT NULL,
+        name TEXT NOT NULL COLLATE NOCASE,
+        base_unit_label TEXT NOT NULL,
+        quantity_available REAL NOT NULL DEFAULT 0 CHECK(quantity_available >= 0),
+        reorder_threshold REAL NOT NULL DEFAULT 0 CHECK(reorder_threshold >= 0),
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        synced INTEGER NOT NULL DEFAULT 0
+      );
+
+      CREATE TABLE IF NOT EXISTS product_inventory_links (
+        id INTEGER PRIMARY KEY NOT NULL,
+        product_id INTEGER NOT NULL UNIQUE REFERENCES products(id) ON DELETE CASCADE,
+        inventory_pool_id INTEGER NOT NULL REFERENCES inventory_pools(id) ON DELETE CASCADE,
+        units_per_sale REAL NOT NULL CHECK(units_per_sale > 0),
+        display_unit_label TEXT NOT NULL,
+        is_primary_restock_product INTEGER NOT NULL DEFAULT 0 CHECK(is_primary_restock_product IN (0, 1)),
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        synced INTEGER NOT NULL DEFAULT 0
+      );
+
+      CREATE TABLE IF NOT EXISTS repack_sessions (
+        id INTEGER PRIMARY KEY NOT NULL,
+        inventory_pool_id INTEGER NOT NULL REFERENCES inventory_pools(id) ON DELETE CASCADE,
+        source_product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+        output_product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+        source_quantity_used REAL NOT NULL CHECK(source_quantity_used > 0),
+        output_units_created REAL NOT NULL CHECK(output_units_created > 0),
+        wastage_units REAL NOT NULL DEFAULT 0 CHECK(wastage_units >= 0),
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        note TEXT,
+        synced INTEGER NOT NULL DEFAULT 0
+      );
+
       CREATE TABLE IF NOT EXISTS app_settings (
         key TEXT PRIMARY KEY NOT NULL,
         value TEXT NOT NULL,
@@ -156,10 +191,15 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
       CREATE INDEX IF NOT EXISTS idx_expenses_category ON expenses(category, expense_date DESC);
       CREATE INDEX IF NOT EXISTS idx_restock_lists_status ON restock_lists(status, created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_restock_list_items_list ON restock_list_items(restock_list_id, is_checked ASC, id ASC);
+      CREATE INDEX IF NOT EXISTS idx_inventory_pools_name ON inventory_pools(name);
+      CREATE INDEX IF NOT EXISTS idx_product_inventory_links_pool ON product_inventory_links(inventory_pool_id, is_primary_restock_product DESC, product_id ASC);
+      CREATE INDEX IF NOT EXISTS idx_repack_sessions_pool ON repack_sessions(inventory_pool_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_repack_sessions_source ON repack_sessions(source_product_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_repack_sessions_output ON repack_sessions(output_product_id, created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_app_settings_updated_at ON app_settings(updated_at DESC);
     `);
 
-    currentVersion = 11;
+    currentVersion = 12;
   }
 
   if (currentVersion === 1) {
@@ -408,6 +448,53 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
     `);
 
     currentVersion = 11;
+  }
+
+  if (currentVersion < 12) {
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS inventory_pools (
+        id INTEGER PRIMARY KEY NOT NULL,
+        name TEXT NOT NULL COLLATE NOCASE,
+        base_unit_label TEXT NOT NULL,
+        quantity_available REAL NOT NULL DEFAULT 0 CHECK(quantity_available >= 0),
+        reorder_threshold REAL NOT NULL DEFAULT 0 CHECK(reorder_threshold >= 0),
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        synced INTEGER NOT NULL DEFAULT 0
+      );
+
+      CREATE TABLE IF NOT EXISTS product_inventory_links (
+        id INTEGER PRIMARY KEY NOT NULL,
+        product_id INTEGER NOT NULL UNIQUE REFERENCES products(id) ON DELETE CASCADE,
+        inventory_pool_id INTEGER NOT NULL REFERENCES inventory_pools(id) ON DELETE CASCADE,
+        units_per_sale REAL NOT NULL CHECK(units_per_sale > 0),
+        display_unit_label TEXT NOT NULL,
+        is_primary_restock_product INTEGER NOT NULL DEFAULT 0 CHECK(is_primary_restock_product IN (0, 1)),
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        synced INTEGER NOT NULL DEFAULT 0
+      );
+
+      CREATE TABLE IF NOT EXISTS repack_sessions (
+        id INTEGER PRIMARY KEY NOT NULL,
+        inventory_pool_id INTEGER NOT NULL REFERENCES inventory_pools(id) ON DELETE CASCADE,
+        source_product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+        output_product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+        source_quantity_used REAL NOT NULL CHECK(source_quantity_used > 0),
+        output_units_created REAL NOT NULL CHECK(output_units_created > 0),
+        wastage_units REAL NOT NULL DEFAULT 0 CHECK(wastage_units >= 0),
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        note TEXT,
+        synced INTEGER NOT NULL DEFAULT 0
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_inventory_pools_name ON inventory_pools(name);
+      CREATE INDEX IF NOT EXISTS idx_product_inventory_links_pool ON product_inventory_links(inventory_pool_id, is_primary_restock_product DESC, product_id ASC);
+      CREATE INDEX IF NOT EXISTS idx_repack_sessions_pool ON repack_sessions(inventory_pool_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_repack_sessions_source ON repack_sessions(source_product_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_repack_sessions_output ON repack_sessions(output_product_id, created_at DESC);
+    `);
+
+    currentVersion = 12;
   }
 
   await db.execAsync(`PRAGMA user_version = ${currentVersion};`);

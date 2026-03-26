@@ -4,6 +4,7 @@ import { getDaysBetween, getOverdueLevel } from "@/utils/date";
 import {
   computeTransactionTotal,
   formatWeightKg,
+  roundWeightKg,
   resolveWeightBasedPricing,
 } from "@/utils/pricing";
 import { sanitizeOptionalText, sanitizePhone, sanitizeText } from "@/utils/validation";
@@ -14,12 +15,15 @@ import type {
   ExpenseCategorySummary,
   ExpenseSummary,
   HomeMetrics,
+  InventoryPool,
   PaymentBreakdown,
   PaymentMethod,
   Product,
+  ProductInventoryMode,
   ProductPricingMode,
   ProductPricingStrategy,
   ProductVelocity,
+  RepackSession,
   RestockList,
   RestockListItem,
   RestockListStatus,
@@ -58,6 +62,14 @@ type ProductRow = {
   target_margin_percent: number | null;
   computed_price_per_kg_cents: number | null;
   created_at: string;
+  inventory_pool_id: number | null;
+  inventory_pool_name: string | null;
+  inventory_base_unit_label: string | null;
+  inventory_quantity_available: number | null;
+  inventory_reorder_threshold: number | null;
+  linked_units_per_sale: number | null;
+  linked_display_unit_label: string | null;
+  is_primary_restock_product: number | null;
 };
 
 type CategoryRow = {
@@ -148,6 +160,38 @@ type ExpenseCategorySummaryRow = {
   entry_count: number;
 };
 
+type InventoryPoolRow = {
+  id: number;
+  name: string;
+  base_unit_label: string;
+  quantity_available: number;
+  reorder_threshold: number;
+  created_at: string;
+  updated_at: string;
+  linked_product_count: number;
+};
+
+type ProductInventoryLinkRow = {
+  inventory_pool_id: number;
+  units_per_sale: number;
+  display_unit_label: string;
+  is_primary_restock_product: number;
+};
+
+type RepackSessionRow = {
+  id: number;
+  inventory_pool_id: number;
+  source_product_id: number;
+  source_product_name: string;
+  output_product_id: number;
+  output_product_name: string;
+  source_quantity_used: number;
+  output_units_created: number;
+  wastage_units: number;
+  created_at: string;
+  note: string | null;
+};
+
 type RestockListRow = {
   id: number;
   title: string;
@@ -206,28 +250,75 @@ type AppSettingRow = {
   value: string;
 };
 
+function resolveLinkedInventoryMode(row: ProductRow): ProductInventoryMode {
+  return row.inventory_pool_id ? "linked" : "standalone";
+}
+
+function resolveVisibleProductStock(row: ProductRow) {
+  if (!row.inventory_pool_id || !row.linked_units_per_sale) {
+    return row.stock;
+  }
+
+  const poolQuantity = Math.max(0, row.inventory_quantity_available ?? 0);
+  return Math.max(0, Math.floor(poolQuantity / row.linked_units_per_sale));
+}
+
+function resolveVisibleWeightStock(row: ProductRow) {
+  if (!row.inventory_pool_id || !row.linked_units_per_sale) {
+    return row.total_kg_available;
+  }
+
+  const poolQuantity = Math.max(0, row.inventory_quantity_available ?? 0);
+  return roundWeightKg(poolQuantity / row.linked_units_per_sale);
+}
+
+function resolveVisibleMinStock(row: ProductRow) {
+  if (!row.inventory_pool_id || !row.linked_units_per_sale) {
+    return row.min_stock;
+  }
+
+  const reorderThreshold = Math.max(0, row.inventory_reorder_threshold ?? 0);
+
+  if (row.is_weight_based) {
+    return roundWeightKg(reorderThreshold / row.linked_units_per_sale);
+  }
+
+  return Math.max(0, Math.ceil(reorderThreshold / row.linked_units_per_sale));
+}
+
 function mapProduct(row: ProductRow): Product {
+  const inventoryMode = resolveLinkedInventoryMode(row);
+
   return {
     id: row.id,
     name: row.name,
     priceCents: row.price_cents,
     costPriceCents: row.cost_price_cents,
-    stock: row.stock,
+    stock: resolveVisibleProductStock(row),
     category: row.category,
     barcode: row.barcode,
     imageUri: row.image_uri,
-    minStock: row.min_stock,
+    minStock: resolveVisibleMinStock(row),
     createdAt: row.created_at,
     isWeightBased: Boolean(row.is_weight_based),
     pricingMode: row.pricing_mode,
     pricingStrategy: row.pricing_strategy,
-    totalKgAvailable: row.total_kg_available,
+    totalKgAvailable: resolveVisibleWeightStock(row),
     costPriceTotalCents: row.cost_price_total_cents,
     sellingPriceTotalCents: row.selling_price_total_cents,
     costPricePerKgCents: row.cost_price_per_kg_cents,
     sellingPricePerKgCents: row.selling_price_per_kg_cents,
     targetMarginPercent: row.target_margin_percent,
     computedPricePerKgCents: row.computed_price_per_kg_cents,
+    inventoryMode,
+    inventoryPoolId: row.inventory_pool_id,
+    inventoryPoolName: row.inventory_pool_name,
+    inventoryBaseUnitLabel: row.inventory_base_unit_label,
+    inventoryQuantityAvailable: row.inventory_quantity_available,
+    inventoryReorderThreshold: row.inventory_reorder_threshold,
+    linkedUnitsPerSale: row.linked_units_per_sale,
+    linkedDisplayUnitLabel: row.linked_display_unit_label,
+    isPrimaryRestockProduct: Boolean(row.is_primary_restock_product),
   };
 }
 
@@ -249,6 +340,35 @@ function mapExpense(row: ExpenseRow): Expense {
     expenseDate: row.expense_date,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+  };
+}
+
+function mapInventoryPool(row: InventoryPoolRow): InventoryPool {
+  return {
+    id: row.id,
+    name: row.name,
+    baseUnitLabel: row.base_unit_label,
+    quantityAvailable: row.quantity_available,
+    reorderThreshold: row.reorder_threshold,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    linkedProductCount: row.linked_product_count,
+  };
+}
+
+function mapRepackSession(row: RepackSessionRow): RepackSession {
+  return {
+    id: row.id,
+    inventoryPoolId: row.inventory_pool_id,
+    sourceProductId: row.source_product_id,
+    sourceProductName: row.source_product_name,
+    outputProductId: row.output_product_id,
+    outputProductName: row.output_product_name,
+    sourceQuantityUsed: row.source_quantity_used,
+    outputUnitsCreated: row.output_units_created,
+    wastageUnits: row.wastage_units,
+    createdAt: row.created_at,
+    note: row.note,
   };
 }
 
@@ -415,6 +535,15 @@ export type ProductInput = {
   sellingPricePerKgCents?: number | null;
   targetMarginPercent?: number | null;
   computedPricePerKgCents?: number | null;
+  inventoryMode?: ProductInventoryMode;
+  inventoryPoolId?: number | null;
+  inventoryPoolName?: string;
+  inventoryPoolBaseUnitLabel?: string;
+  inventoryPoolQuantityAvailable?: number | null;
+  inventoryPoolReorderThreshold?: number | null;
+  linkedUnitsPerSale?: number | null;
+  linkedDisplayUnitLabel?: string;
+  isPrimaryRestockProduct?: boolean;
 };
 
 export type CustomerInput = {
@@ -436,6 +565,15 @@ export type ExpenseInput = {
   expenseDate?: string;
 };
 
+export type RepackSessionInput = {
+  sourceProductId: number;
+  outputProductId: number;
+  sourceQuantityUsed: number;
+  outputUnitsCreated: number;
+  wastageUnits?: number;
+  note?: string;
+};
+
 export type CheckoutInput = {
   items: SaleItemInput[];
   totalCents: number;
@@ -448,28 +586,112 @@ export type CheckoutInput = {
 
 export const STORE_NAME_SETTING_KEY = "store_name";
 
+function buildProductSelectQuery(whereClause = "", orderByClause = "ORDER BY p.name ASC") {
+  return `
+    SELECT
+      p.id,
+      p.name,
+      p.price_cents,
+      p.cost_price_cents,
+      p.stock,
+      p.category,
+      p.barcode,
+      p.image_uri,
+      p.min_stock,
+      p.is_weight_based,
+      p.pricing_mode,
+      p.pricing_strategy,
+      p.total_kg_available,
+      p.cost_price_total_cents,
+      p.selling_price_total_cents,
+      p.cost_price_per_kg_cents,
+      p.selling_price_per_kg_cents,
+      p.target_margin_percent,
+      p.computed_price_per_kg_cents,
+      p.created_at,
+      pil.inventory_pool_id,
+      ip.name AS inventory_pool_name,
+      ip.base_unit_label AS inventory_base_unit_label,
+      ip.quantity_available AS inventory_quantity_available,
+      ip.reorder_threshold AS inventory_reorder_threshold,
+      pil.units_per_sale AS linked_units_per_sale,
+      pil.display_unit_label AS linked_display_unit_label,
+      pil.is_primary_restock_product
+    FROM products p
+    LEFT JOIN product_inventory_links pil ON pil.product_id = p.id
+    LEFT JOIN inventory_pools ip ON ip.id = pil.inventory_pool_id
+    ${whereClause}
+    ${orderByClause}
+  `;
+}
+
+function sanitizeInventoryMode(mode?: ProductInventoryMode): ProductInventoryMode {
+  return mode === "linked" ? "linked" : "standalone";
+}
+
+function sanitizeUnitLabel(value: string | undefined, label: string, maxLength = 32) {
+  const normalized = sanitizeText(value ?? "", maxLength);
+
+  if (normalized.length < 1) {
+    throw new Error(`${label} is required.`);
+  }
+
+  return normalized;
+}
+
+function getProductAvailableQuantity(product: Pick<Product, "inventoryMode" | "inventoryQuantityAvailable" | "inventoryReorderThreshold" | "isWeightBased" | "stock" | "totalKgAvailable">) {
+  if (product.inventoryMode === "linked") {
+    return product.inventoryQuantityAvailable ?? 0;
+  }
+
+  return product.isWeightBased ? product.totalKgAvailable ?? 0 : product.stock;
+}
+
+function getProductReorderThreshold(product: Pick<Product, "inventoryMode" | "inventoryReorderThreshold" | "minStock">) {
+  return product.inventoryMode === "linked" ? product.inventoryReorderThreshold ?? 0 : product.minStock;
+}
+
+function shouldShowProductInLowStock(product: Product) {
+  if (product.inventoryMode === "linked" && !product.isPrimaryRestockProduct) {
+    return false;
+  }
+
+  return getProductAvailableQuantity(product) <= getProductReorderThreshold(product);
+}
+
+function compareLowStockProducts(left: Product, right: Product) {
+  const leftAvailable = getProductAvailableQuantity(left);
+  const rightAvailable = getProductAvailableQuantity(right);
+
+  if (leftAvailable !== rightAvailable) {
+    return leftAvailable - rightAvailable;
+  }
+
+  const leftThreshold = getProductReorderThreshold(left);
+  const rightThreshold = getProductReorderThreshold(right);
+
+  if (leftThreshold !== rightThreshold) {
+    return rightThreshold - leftThreshold;
+  }
+
+  return left.name.localeCompare(right.name);
+}
+
 export async function listProducts(db: SQLiteDatabase, searchTerm = "") {
   const safeTerm = sanitizeText(searchTerm, 40);
 
   const rows = safeTerm
     ? await db.getAllAsync<ProductRow>(
-        `
-          SELECT *
-          FROM products
-          WHERE name LIKE ? OR COALESCE(category, '') LIKE ? OR COALESCE(barcode, '') LIKE ?
-          ORDER BY name ASC
-        `,
+        buildProductSelectQuery(
+          `
+            WHERE p.name LIKE ? OR COALESCE(p.category, '') LIKE ? OR COALESCE(p.barcode, '') LIKE ?
+          `,
+        ),
         `%${safeTerm}%`,
         `%${safeTerm}%`,
         `%${safeTerm}%`,
       )
-    : await db.getAllAsync<ProductRow>(
-        `
-          SELECT *
-          FROM products
-          ORDER BY name ASC
-        `,
-      );
+    : await db.getAllAsync<ProductRow>(buildProductSelectQuery());
 
   return rows.map(mapProduct);
 }
@@ -498,12 +720,7 @@ export async function getProductByBarcode(db: SQLiteDatabase, barcode: string) {
   }
 
   const row = await db.getFirstAsync<ProductRow>(
-    `
-      SELECT *
-      FROM products
-      WHERE barcode = ?
-      LIMIT 1
-    `,
+    buildProductSelectQuery("WHERE p.barcode = ?", "LIMIT 1"),
     safeBarcode,
   );
 
@@ -516,11 +733,51 @@ export async function saveProduct(db: SQLiteDatabase, input: ProductInput, produ
   const barcode = sanitizeOptionalText(input.barcode, 48);
   const imageUri = sanitizeOptionalText(input.imageUri ?? "", 2048);
   const isWeightBased = Boolean(input.isWeightBased);
+  const inventoryMode = sanitizeInventoryMode(input.inventoryMode);
   const pricingMode: ProductPricingMode = isWeightBased ? input.pricingMode ?? "direct" : "direct";
   const pricingStrategy: ProductPricingStrategy = isWeightBased ? input.pricingStrategy ?? "manual" : "manual";
 
   if (name.length < 2) {
     throw new Error("Product name must be at least 2 characters.");
+  }
+
+  const inventoryPoolIdInput = inventoryMode === "linked" ? input.inventoryPoolId ?? null : null;
+  const inventoryPoolName =
+    inventoryMode === "linked" ? sanitizeText(input.inventoryPoolName ?? "", 80) : null;
+  const inventoryPoolBaseUnitLabel =
+    inventoryMode === "linked"
+      ? sanitizeUnitLabel(input.inventoryPoolBaseUnitLabel, "Inventory base unit label", 24)
+      : null;
+  const linkedDisplayUnitLabel =
+    inventoryMode === "linked"
+      ? sanitizeUnitLabel(input.linkedDisplayUnitLabel, "Display unit label", 32)
+      : null;
+  const linkedUnitsPerSale =
+    inventoryMode === "linked"
+      ? roundWeightKg(input.linkedUnitsPerSale ?? Number.NaN)
+      : null;
+  const inventoryPoolQuantityAvailable =
+    inventoryMode === "linked"
+      ? roundWeightKg(input.inventoryPoolQuantityAvailable ?? Number.NaN)
+      : null;
+  const inventoryPoolReorderThreshold =
+    inventoryMode === "linked"
+      ? roundWeightKg(input.inventoryPoolReorderThreshold ?? Number.NaN)
+      : null;
+  const isPrimaryRestockProduct = inventoryMode === "linked" ? Boolean(input.isPrimaryRestockProduct) : false;
+
+  if (inventoryMode === "linked") {
+    if (!inventoryPoolName || inventoryPoolName.length < 2) {
+      throw new Error("Inventory pool name must be at least 2 characters.");
+    }
+
+    assertNonNegativeNumber(inventoryPoolQuantityAvailable ?? Number.NaN, "Inventory quantity available");
+    assertNonNegativeNumber(inventoryPoolReorderThreshold ?? Number.NaN, "Inventory reorder threshold");
+    assertNonNegativeNumber(linkedUnitsPerSale ?? Number.NaN, "Units per sale");
+
+    if ((linkedUnitsPerSale ?? 0) <= 0) {
+      throw new Error("Units per sale must be greater than zero.");
+    }
   }
 
   let priceCents = input.priceCents;
@@ -535,13 +792,18 @@ export async function saveProduct(db: SQLiteDatabase, input: ProductInput, produ
   let targetMarginPercent: number | null = null;
   let computedPricePerKgCents: number | null = null;
 
+  const derivedInventoryQuantityKg =
+    inventoryMode === "linked" && isWeightBased && inventoryPoolQuantityAvailable !== null && linkedUnitsPerSale
+      ? roundWeightKg(inventoryPoolQuantityAvailable / linkedUnitsPerSale)
+      : input.totalKgAvailable ?? 0;
+
   if (isWeightBased) {
     assertNonNegativeNumber(minStock, "Minimum stock");
 
     const resolvedPricing = resolveWeightBasedPricing({
       pricingMode,
       pricingStrategy,
-      totalKgAvailable: input.totalKgAvailable ?? 0,
+      totalKgAvailable: derivedInventoryQuantityKg,
       costPriceTotalCents: input.costPriceTotalCents,
       sellingPriceTotalCents: input.sellingPriceTotalCents,
       costPricePerKgCents: input.costPricePerKgCents ?? input.costPriceCents,
@@ -573,104 +835,492 @@ export async function saveProduct(db: SQLiteDatabase, input: ProductInput, produ
     sellingPriceTotalCents = priceCents * stock;
   }
 
-  if (productId) {
-    await db.runAsync(
-      `
-        UPDATE products
-        SET
-          name = ?,
-          price_cents = ?,
-          cost_price_cents = ?,
-          stock = ?,
-          category = ?,
-          barcode = ?,
-          image_uri = ?,
-          min_stock = ?,
-          is_weight_based = ?,
-          pricing_mode = ?,
-          pricing_strategy = ?,
-          total_kg_available = ?,
-          cost_price_total_cents = ?,
-          selling_price_total_cents = ?,
-          cost_price_per_kg_cents = ?,
-          selling_price_per_kg_cents = ?,
-          target_margin_percent = ?,
-          computed_price_per_kg_cents = ?,
-          synced = 0
-        WHERE id = ?
-      `,
-      name,
-      priceCents,
-      costPriceCents,
-      stock,
-      category,
-      barcode,
-      imageUri,
-      minStock,
-      isWeightBased ? 1 : 0,
-      pricingMode,
-      pricingStrategy,
-      totalKgAvailable,
-      costPriceTotalCents,
-      sellingPriceTotalCents,
-      costPricePerKgCents,
-      sellingPricePerKgCents,
-      targetMarginPercent,
-      computedPricePerKgCents,
-      productId,
-    );
-    return productId;
+  if (inventoryMode === "linked" && linkedUnitsPerSale && inventoryPoolQuantityAvailable !== null && inventoryPoolReorderThreshold !== null) {
+    if (isWeightBased) {
+      totalKgAvailable = roundWeightKg(inventoryPoolQuantityAvailable / linkedUnitsPerSale);
+      minStock = roundWeightKg(inventoryPoolReorderThreshold / linkedUnitsPerSale);
+      stock = 0;
+    } else {
+      stock = Math.max(0, Math.floor(inventoryPoolQuantityAvailable / linkedUnitsPerSale));
+      minStock = Math.max(0, Math.ceil(inventoryPoolReorderThreshold / linkedUnitsPerSale));
+      totalKgAvailable = null;
+      costPriceTotalCents = costPriceCents * stock;
+      sellingPriceTotalCents = priceCents * stock;
+    }
   }
 
-  const result = await db.runAsync(
-    `
-      INSERT INTO products (
+  async function ensurePoolHasPrimaryProduct(
+    txn: Pick<SQLiteDatabase, "getFirstAsync" | "runAsync">,
+    inventoryPoolId: number,
+  ) {
+    const existingPrimary = await txn.getFirstAsync<{ product_id: number }>(
+      `
+        SELECT product_id
+        FROM product_inventory_links
+        WHERE inventory_pool_id = ? AND is_primary_restock_product = 1
+        LIMIT 1
+      `,
+      inventoryPoolId,
+    );
+
+    if (existingPrimary) {
+      return;
+    }
+
+    const fallback = await txn.getFirstAsync<{ product_id: number }>(
+      `
+        SELECT product_id
+        FROM product_inventory_links
+        WHERE inventory_pool_id = ?
+        ORDER BY created_at ASC, id ASC
+        LIMIT 1
+      `,
+      inventoryPoolId,
+    );
+
+    if (!fallback) {
+      return;
+    }
+
+    await txn.runAsync(
+      `
+        UPDATE product_inventory_links
+        SET is_primary_restock_product = 1, synced = 0
+        WHERE product_id = ?
+      `,
+      fallback.product_id,
+    );
+  }
+
+  let nextProductId = productId ?? 0;
+  let resolvedInventoryPoolId: number | null = null;
+
+  await db.withExclusiveTransactionAsync(async (txn) => {
+    const previousLink = productId
+      ? await txn.getFirstAsync<{ inventory_pool_id: number | null }>(
+          `
+            SELECT inventory_pool_id
+            FROM product_inventory_links
+            WHERE product_id = ?
+            LIMIT 1
+          `,
+          productId,
+        )
+      : null;
+
+    let nextInventoryPoolId: number | null = null;
+
+    if (inventoryMode === "linked" && inventoryPoolName && inventoryPoolBaseUnitLabel && linkedDisplayUnitLabel) {
+      const existingPool = inventoryPoolIdInput
+        ? await txn.getFirstAsync<{ id: number }>(
+            `
+              SELECT id
+              FROM inventory_pools
+              WHERE id = ?
+              LIMIT 1
+            `,
+            inventoryPoolIdInput,
+          )
+        : await txn.getFirstAsync<{ id: number }>(
+            `
+              SELECT id
+              FROM inventory_pools
+              WHERE name = ? COLLATE NOCASE
+              LIMIT 1
+            `,
+            inventoryPoolName,
+          );
+
+      if (inventoryPoolIdInput && !existingPool) {
+        throw new Error("The selected inventory pool was not found.");
+      }
+
+      if (existingPool) {
+        nextInventoryPoolId = existingPool.id;
+        await txn.runAsync(
+          `
+            UPDATE inventory_pools
+            SET
+              name = ?,
+              base_unit_label = ?,
+              quantity_available = ?,
+              reorder_threshold = ?,
+              updated_at = CURRENT_TIMESTAMP,
+              synced = 0
+            WHERE id = ?
+          `,
+          inventoryPoolName,
+          inventoryPoolBaseUnitLabel,
+          inventoryPoolQuantityAvailable ?? 0,
+          inventoryPoolReorderThreshold ?? 0,
+          nextInventoryPoolId,
+        );
+      } else {
+        const poolResult = await txn.runAsync(
+          `
+            INSERT INTO inventory_pools (
+              name,
+              base_unit_label,
+              quantity_available,
+              reorder_threshold,
+              created_at,
+              updated_at,
+              synced
+            )
+            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0)
+          `,
+          inventoryPoolName,
+          inventoryPoolBaseUnitLabel,
+          inventoryPoolQuantityAvailable ?? 0,
+          inventoryPoolReorderThreshold ?? 0,
+        );
+
+        nextInventoryPoolId = Number(poolResult.lastInsertRowId);
+      }
+
+      if (!nextInventoryPoolId) {
+        throw new Error("Inventory pool could not be created.");
+      }
+
+      resolvedInventoryPoolId = nextInventoryPoolId;
+    }
+
+    if (productId) {
+      await txn.runAsync(
+        `
+          UPDATE products
+          SET
+            name = ?,
+            price_cents = ?,
+            cost_price_cents = ?,
+            stock = ?,
+            category = ?,
+            barcode = ?,
+            image_uri = ?,
+            min_stock = ?,
+            is_weight_based = ?,
+            pricing_mode = ?,
+            pricing_strategy = ?,
+            total_kg_available = ?,
+            cost_price_total_cents = ?,
+            selling_price_total_cents = ?,
+            cost_price_per_kg_cents = ?,
+            selling_price_per_kg_cents = ?,
+            target_margin_percent = ?,
+            computed_price_per_kg_cents = ?,
+            synced = 0
+          WHERE id = ?
+        `,
         name,
-        price_cents,
-        cost_price_cents,
+        priceCents,
+        costPriceCents,
         stock,
         category,
         barcode,
-        image_uri,
-        min_stock,
-        is_weight_based,
-        pricing_mode,
-        pricing_strategy,
-        total_kg_available,
-        cost_price_total_cents,
-        selling_price_total_cents,
-        cost_price_per_kg_cents,
-        selling_price_per_kg_cents,
-        target_margin_percent,
-        computed_price_per_kg_cents
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `,
-    name,
-    priceCents,
-    costPriceCents,
-    stock,
-    category,
-    barcode,
-    imageUri,
-    minStock,
-    isWeightBased ? 1 : 0,
-    pricingMode,
-    pricingStrategy,
-    totalKgAvailable,
-    costPriceTotalCents,
-    sellingPriceTotalCents,
-    costPricePerKgCents,
-    sellingPricePerKgCents,
-    targetMarginPercent,
-    computedPricePerKgCents,
-  );
+        imageUri,
+        minStock,
+        isWeightBased ? 1 : 0,
+        pricingMode,
+        pricingStrategy,
+        totalKgAvailable,
+        costPriceTotalCents,
+        sellingPriceTotalCents,
+        costPricePerKgCents,
+        sellingPricePerKgCents,
+        targetMarginPercent,
+        computedPricePerKgCents,
+        productId,
+      );
+      nextProductId = productId;
+    } else {
+      const result = await txn.runAsync(
+        `
+          INSERT INTO products (
+            name,
+            price_cents,
+            cost_price_cents,
+            stock,
+            category,
+            barcode,
+            image_uri,
+            min_stock,
+            is_weight_based,
+            pricing_mode,
+            pricing_strategy,
+            total_kg_available,
+            cost_price_total_cents,
+            selling_price_total_cents,
+            cost_price_per_kg_cents,
+            selling_price_per_kg_cents,
+            target_margin_percent,
+            computed_price_per_kg_cents
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+        name,
+        priceCents,
+        costPriceCents,
+        stock,
+        category,
+        barcode,
+        imageUri,
+        minStock,
+        isWeightBased ? 1 : 0,
+        pricingMode,
+        pricingStrategy,
+        totalKgAvailable,
+        costPriceTotalCents,
+        sellingPriceTotalCents,
+        costPricePerKgCents,
+        sellingPricePerKgCents,
+        targetMarginPercent,
+        computedPricePerKgCents,
+      );
 
-  return Number(result.lastInsertRowId);
+      nextProductId = Number(result.lastInsertRowId);
+    }
+
+    if (inventoryMode === "linked" && nextInventoryPoolId && linkedUnitsPerSale && linkedDisplayUnitLabel) {
+      await txn.runAsync(
+        `
+          INSERT INTO product_inventory_links (
+            product_id,
+            inventory_pool_id,
+            units_per_sale,
+            display_unit_label,
+            is_primary_restock_product,
+            created_at,
+            synced
+          )
+          VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, 0)
+          ON CONFLICT(product_id) DO UPDATE SET
+            inventory_pool_id = excluded.inventory_pool_id,
+            units_per_sale = excluded.units_per_sale,
+            display_unit_label = excluded.display_unit_label,
+            is_primary_restock_product = excluded.is_primary_restock_product,
+            synced = 0
+        `,
+        nextProductId,
+        nextInventoryPoolId,
+        linkedUnitsPerSale,
+        linkedDisplayUnitLabel,
+        isPrimaryRestockProduct ? 1 : 0,
+      );
+
+      if (isPrimaryRestockProduct) {
+        await txn.runAsync(
+          `
+            UPDATE product_inventory_links
+            SET is_primary_restock_product = 0, synced = 0
+            WHERE inventory_pool_id = ?
+              AND product_id <> ?
+          `,
+          nextInventoryPoolId,
+          nextProductId,
+        );
+      }
+
+      await ensurePoolHasPrimaryProduct(txn, nextInventoryPoolId);
+    } else if (nextProductId) {
+      await txn.runAsync("DELETE FROM product_inventory_links WHERE product_id = ?", nextProductId);
+    }
+
+    if (previousLink?.inventory_pool_id && previousLink.inventory_pool_id !== resolvedInventoryPoolId) {
+      await ensurePoolHasPrimaryProduct(txn, previousLink.inventory_pool_id);
+    }
+  });
+
+  return nextProductId;
 }
 
 export async function deleteProduct(db: SQLiteDatabase, productId: number) {
   await db.runAsync("DELETE FROM products WHERE id = ?", productId);
+}
+
+export async function listInventoryPools(db: SQLiteDatabase): Promise<InventoryPool[]> {
+  const rows = await db.getAllAsync<InventoryPoolRow>(
+    `
+      SELECT
+        ip.id,
+        ip.name,
+        ip.base_unit_label,
+        ip.quantity_available,
+        ip.reorder_threshold,
+        ip.created_at,
+        ip.updated_at,
+        COUNT(pil.id) AS linked_product_count
+      FROM inventory_pools ip
+      LEFT JOIN product_inventory_links pil ON pil.inventory_pool_id = ip.id
+      GROUP BY ip.id, ip.name, ip.base_unit_label, ip.quantity_available, ip.reorder_threshold, ip.created_at, ip.updated_at
+      ORDER BY ip.updated_at DESC, ip.name ASC
+    `,
+  );
+
+  return rows.map(mapInventoryPool);
+}
+
+export async function listProductsByInventoryPool(db: SQLiteDatabase, inventoryPoolId: number): Promise<Product[]> {
+  const rows = await db.getAllAsync<ProductRow>(
+    buildProductSelectQuery("WHERE pil.inventory_pool_id = ?", "ORDER BY p.name ASC"),
+    inventoryPoolId,
+  );
+
+  return rows.map(mapProduct);
+}
+
+export async function listRepackSessionsForInventoryPool(
+  db: SQLiteDatabase,
+  inventoryPoolId: number,
+  limit = 8,
+): Promise<RepackSession[]> {
+  const rows = await db.getAllAsync<RepackSessionRow>(
+    `
+      SELECT
+        rs.id,
+        rs.inventory_pool_id,
+        rs.source_product_id,
+        source_product.name AS source_product_name,
+        rs.output_product_id,
+        output_product.name AS output_product_name,
+        rs.source_quantity_used,
+        rs.output_units_created,
+        rs.wastage_units,
+        rs.created_at,
+        rs.note
+      FROM repack_sessions rs
+      INNER JOIN products source_product ON source_product.id = rs.source_product_id
+      INNER JOIN products output_product ON output_product.id = rs.output_product_id
+      WHERE rs.inventory_pool_id = ?
+      ORDER BY rs.created_at DESC, rs.id DESC
+      LIMIT ?
+    `,
+    inventoryPoolId,
+    limit,
+  );
+
+  return rows.map(mapRepackSession);
+}
+
+export async function recordRepackSession(db: SQLiteDatabase, input: RepackSessionInput) {
+  assertNonNegativeNumber(input.sourceQuantityUsed, "Source quantity used");
+  assertNonNegativeNumber(input.outputUnitsCreated, "Output units created");
+  assertNonNegativeNumber(input.wastageUnits ?? 0, "Wastage");
+
+  if (input.sourceQuantityUsed <= 0 || input.outputUnitsCreated <= 0) {
+    throw new Error("Source and output quantities must be greater than zero.");
+  }
+
+  if (input.sourceProductId === input.outputProductId) {
+    throw new Error("Choose different source and output products for repacking.");
+  }
+
+  const note = sanitizeOptionalText(input.note ?? "", 140);
+  const wastageUnits = roundWeightKg(input.wastageUnits ?? 0);
+
+  await db.withExclusiveTransactionAsync(async (txn) => {
+    const [sourceLink, outputLink] = await Promise.all([
+      txn.getFirstAsync<ProductInventoryLinkRow & { is_weight_based: number; inventory_quantity_available: number | null }>(
+        `
+          SELECT
+            pil.inventory_pool_id,
+            pil.units_per_sale,
+            pil.display_unit_label,
+            pil.is_primary_restock_product,
+            p.is_weight_based,
+            ip.quantity_available AS inventory_quantity_available
+          FROM product_inventory_links pil
+          INNER JOIN products p ON p.id = pil.product_id
+          INNER JOIN inventory_pools ip ON ip.id = pil.inventory_pool_id
+          WHERE pil.product_id = ?
+          LIMIT 1
+        `,
+        input.sourceProductId,
+      ),
+      txn.getFirstAsync<ProductInventoryLinkRow & { is_weight_based: number; inventory_quantity_available: number | null }>(
+        `
+          SELECT
+            pil.inventory_pool_id,
+            pil.units_per_sale,
+            pil.display_unit_label,
+            pil.is_primary_restock_product,
+            p.is_weight_based,
+            ip.quantity_available AS inventory_quantity_available
+          FROM product_inventory_links pil
+          INNER JOIN products p ON p.id = pil.product_id
+          INNER JOIN inventory_pools ip ON ip.id = pil.inventory_pool_id
+          WHERE pil.product_id = ?
+          LIMIT 1
+        `,
+        input.outputProductId,
+      ),
+    ]);
+
+    if (!sourceLink || !outputLink) {
+      throw new Error("Both source and output products must be linked to the same inventory pool.");
+    }
+
+    if (sourceLink.inventory_pool_id !== outputLink.inventory_pool_id) {
+      throw new Error("Source and output products must share the same inventory pool.");
+    }
+
+    const sourceBaseUnits = roundWeightKg(input.sourceQuantityUsed * sourceLink.units_per_sale);
+    const outputBaseUnits = roundWeightKg(input.outputUnitsCreated * outputLink.units_per_sale);
+
+    if (outputBaseUnits > sourceBaseUnits) {
+      throw new Error("Output quantity cannot exceed the source quantity used.");
+    }
+
+    const stockLossBaseUnits = roundWeightKg(sourceBaseUnits - outputBaseUnits);
+
+    if (wastageUnits > stockLossBaseUnits) {
+      throw new Error("Wastage cannot be greater than the stock lost during repacking.");
+    }
+
+    const availablePoolQuantity = sourceLink.inventory_quantity_available ?? 0;
+
+    if (sourceBaseUnits > availablePoolQuantity) {
+      throw new Error("Not enough shared inventory is available for this repack session.");
+    }
+
+    if (stockLossBaseUnits > 0) {
+      await txn.runAsync(
+        `
+          UPDATE inventory_pools
+          SET
+            quantity_available = quantity_available - ?,
+            updated_at = CURRENT_TIMESTAMP,
+            synced = 0
+          WHERE id = ?
+        `,
+        stockLossBaseUnits,
+        sourceLink.inventory_pool_id,
+      );
+    }
+
+    await txn.runAsync(
+      `
+        INSERT INTO repack_sessions (
+          inventory_pool_id,
+          source_product_id,
+          output_product_id,
+          source_quantity_used,
+          output_units_created,
+          wastage_units,
+          created_at,
+          note,
+          synced
+        )
+        VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, 0)
+      `,
+      sourceLink.inventory_pool_id,
+      input.sourceProductId,
+      input.outputProductId,
+      input.sourceQuantityUsed,
+      input.outputUnitsCreated,
+      wastageUnits,
+      note,
+    );
+  });
 }
 
 export async function getAppSetting(db: SQLiteDatabase, key: string) {
@@ -754,39 +1404,15 @@ function formatDefaultRestockListTitle(createdAt = new Date()) {
 }
 
 function computeSuggestedRestockQuantity(product: Product) {
-  const currentStock = product.isWeightBased ? product.totalKgAvailable ?? 0 : product.stock;
-  const baseSuggestion = Math.max(product.minStock * 2 - currentStock, product.minStock - currentStock, 0);
+  const currentStock = getProductAvailableQuantity(product);
+  const reorderThreshold = getProductReorderThreshold(product);
+  const baseSuggestion = Math.max(reorderThreshold * 2 - currentStock, reorderThreshold - currentStock, 0);
 
   if (product.isWeightBased) {
     return Number(baseSuggestion.toFixed(2));
   }
 
   return Math.max(1, Math.ceil(baseSuggestion));
-}
-
-async function getLowStockProductRows(db: SQLiteDatabase, limit?: number) {
-  const normalizedLimit =
-    typeof limit === "number" && Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : null;
-  const limitClause = normalizedLimit ? `LIMIT ${normalizedLimit}` : "";
-
-  return db.getAllAsync<ProductRow>(
-    `
-      SELECT *
-      FROM products
-      WHERE
-        CASE
-          WHEN is_weight_based = 1 THEN COALESCE(total_kg_available, 0)
-          ELSE stock
-        END <= min_stock
-      ORDER BY
-        CASE
-          WHEN is_weight_based = 1 THEN COALESCE(total_kg_available, 0)
-          ELSE stock
-        END ASC,
-        name ASC
-      ${limitClause}
-    `,
-  );
 }
 
 type SqlExecutor = Pick<SQLiteDatabase, "getFirstAsync" | "runAsync">;
@@ -851,8 +1477,14 @@ export async function listExpenses(db: SQLiteDatabase): Promise<Expense[]> {
 }
 
 export async function listLowStockProducts(db: SQLiteDatabase, limit?: number): Promise<Product[]> {
-  const rows = await getLowStockProductRows(db, limit);
-  return rows.map(mapProduct);
+  const products = await listProducts(db);
+  const filteredProducts = products.filter(shouldShowProductInLowStock).sort(compareLowStockProducts);
+
+  if (typeof limit === "number" && Number.isFinite(limit) && limit > 0) {
+    return filteredProducts.slice(0, Math.floor(limit));
+  }
+
+  return filteredProducts;
 }
 
 export async function listExpenseCategories(db: SQLiteDatabase) {
@@ -1422,6 +2054,7 @@ export async function getProductSalesVelocity(db: SQLiteDatabase): Promise<Produ
         p.name,
         p.is_weight_based,
         CASE
+          WHEN pil.id IS NOT NULL THEN COALESCE(ip.quantity_available / NULLIF(pil.units_per_sale, 0), 0)
           WHEN p.is_weight_based = 1 THEN COALESCE(p.total_kg_available, 0)
           ELSE p.stock
         END AS current_stock,
@@ -1439,10 +2072,12 @@ export async function getProductSalesVelocity(db: SQLiteDatabase): Promise<Produ
           0
         ) AS units_sold
       FROM products p
+      LEFT JOIN product_inventory_links pil ON pil.product_id = p.id
+      LEFT JOIN inventory_pools ip ON ip.id = pil.inventory_pool_id
       LEFT JOIN sale_items si ON si.product_id = p.id
       LEFT JOIN sales s ON s.id = si.sale_id
         AND DATE(s.created_at, 'localtime') >= DATE('now', '-13 days', 'localtime')
-      GROUP BY p.id, p.name, p.is_weight_based, p.stock, p.total_kg_available
+      GROUP BY p.id, p.name, p.is_weight_based, p.stock, p.total_kg_available, pil.id, pil.units_per_sale, ip.quantity_available
       ORDER BY units_sold DESC, p.name ASC
     `,
   );
@@ -1616,6 +2251,11 @@ export async function getStoreAiContext(db: SQLiteDatabase): Promise<StoreAiCont
       targetMarginPercent: product.targetMarginPercent,
       computedPricePerKgCents: product.computedPricePerKgCents,
       createdAt: product.createdAt,
+      inventoryMode: product.inventoryMode,
+      inventoryPoolName: product.inventoryPoolName,
+      linkedUnitsPerSale: product.linkedUnitsPerSale,
+      linkedDisplayUnitLabel: product.linkedDisplayUnitLabel,
+      isPrimaryRestockProduct: product.isPrimaryRestockProduct,
     })),
     customers: customers.map((customer) => ({
       id: customer.id,
@@ -2029,11 +2669,22 @@ export async function checkoutSale(db: SQLiteDatabase, input: CheckoutInput) {
         stock: number;
         is_weight_based: number;
         total_kg_available: number | null;
+        inventory_pool_id: number | null;
+        units_per_sale: number | null;
+        inventory_quantity_available: number | null;
       }>(
         `
-          SELECT stock, is_weight_based, total_kg_available
-          FROM products
-          WHERE id = ?
+          SELECT
+            p.stock,
+            p.is_weight_based,
+            p.total_kg_available,
+            pil.inventory_pool_id,
+            pil.units_per_sale,
+            ip.quantity_available AS inventory_quantity_available
+          FROM products p
+          LEFT JOIN product_inventory_links pil ON pil.product_id = p.id
+          LEFT JOIN inventory_pools ip ON ip.id = pil.inventory_pool_id
+          WHERE p.id = ?
         `,
         item.id,
       );
@@ -2042,7 +2693,16 @@ export async function checkoutSale(db: SQLiteDatabase, input: CheckoutInput) {
         throw new Error(`Product "${item.name}" was not found.`);
       }
 
-      if (Boolean(product.is_weight_based)) {
+      if (product.inventory_pool_id && product.units_per_sale) {
+        const requiredBaseUnits = Boolean(product.is_weight_based)
+          ? roundWeightKg((item.weightKg ?? 0) * product.units_per_sale)
+          : roundWeightKg(item.quantity * product.units_per_sale);
+        const availableBaseUnits = product.inventory_quantity_available ?? 0;
+
+        if (availableBaseUnits < requiredBaseUnits) {
+          throw new Error(`Not enough stock left for ${item.name}.`);
+        }
+      } else if (Boolean(product.is_weight_based)) {
         const availableKg = product.total_kg_available ?? 0;
 
         if (availableKg < (item.weightKg ?? 0)) {
@@ -2097,7 +2757,39 @@ export async function checkoutSale(db: SQLiteDatabase, input: CheckoutInput) {
         item.lineCostTotalCents,
       );
 
-      if (item.isWeightBased) {
+      const productInventory = await txn.getFirstAsync<{
+        inventory_pool_id: number | null;
+        units_per_sale: number | null;
+      }>(
+        `
+          SELECT
+            pil.inventory_pool_id,
+            pil.units_per_sale
+          FROM product_inventory_links pil
+          WHERE pil.product_id = ?
+          LIMIT 1
+        `,
+        item.id,
+      );
+
+      if (productInventory?.inventory_pool_id && productInventory.units_per_sale) {
+        const consumedBaseUnits = item.isWeightBased
+          ? roundWeightKg((item.weightKg ?? 0) * productInventory.units_per_sale)
+          : roundWeightKg(item.quantity * productInventory.units_per_sale);
+
+        await txn.runAsync(
+          `
+            UPDATE inventory_pools
+            SET
+              quantity_available = quantity_available - ?,
+              updated_at = CURRENT_TIMESTAMP,
+              synced = 0
+            WHERE id = ?
+          `,
+          consumedBaseUnits,
+          productInventory.inventory_pool_id,
+        );
+      } else if (item.isWeightBased) {
         await txn.runAsync(
           `
             UPDATE products

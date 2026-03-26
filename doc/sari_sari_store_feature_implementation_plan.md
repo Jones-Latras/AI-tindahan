@@ -27,7 +27,7 @@ The goal is not just to add UI. The goal is to make these features reliable acro
 - [x] Phase 1 core slice: payment-event audit trail for utang
 - [x] Phase 2: Expenses tab and true net profit
 - [x] Phase 3: Restock shopping list
-- [ ] Phase 4: Tingi / linked inventory
+- [x] Phase 4: Tingi / linked inventory
 - [ ] Phase 5: Bottle deposit tracker
 - [ ] Phase 6: AI, sync, analytics, receipts, and rollout hardening
 
@@ -189,9 +189,9 @@ Recommended slices:
 
 1. [x] Payment-event tracking for utang
 2. [x] Expenses tab + net profit math
-3. [ ] Restock list
-4. [ ] Tingi count-based linking
-5. [ ] Tingi repack sessions
+3. [x] Restock list
+4. [x] Tingi count-based linking
+5. [x] Tingi repack sessions
 6. [ ] Bottle deposit tracker
 7. [ ] AI + sync + analytics polish
 
@@ -695,6 +695,21 @@ Add:
 
 ## Phase 4: Tingi and Repacking Logic
 
+Current implementation progress:
+
+- [x] Added shared `inventory_pools` local schema and migration
+- [x] Added `product_inventory_links` local schema and migration
+- [x] Added `repack_sessions` local schema and migration
+- [x] Extended shared product / AI types for linked inventory metadata
+- [x] Updated product queries to expose linked inventory stock, thresholds, and pool metadata
+- [x] Updated save-product logic to create or reuse pools and preserve primary restock products
+- [x] Updated checkout logic so linked sales deduct from shared pools instead of isolated product stock
+- [x] Updated low-stock / restock logic to use the shared inventory source and only surface the primary restock item
+- [x] Added linked-inventory setup controls to the Stock product modal
+- [x] Added repack-session logging UI and recent session history to the Stock screen
+- [x] Preserved linked inventory metadata in Sales quick-edit for weight-based products
+- [x] Added sync / restore and Supabase schema support for inventory pools, links, and repack sessions
+
 ## Why this needs special care
 
 "Tingi" is not one single feature. There are at least two different inventory behaviors:
@@ -784,6 +799,15 @@ Avoid these shortcuts:
 
 ### Sub-phase 4A: Count-based Tingi links
 
+Current implementation progress:
+
+- [x] Count-based shared-pool data model implemented
+- [x] Product management UI can switch between standalone and linked inventory
+- [x] Product management UI can create or attach to a shared inventory pool
+- [x] Products can choose a primary restock parent inside a linked pool
+- [x] Linked products now display stock and low-stock state from the shared pool
+- [x] Sales checkout now deducts linked inventory using `units_per_sale`
+
 This is the first deliverable.
 
 #### Example behavior
@@ -813,12 +837,26 @@ In `app/(tabs)/produkto.tsx` add:
    - choose units per sale
    - choose which product is the restock parent
 
+Status:
+
+- [x] Inventory setup area added
+- [x] Standalone vs linked toggle added
+- [x] Pool create / attach flow added
+- [x] Units-per-sale and display-unit inputs added
+- [x] Restock parent selector added
+
 #### Sales UI changes
 
 In `app/(tabs)/benta.tsx`:
 
 - child and parent can both appear as sellable products
 - checkout must deduct from the shared inventory pool, not from isolated product rows
+
+Status:
+
+- [x] Parent and child products remain sellable in Sales
+- [x] Checkout now deducts from `inventory_pools.quantity_available`
+- [x] Quick-edit now preserves linked inventory metadata instead of stripping it
 
 #### Repository changes
 
@@ -829,6 +867,14 @@ Update `checkoutSale()` to:
 - still preserve product sale snapshots in `sale_items`
 
 ### Sub-phase 4B: Repacking sessions
+
+Current implementation progress:
+
+- [x] Repack session table and repository flow added
+- [x] Repack validation prevents invalid source/output combinations
+- [x] Stock screen can log a repack session for linked products
+- [x] Recent repack history is visible in the repack sheet
+- [x] Repack sessions are synced and restorable from Supabase
 
 This is the second deliverable and should come after 4A is stable.
 
@@ -871,29 +917,36 @@ Example:
    - adds new output stock to the child product / shared pool
    - logs the repack session
 
+Status:
+
+- [x] Source and output products are selected from the same shared inventory pool
+- [x] Repack sessions log source quantity, output quantity, wastage, timestamp, and note
+- [x] Shared-pool quantity is updated during repack logging
+- [x] Repack history stays available after backup / restore
+
 ### Reporting impact
 
 Tingi and repacking must affect:
 
-- stock visibility
-- low-stock alerts
-- restock list generation
-- cost of goods tracking
-- AI brief explanations
+- [x] stock visibility
+- [x] low-stock alerts
+- [x] restock list generation
+- [x] cost of goods tracking
+- [ ] AI brief explanations
 
 ### Sync impact
 
 Add:
 
-- `inventory_pools`
-- `product_inventory_links`
-- `repack_sessions`
+- [x] `inventory_pools`
+- [x] `product_inventory_links`
+- [x] `repack_sessions`
 
 ### Definition of done
 
-- A linked child sale automatically deducts from the shared bulk inventory.
-- Repacking can be recorded as an internal stock event.
-- Stock counts remain correct after mixed parent and child sales.
+- [x] A linked child sale automatically deducts from the shared bulk inventory.
+- [x] Repacking can be recorded as an internal stock event.
+- [x] Stock counts remain correct after mixed parent and child sales.
 
 ---
 

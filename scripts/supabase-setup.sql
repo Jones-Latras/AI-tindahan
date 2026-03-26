@@ -38,6 +38,38 @@ ALTER TABLE products ADD COLUMN IF NOT EXISTS target_margin_percent NUMERIC(10,4
 ALTER TABLE products ADD COLUMN IF NOT EXISTS computed_price_per_kg_cents INTEGER;
 ALTER TABLE products ALTER COLUMN min_stock TYPE NUMERIC(10,4);
 
+CREATE TABLE IF NOT EXISTS inventory_pools (
+  id BIGINT PRIMARY KEY,
+  name TEXT NOT NULL,
+  base_unit_label TEXT NOT NULL,
+  quantity_available NUMERIC(10,4) NOT NULL DEFAULT 0,
+  reorder_threshold NUMERIC(10,4) NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS product_inventory_links (
+  id BIGINT PRIMARY KEY,
+  product_id BIGINT NOT NULL UNIQUE REFERENCES products(id) ON DELETE CASCADE,
+  inventory_pool_id BIGINT NOT NULL REFERENCES inventory_pools(id) ON DELETE CASCADE,
+  units_per_sale NUMERIC(10,4) NOT NULL,
+  display_unit_label TEXT NOT NULL,
+  is_primary_restock_product BOOLEAN NOT NULL DEFAULT false,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS repack_sessions (
+  id BIGINT PRIMARY KEY,
+  inventory_pool_id BIGINT NOT NULL REFERENCES inventory_pools(id) ON DELETE CASCADE,
+  source_product_id BIGINT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  output_product_id BIGINT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  source_quantity_used NUMERIC(10,4) NOT NULL,
+  output_units_created NUMERIC(10,4) NOT NULL,
+  wastage_units NUMERIC(10,4) NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  note TEXT
+);
+
 CREATE TABLE IF NOT EXISTS customers (
   id BIGINT PRIMARY KEY,
   name TEXT NOT NULL,
@@ -138,6 +170,9 @@ CREATE TABLE IF NOT EXISTS app_settings (
 
 -- Enable Row Level Security (allow all for anon key -- single-user app)
 ALTER TABLE products ENABLE ROW LEVEL SECURITY;
+ALTER TABLE inventory_pools ENABLE ROW LEVEL SECURITY;
+ALTER TABLE product_inventory_links ENABLE ROW LEVEL SECURITY;
+ALTER TABLE repack_sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE customers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sales ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sale_items ENABLE ROW LEVEL SECURITY;
@@ -149,6 +184,9 @@ ALTER TABLE restock_list_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE app_settings ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Allow all" ON products;
+DROP POLICY IF EXISTS "Allow all" ON inventory_pools;
+DROP POLICY IF EXISTS "Allow all" ON product_inventory_links;
+DROP POLICY IF EXISTS "Allow all" ON repack_sessions;
 DROP POLICY IF EXISTS "Allow all" ON customers;
 DROP POLICY IF EXISTS "Allow all" ON sales;
 DROP POLICY IF EXISTS "Allow all" ON sale_items;
@@ -160,6 +198,9 @@ DROP POLICY IF EXISTS "Allow all" ON restock_list_items;
 DROP POLICY IF EXISTS "Allow all" ON app_settings;
 
 CREATE POLICY "Allow all" ON products FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all" ON inventory_pools FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all" ON product_inventory_links FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all" ON repack_sessions FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all" ON customers FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all" ON sales FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all" ON sale_items FOR ALL USING (true) WITH CHECK (true);

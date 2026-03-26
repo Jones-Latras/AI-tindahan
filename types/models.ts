@@ -8,6 +8,7 @@ export type OverdueLevel = "fresh" | "attention" | "critical";
 export type PaymentMethod = "cash" | "gcash" | "maya" | "utang";
 export type ProductPricingMode = "derived" | "direct";
 export type ProductPricingStrategy = "manual" | "margin_based";
+export type ProductInventoryMode = "standalone" | "linked";
 
 export interface Product {
   id: number;
@@ -30,6 +31,15 @@ export interface Product {
   sellingPricePerKgCents: number | null;
   targetMarginPercent: number | null;
   computedPricePerKgCents: number | null;
+  inventoryMode: ProductInventoryMode;
+  inventoryPoolId: number | null;
+  inventoryPoolName: string | null;
+  inventoryBaseUnitLabel: string | null;
+  inventoryQuantityAvailable: number | null;
+  inventoryReorderThreshold: number | null;
+  linkedUnitsPerSale: number | null;
+  linkedDisplayUnitLabel: string | null;
+  isPrimaryRestockProduct: boolean;
 }
 
 export interface Customer {
@@ -144,6 +154,31 @@ export interface ExpenseSummary {
   recentCategories: string[];
 }
 
+export interface InventoryPool {
+  id: number;
+  name: string;
+  baseUnitLabel: string;
+  quantityAvailable: number;
+  reorderThreshold: number;
+  createdAt: string;
+  updatedAt: string;
+  linkedProductCount: number;
+}
+
+export interface RepackSession {
+  id: number;
+  inventoryPoolId: number;
+  sourceProductId: number;
+  sourceProductName: string;
+  outputProductId: number;
+  outputProductName: string;
+  sourceQuantityUsed: number;
+  outputUnitsCreated: number;
+  wastageUnits: number;
+  createdAt: string;
+  note: string | null;
+}
+
 export type RestockListStatus = "open" | "completed" | "archived";
 
 export interface RestockListItem {
@@ -230,6 +265,11 @@ export interface StoreAiProduct {
   targetMarginPercent: number | null;
   computedPricePerKgCents: number | null;
   createdAt: string;
+  inventoryMode: ProductInventoryMode;
+  inventoryPoolName: string | null;
+  linkedUnitsPerSale: number | null;
+  linkedDisplayUnitLabel: string | null;
+  isPrimaryRestockProduct: boolean;
 }
 
 export interface StoreAiCustomerLedgerEntry {

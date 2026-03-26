@@ -18,19 +18,32 @@ import { useAppLanguage } from "@/contexts/LanguageContext";
 import { useAppTheme } from "@/contexts/ThemeContext";
 import {
   deleteProduct,
+  listInventoryPools,
   listProductCategories,
   listProducts,
+  listProductsByInventoryPool,
+  listRepackSessionsForInventoryPool,
+  recordRepackSession,
   saveProduct,
   type ProductInput,
 } from "@/db/repositories";
 import { useCartStore } from "@/store/useCartStore";
-import type { Product, ProductPricingMode, ProductPricingStrategy } from "@/types/models";
+import type {
+  InventoryPool,
+  Product,
+  ProductInventoryMode,
+  ProductPricingMode,
+  ProductPricingStrategy,
+  RepackSession,
+} from "@/types/models";
+import { formatDateTimeLabel } from "@/utils/date";
 import { centsToDisplayValue, parseCurrencyToCents } from "@/utils/money";
 import {
   computeProfitMargin,
   formatMarginPercent,
   formatProductPriceLabel,
   formatWeightKg,
+  roundWeightKg,
   resolveWeightBasedPricing,
 } from "@/utils/pricing";
 
@@ -52,6 +65,15 @@ type ProductFormState = {
   costPricePerKg: string;
   sellingPricePerKg: string;
   targetMarginPercent: string;
+  inventoryMode: ProductInventoryMode;
+  inventoryPoolId: number | null;
+  inventoryPoolName: string;
+  inventoryPoolBaseUnitLabel: string;
+  inventoryPoolQuantityAvailable: string;
+  inventoryPoolReorderThreshold: string;
+  linkedUnitsPerSale: string;
+  linkedDisplayUnitLabel: string;
+  isPrimaryRestockProduct: boolean;
 };
 
 type ProductFormPreview =
@@ -98,6 +120,15 @@ const emptyForm: ProductFormState = {
   costPricePerKg: "",
   sellingPricePerKg: "",
   targetMarginPercent: "",
+  inventoryMode: "standalone",
+  inventoryPoolId: null,
+  inventoryPoolName: "",
+  inventoryPoolBaseUnitLabel: "piece",
+  inventoryPoolQuantityAvailable: "",
+  inventoryPoolReorderThreshold: "",
+  linkedUnitsPerSale: "",
+  linkedDisplayUnitLabel: "piece",
+  isPrimaryRestockProduct: false,
 };
 
 const PRODUCT_IMAGE_QUALITY = 0.72;
@@ -165,6 +196,7 @@ export default function ProduktoScreen() {
   const router = useRouter();
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
+  const [inventoryPools, setInventoryPools] = useState<InventoryPool[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [categoriesExpanded, setCategoriesExpanded] = useState(false);
@@ -178,6 +210,16 @@ export default function ProduktoScreen() {
   const [categoryModalVisible, setCategoryModalVisible] = useState(false);
   const [barcodeScannerVisible, setBarcodeScannerVisible] = useState(false);
   const [barcodeScannerBusy, setBarcodeScannerBusy] = useState(false);
+  const [repackModalVisible, setRepackModalVisible] = useState(false);
+  const [repackProducts, setRepackProducts] = useState<Product[]>([]);
+  const [repackSessions, setRepackSessions] = useState<RepackSession[]>([]);
+  const [repackSourceProductId, setRepackSourceProductId] = useState<number | null>(null);
+  const [repackOutputProductId, setRepackOutputProductId] = useState<number | null>(null);
+  const [repackSourceQuantity, setRepackSourceQuantity] = useState("");
+  const [repackOutputUnits, setRepackOutputUnits] = useState("");
+  const [repackWastage, setRepackWastage] = useState("0");
+  const [repackNote, setRepackNote] = useState("");
+  const [savingRepack, setSavingRepack] = useState(false);
   const [categoryDraft, setCategoryDraft] = useState("");
   const [categoryModalTarget, setCategoryModalTarget] = useState<CategoryModalTarget>("catalog");
   const [mediaPermission, requestMediaPermission] = ImagePicker.useMediaLibraryPermissions();
@@ -188,16 +230,48 @@ export default function ProduktoScreen() {
     gap: theme.spacing.sm,
     padding: theme.spacing.sm,
   } as const;
+  const resetRepackState = useCallback(() => {
+    setRepackModalVisible(false);
+    setRepackProducts([]);
+    setRepackSessions([]);
+    setRepackSourceProductId(null);
+    setRepackOutputProductId(null);
+    setRepackSourceQuantity("");
+    setRepackOutputUnits("");
+    setRepackWastage("0");
+    setRepackNote("");
+  }, []);
   const pricingPreview = useMemo<ProductFormPreview>(() => {
     const name = form.name.trim();
+    const linkedUnitsPerSale = roundWeightKg(parseDecimalInput(form.linkedUnitsPerSale));
+    const linkedPoolQuantity = roundWeightKg(parseDecimalInput(form.inventoryPoolQuantityAvailable));
+    const linkedPoolThreshold = roundWeightKg(parseDecimalInput(form.inventoryPoolReorderThreshold));
+    const hasValidLinkedInventory =
+      form.inventoryMode !== "linked" ||
+      (Number.isFinite(linkedUnitsPerSale) &&
+        linkedUnitsPerSale > 0 &&
+        Number.isFinite(linkedPoolQuantity) &&
+        linkedPoolQuantity >= 0 &&
+        Number.isFinite(linkedPoolThreshold) &&
+        linkedPoolThreshold >= 0);
 
     if (name.length < 2) {
       return { error: "Product name must be at least 2 characters." };
     }
 
+    if (!hasValidLinkedInventory) {
+      return { error: "Complete the linked inventory values before saving." };
+    }
+
     if (form.isWeightBased) {
-      const totalKgAvailable = parseDecimalInput(form.totalKgAvailable);
-      const minStock = parseDecimalInput(form.minStock);
+      const totalKgAvailable =
+        form.inventoryMode === "linked"
+          ? roundWeightKg(linkedPoolQuantity / linkedUnitsPerSale)
+          : parseDecimalInput(form.totalKgAvailable);
+      const minStock =
+        form.inventoryMode === "linked"
+          ? roundWeightKg(linkedPoolThreshold / linkedUnitsPerSale)
+          : parseDecimalInput(form.minStock);
 
       if (!Number.isFinite(totalKgAvailable) || totalKgAvailable <= 0) {
         return { error: "Enter a valid total kilograms available." };
@@ -242,8 +316,14 @@ export default function ProduktoScreen() {
 
     const priceCents = parseCurrencyToCents(form.price);
     const costPriceCents = parseCurrencyToCents(form.costPrice);
-    const stock = Number.parseInt(form.stock, 10);
-    const minStock = Number.parseInt(form.minStock, 10);
+    const stock =
+      form.inventoryMode === "linked"
+        ? Math.max(0, Math.floor(linkedPoolQuantity / linkedUnitsPerSale))
+        : Number.parseInt(form.stock, 10);
+    const minStock =
+      form.inventoryMode === "linked"
+        ? Math.max(0, Math.ceil(linkedPoolThreshold / linkedUnitsPerSale))
+        : Number.parseInt(form.minStock, 10);
 
     if (!Number.isFinite(priceCents) || !Number.isFinite(costPriceCents)) {
       return { error: "Enter valid peso amounts for the selling and cost prices." };
@@ -291,15 +371,17 @@ export default function ProduktoScreen() {
     setLoading(true);
 
     try {
-      const [nextProducts, dbCategories, storedCategoriesRaw] = await Promise.all([
+      const [nextProducts, dbCategories, storedCategoriesRaw, nextInventoryPools] = await Promise.all([
         listProducts(db, searchTerm),
         listProductCategories(db),
         Storage.getItem(PRODUCT_CATEGORIES_KEY),
+        listInventoryPools(db),
       ]);
 
       const nextCategories = mergeCategoryLists(dbCategories, parseStoredCategories(storedCategoriesRaw));
       setCategories(nextCategories);
       setProducts(nextProducts);
+      setInventoryPools(nextInventoryPools);
     } finally {
       setLoading(false);
     }
@@ -325,8 +407,9 @@ export default function ProduktoScreen() {
     setPhotoSheetVisible(false);
     setCategoryModalVisible(false);
     setBarcodeScannerVisible(false);
+    resetRepackState();
     setModalVisible(true);
-  }, []);
+  }, [resetRepackState]);
 
   const openEditModal = useCallback((product: Product) => {
     setEditingProduct(product);
@@ -352,12 +435,24 @@ export default function ProduktoScreen() {
         product.targetMarginPercent !== null
           ? String(product.targetMarginPercent)
           : String(computeProfitMargin(product.costPriceCents, product.priceCents)),
+      inventoryMode: product.inventoryMode,
+      inventoryPoolId: product.inventoryPoolId,
+      inventoryPoolName: product.inventoryPoolName ?? "",
+      inventoryPoolBaseUnitLabel: product.inventoryBaseUnitLabel ?? (product.isWeightBased ? "gram" : "piece"),
+      inventoryPoolQuantityAvailable:
+        product.inventoryQuantityAvailable !== null ? formatWeightKg(product.inventoryQuantityAvailable) : "",
+      inventoryPoolReorderThreshold:
+        product.inventoryReorderThreshold !== null ? formatWeightKg(product.inventoryReorderThreshold) : "",
+      linkedUnitsPerSale: product.linkedUnitsPerSale !== null ? formatWeightKg(product.linkedUnitsPerSale) : "",
+      linkedDisplayUnitLabel: product.linkedDisplayUnitLabel ?? (product.isWeightBased ? "kg" : "piece"),
+      isPrimaryRestockProduct: product.isPrimaryRestockProduct,
     });
     setPhotoSheetVisible(false);
     setCategoryModalVisible(false);
     setBarcodeScannerVisible(false);
+    resetRepackState();
     setModalVisible(true);
-  }, []);
+  }, [resetRepackState]);
 
   const openCategoryModal = useCallback(
     (target: CategoryModalTarget) => {
@@ -391,6 +486,116 @@ export default function ProduktoScreen() {
     setCategoryDraft("");
     setCategoryModalVisible(false);
   }, [categories, categoryDraft, categoryModalTarget, persistCategories]);
+
+  const selectedInventoryPool = useMemo(
+    () => inventoryPools.find((pool) => pool.id === form.inventoryPoolId) ?? null,
+    [form.inventoryPoolId, inventoryPools],
+  );
+
+  const loadRepackContext = useCallback(
+    async (inventoryPoolId: number, preferredOutputProductId?: number) => {
+      const [poolProducts, nextRepackSessions] = await Promise.all([
+        listProductsByInventoryPool(db, inventoryPoolId),
+        listRepackSessionsForInventoryPool(db, inventoryPoolId),
+      ]);
+
+      const nextOutputProductId =
+        preferredOutputProductId && poolProducts.some((product) => product.id === preferredOutputProductId)
+          ? preferredOutputProductId
+          : poolProducts[0]?.id ?? null;
+      const nextSourceProductId =
+        poolProducts.find((product) => product.id !== nextOutputProductId)?.id ?? poolProducts[0]?.id ?? null;
+
+      setRepackProducts(poolProducts);
+      setRepackSessions(nextRepackSessions);
+      setRepackOutputProductId(nextOutputProductId);
+      setRepackSourceProductId(nextSourceProductId);
+      setRepackSourceQuantity("");
+      setRepackOutputUnits("");
+      setRepackWastage("0");
+      setRepackNote("");
+    },
+    [db],
+  );
+
+  const handleOpenRepackModal = useCallback(async () => {
+    const inventoryPoolId = editingProduct?.inventoryPoolId ?? form.inventoryPoolId;
+
+    if (!inventoryPoolId) {
+      Alert.alert("Shared inventory needed", "Link this product to an inventory pool before logging a repack session.");
+      return;
+    }
+
+    await loadRepackContext(inventoryPoolId, editingProduct?.id ?? undefined);
+    setRepackModalVisible(true);
+  }, [editingProduct?.id, editingProduct?.inventoryPoolId, form.inventoryPoolId, loadRepackContext]);
+
+  const handleSaveRepackSession = useCallback(async () => {
+    if (!repackSourceProductId || !repackOutputProductId || !editingProduct?.inventoryPoolId) {
+      return;
+    }
+
+    const sourceQuantityUsed = parseDecimalInput(repackSourceQuantity);
+    const outputUnitsCreated = parseDecimalInput(repackOutputUnits);
+    const wastageUnits = parseDecimalInput(repackWastage);
+
+    if (!Number.isFinite(sourceQuantityUsed) || sourceQuantityUsed <= 0) {
+      Alert.alert("Invalid source quantity", "Enter a source quantity greater than zero.");
+      return;
+    }
+
+    if (!Number.isFinite(outputUnitsCreated) || outputUnitsCreated <= 0) {
+      Alert.alert("Invalid output quantity", "Enter an output quantity greater than zero.");
+      return;
+    }
+
+    if (!Number.isFinite(wastageUnits) || wastageUnits < 0) {
+      Alert.alert("Invalid wastage", "Enter zero or a positive wastage value.");
+      return;
+    }
+
+    setSavingRepack(true);
+
+    try {
+      await recordRepackSession(db, {
+        sourceProductId: repackSourceProductId,
+        outputProductId: repackOutputProductId,
+        sourceQuantityUsed,
+        outputUnitsCreated,
+        wastageUnits,
+        note: repackNote,
+      });
+
+      await Promise.all([
+        loadProducts(),
+        loadRepackContext(editingProduct.inventoryPoolId, repackOutputProductId ?? undefined),
+      ]);
+      const latestProducts = await listProducts(db);
+      const refreshedProduct = latestProducts.find((product) => product.id === editingProduct.id);
+
+      if (refreshedProduct) {
+        openEditModal(refreshedProduct);
+      }
+
+      setRepackModalVisible(false);
+    } catch (error) {
+      Alert.alert("Repack failed", error instanceof Error ? error.message : "Could not record the repack session.");
+    } finally {
+      setSavingRepack(false);
+    }
+  }, [
+    db,
+    editingProduct,
+    loadProducts,
+    loadRepackContext,
+    openEditModal,
+    repackNote,
+    repackOutputProductId,
+    repackOutputUnits,
+    repackSourceProductId,
+    repackSourceQuantity,
+    repackWastage,
+  ]);
 
   const handleSave = useCallback(async () => {
     const normalizedCategory = normalizeCategoryName(form.category);
@@ -427,6 +632,17 @@ export default function ProduktoScreen() {
             targetMarginPercent:
               form.pricingStrategy === "margin_based" ? pricingPreview.targetMarginPercent : undefined,
             computedPricePerKgCents: pricingPreview.computedPricePerKgCents,
+            inventoryMode: form.inventoryMode,
+            inventoryPoolId: form.inventoryMode === "linked" ? form.inventoryPoolId : null,
+            inventoryPoolName: form.inventoryPoolName,
+            inventoryPoolBaseUnitLabel: form.inventoryPoolBaseUnitLabel,
+            inventoryPoolQuantityAvailable:
+              form.inventoryMode === "linked" ? parseDecimalInput(form.inventoryPoolQuantityAvailable) : null,
+            inventoryPoolReorderThreshold:
+              form.inventoryMode === "linked" ? parseDecimalInput(form.inventoryPoolReorderThreshold) : null,
+            linkedUnitsPerSale: form.inventoryMode === "linked" ? parseDecimalInput(form.linkedUnitsPerSale) : null,
+            linkedDisplayUnitLabel: form.linkedDisplayUnitLabel,
+            isPrimaryRestockProduct: form.isPrimaryRestockProduct,
           }
         : {
             name: form.name,
@@ -438,6 +654,17 @@ export default function ProduktoScreen() {
             imageUri: form.imageUri,
             minStock: pricingPreview.minStock,
             isWeightBased: false as const,
+            inventoryMode: form.inventoryMode,
+            inventoryPoolId: form.inventoryMode === "linked" ? form.inventoryPoolId : null,
+            inventoryPoolName: form.inventoryPoolName,
+            inventoryPoolBaseUnitLabel: form.inventoryPoolBaseUnitLabel,
+            inventoryPoolQuantityAvailable:
+              form.inventoryMode === "linked" ? parseDecimalInput(form.inventoryPoolQuantityAvailable) : null,
+            inventoryPoolReorderThreshold:
+              form.inventoryMode === "linked" ? parseDecimalInput(form.inventoryPoolReorderThreshold) : null,
+            linkedUnitsPerSale: form.inventoryMode === "linked" ? parseDecimalInput(form.linkedUnitsPerSale) : null,
+            linkedDisplayUnitLabel: form.linkedDisplayUnitLabel,
+            isPrimaryRestockProduct: form.isPrimaryRestockProduct,
           };
 
     setSaving(true);
@@ -455,6 +682,7 @@ export default function ProduktoScreen() {
 
       setPhotoSheetVisible(false);
       setCategoryModalVisible(false);
+      resetRepackState();
       setModalVisible(false);
       setEditingProduct(null);
       setForm(emptyForm);
@@ -468,7 +696,7 @@ export default function ProduktoScreen() {
     } finally {
       setSaving(false);
     }
-  }, [categories, db, editingProduct?.id, form, loadProducts, persistCategories, pricingPreview]);
+  }, [categories, db, editingProduct?.id, form, loadProducts, persistCategories, pricingPreview, resetRepackState]);
 
   const handleDelete = useCallback(() => {
     if (!editingProduct) {
@@ -489,6 +717,7 @@ export default function ProduktoScreen() {
               removeCartItem(editingProduct.id);
               setPhotoSheetVisible(false);
               setCategoryModalVisible(false);
+              resetRepackState();
               setModalVisible(false);
               setEditingProduct(null);
               setForm(emptyForm);
@@ -503,7 +732,7 @@ export default function ProduktoScreen() {
         },
       ],
     );
-  }, [db, editingProduct, loadProducts, removeCartItem]);
+  }, [db, editingProduct, loadProducts, removeCartItem, resetRepackState]);
 
   const handlePickImage = useCallback(
     async (source: "camera" | "library") => {
@@ -594,6 +823,15 @@ export default function ProduktoScreen() {
   const showingLabel = selectedCategory
     ? t("produkto.showingCategory", { category: selectedCategory })
     : t("produkto.showingAll", { categoryCount: categoryCountLabel });
+  const repackPoolId = editingProduct?.inventoryPoolId ?? form.inventoryPoolId;
+  const repackPool = inventoryPools.find((pool) => pool.id === repackPoolId) ?? null;
+  const repackSourceOptions = repackProducts.filter((product) => product.id !== repackOutputProductId);
+  const repackOutputOptions = repackProducts.filter((product) => product.id !== repackSourceProductId);
+  const hasMultipleRepackProducts = repackProducts.length >= 2;
+  const selectedRepackSourceProduct =
+    repackProducts.find((product) => product.id === repackSourceProductId) ?? null;
+  const selectedRepackOutputProduct =
+    repackProducts.find((product) => product.id === repackOutputProductId) ?? null;
 
   return (
     <Screen title={t("produkto.title")}>
@@ -931,6 +1169,7 @@ export default function ProduktoScreen() {
           setPhotoSheetVisible(false);
           setCategoryModalVisible(false);
           setBarcodeScannerVisible(false);
+          resetRepackState();
           setModalVisible(false);
         }}
         title={editingProduct ? t("produkto.editProduct") : t("produkto.newProduct")}
@@ -1042,6 +1281,228 @@ export default function ProduktoScreen() {
               );
             })}
           </View>
+
+          <SurfaceCard style={{ gap: theme.spacing.sm }}>
+            <Text
+              style={{
+                color: theme.colors.text,
+                fontFamily: theme.typography.body,
+                fontSize: 14,
+                fontWeight: "700",
+              }}
+            >
+              Inventory setup
+            </Text>
+
+            <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
+              {[
+                { label: "Standalone", value: "standalone" as ProductInventoryMode },
+                { label: "Linked Tingi", value: "linked" as ProductInventoryMode },
+              ].map((option) => {
+                const active = form.inventoryMode === option.value;
+
+                return (
+                  <Pressable
+                    key={option.value}
+                    onPress={() =>
+                      setForm((current) => ({
+                        ...current,
+                        inventoryMode: option.value,
+                      }))
+                    }
+                    style={({ pressed }) => ({
+                      backgroundColor: active ? theme.colors.primary : theme.colors.surface,
+                      borderColor: active ? theme.colors.primary : theme.colors.border,
+                      borderRadius: theme.radius.pill,
+                      borderWidth: 1,
+                      flex: 1,
+                      opacity: pressed ? 0.9 : 1,
+                      paddingHorizontal: theme.spacing.md,
+                      paddingVertical: 12,
+                    })}
+                  >
+                    <Text
+                      style={{
+                        color: active ? theme.colors.primaryText : theme.colors.text,
+                        fontFamily: theme.typography.body,
+                        fontSize: 13,
+                        fontWeight: "700",
+                        textAlign: "center",
+                      }}
+                    >
+                      {option.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            {form.inventoryMode === "linked" ? (
+              <>
+                {inventoryPools.length > 0 ? (
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                    <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
+                      {inventoryPools.map((pool) => {
+                        const active = form.inventoryPoolId === pool.id;
+
+                        return (
+                          <Pressable
+                            key={pool.id}
+                            onPress={() =>
+                              setForm((current) => ({
+                                ...current,
+                                inventoryPoolId: pool.id,
+                                inventoryPoolName: pool.name,
+                                inventoryPoolBaseUnitLabel: pool.baseUnitLabel,
+                                inventoryPoolQuantityAvailable: formatWeightKg(pool.quantityAvailable),
+                                inventoryPoolReorderThreshold: formatWeightKg(pool.reorderThreshold),
+                              }))
+                            }
+                            style={({ pressed }) => ({
+                              backgroundColor: active ? theme.colors.primaryMuted : theme.colors.surface,
+                              borderColor: active ? theme.colors.primary : theme.colors.border,
+                              borderRadius: theme.radius.pill,
+                              borderWidth: 1,
+                              opacity: pressed ? 0.9 : 1,
+                              paddingHorizontal: theme.spacing.md,
+                              paddingVertical: 10,
+                            })}
+                          >
+                            <Text
+                              style={{
+                                color: active ? theme.colors.primary : theme.colors.text,
+                                fontFamily: theme.typography.body,
+                                fontSize: 12,
+                                fontWeight: "700",
+                              }}
+                            >
+                              {pool.name}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  </ScrollView>
+                ) : null}
+
+                <View style={{ flexDirection: "row", gap: theme.spacing.md }}>
+                  <View style={{ flex: 1 }}>
+                    <InputField
+                      label="Shared pool name"
+                      onChangeText={(value) =>
+                        setForm((current) => ({
+                          ...current,
+                          inventoryPoolId:
+                            selectedInventoryPool &&
+                            value.trim().toLocaleLowerCase() === selectedInventoryPool.name.trim().toLocaleLowerCase()
+                              ? selectedInventoryPool.id
+                              : null,
+                          inventoryPoolName: value,
+                        }))
+                      }
+                      placeholder="Example: Marlboro master stock"
+                      value={form.inventoryPoolName}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <InputField
+                      label="Base unit label"
+                      onChangeText={(value) => setForm((current) => ({ ...current, inventoryPoolBaseUnitLabel: value }))}
+                      placeholder={form.isWeightBased ? "gram" : "piece"}
+                      value={form.inventoryPoolBaseUnitLabel}
+                    />
+                  </View>
+                </View>
+
+                <View style={{ flexDirection: "row", gap: theme.spacing.md }}>
+                  <View style={{ flex: 1 }}>
+                    <InputField
+                      keyboardType="decimal-pad"
+                      label="Pool quantity available"
+                      onChangeText={(value) => setForm((current) => ({ ...current, inventoryPoolQuantityAvailable: value }))}
+                      placeholder="0"
+                      value={form.inventoryPoolQuantityAvailable}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <InputField
+                      keyboardType="decimal-pad"
+                      label="Reorder threshold"
+                      onChangeText={(value) => setForm((current) => ({ ...current, inventoryPoolReorderThreshold: value }))}
+                      placeholder="0"
+                      value={form.inventoryPoolReorderThreshold}
+                    />
+                  </View>
+                </View>
+
+                <View style={{ flexDirection: "row", gap: theme.spacing.md }}>
+                  <View style={{ flex: 1 }}>
+                    <InputField
+                      keyboardType="decimal-pad"
+                      label="Units per sale"
+                      onChangeText={(value) => setForm((current) => ({ ...current, linkedUnitsPerSale: value }))}
+                      placeholder={form.isWeightBased ? "1000" : "1"}
+                      value={form.linkedUnitsPerSale}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <InputField
+                      label="Display unit label"
+                      onChangeText={(value) => setForm((current) => ({ ...current, linkedDisplayUnitLabel: value }))}
+                      placeholder={form.isWeightBased ? "kg" : "stick"}
+                      value={form.linkedDisplayUnitLabel}
+                    />
+                  </View>
+                </View>
+
+                <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
+                  {[
+                    { label: "Restock child", value: false },
+                    { label: "Restock parent", value: true },
+                  ].map((option) => {
+                    const active = form.isPrimaryRestockProduct === option.value;
+
+                    return (
+                      <Pressable
+                        key={option.label}
+                        onPress={() => setForm((current) => ({ ...current, isPrimaryRestockProduct: option.value }))}
+                        style={({ pressed }) => ({
+                          backgroundColor: active ? theme.colors.primaryMuted : theme.colors.surface,
+                          borderColor: active ? theme.colors.primary : theme.colors.border,
+                          borderRadius: theme.radius.sm,
+                          borderWidth: 1,
+                          flex: 1,
+                          opacity: pressed ? 0.9 : 1,
+                          paddingHorizontal: theme.spacing.md,
+                          paddingVertical: 12,
+                        })}
+                      >
+                        <Text
+                          style={{
+                            color: active ? theme.colors.primary : theme.colors.text,
+                            fontFamily: theme.typography.body,
+                            fontSize: 13,
+                            fontWeight: "700",
+                            textAlign: "center",
+                          }}
+                        >
+                          {option.label}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+
+                {editingProduct?.inventoryMode === "linked" && editingProduct.inventoryPoolId ? (
+                  <ActionButton
+                    label="Log Repack"
+                    onPress={() => void handleOpenRepackModal()}
+                    variant="secondary"
+                  />
+                ) : null}
+              </>
+            ) : null}
+          </SurfaceCard>
         </View>
 
         {form.isWeightBased ? (
@@ -1146,38 +1607,63 @@ export default function ProduktoScreen() {
               </View>
             </SurfaceCard>
 
-            <View style={{ flexDirection: "row", gap: theme.spacing.md }}>
-              <View style={{ flex: 1 }}>
-                <InputField
-                  keyboardType="decimal-pad"
-                  label="Total kilograms available"
-                  onChangeText={(value) => setForm((current) => ({ ...current, totalKgAvailable: value }))}
-                  placeholder="0.000"
-                  error={
-                    shouldShowValidationMessage &&
-                    (!Number.isFinite(parseDecimalInput(form.totalKgAvailable)) || parseDecimalInput(form.totalKgAvailable) <= 0)
-                      ? "Enter a value greater than zero."
-                      : null
-                  }
-                  value={form.totalKgAvailable}
-                />
+            {form.inventoryMode === "standalone" ? (
+              <View style={{ flexDirection: "row", gap: theme.spacing.md }}>
+                <View style={{ flex: 1 }}>
+                  <InputField
+                    keyboardType="decimal-pad"
+                    label="Total kilograms available"
+                    onChangeText={(value) => setForm((current) => ({ ...current, totalKgAvailable: value }))}
+                    placeholder="0.000"
+                    error={
+                      shouldShowValidationMessage &&
+                      (!Number.isFinite(parseDecimalInput(form.totalKgAvailable)) || parseDecimalInput(form.totalKgAvailable) <= 0)
+                        ? "Enter a value greater than zero."
+                        : null
+                    }
+                    value={form.totalKgAvailable}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <InputField
+                    keyboardType="decimal-pad"
+                    label="Low-stock threshold (kg)"
+                    onChangeText={(value) => setForm((current) => ({ ...current, minStock: value }))}
+                    placeholder="0.500"
+                    error={
+                      shouldShowValidationMessage &&
+                      (!Number.isFinite(parseDecimalInput(form.minStock)) || parseDecimalInput(form.minStock) < 0)
+                        ? "Enter zero or higher."
+                        : null
+                    }
+                    value={form.minStock}
+                  />
+                </View>
               </View>
-              <View style={{ flex: 1 }}>
-                <InputField
-                  keyboardType="decimal-pad"
-                  label="Low-stock threshold (kg)"
-                  onChangeText={(value) => setForm((current) => ({ ...current, minStock: value }))}
-                  placeholder="0.500"
-                  error={
-                    shouldShowValidationMessage &&
-                    (!Number.isFinite(parseDecimalInput(form.minStock)) || parseDecimalInput(form.minStock) < 0)
-                      ? "Enter zero or higher."
-                      : null
-                  }
-                  value={form.minStock}
-                />
-              </View>
-            </View>
+            ) : (
+              <SurfaceCard style={{ gap: theme.spacing.xs }}>
+                <Text
+                  style={{
+                    color: theme.colors.text,
+                    fontFamily: theme.typography.body,
+                    fontSize: 13,
+                    fontWeight: "700",
+                  }}
+                >
+                  Shared inventory controls stock
+                </Text>
+                <Text
+                  style={{
+                    color: theme.colors.textMuted,
+                    fontFamily: theme.typography.body,
+                    fontSize: 13,
+                    lineHeight: 19,
+                  }}
+                >
+                  Total kilograms and the low-stock threshold will be derived from the shared inventory pool.
+                </Text>
+              </SurfaceCard>
+            )}
 
             {form.pricingMode === "derived" ? (
               <View style={{ flexDirection: "row", gap: theme.spacing.md }}>
@@ -1277,38 +1763,63 @@ export default function ProduktoScreen() {
                 />
               </View>
             </View>
-            <View style={{ flexDirection: "row", gap: theme.spacing.md }}>
-              <View style={{ flex: 1 }}>
-                <InputField
-                  keyboardType="number-pad"
-                  label="Stock"
-                  onChangeText={(value) => setForm((current) => ({ ...current, stock: value }))}
-                  placeholder="0"
-                  error={
-                    shouldShowValidationMessage &&
-                    (!Number.isInteger(Number.parseInt(form.stock, 10)) || Number.parseInt(form.stock, 10) < 0)
-                      ? "Use a whole number."
-                      : null
-                  }
-                  value={form.stock}
-                />
+            {form.inventoryMode === "standalone" ? (
+              <View style={{ flexDirection: "row", gap: theme.spacing.md }}>
+                <View style={{ flex: 1 }}>
+                  <InputField
+                    keyboardType="number-pad"
+                    label="Stock"
+                    onChangeText={(value) => setForm((current) => ({ ...current, stock: value }))}
+                    placeholder="0"
+                    error={
+                      shouldShowValidationMessage &&
+                      (!Number.isInteger(Number.parseInt(form.stock, 10)) || Number.parseInt(form.stock, 10) < 0)
+                        ? "Use a whole number."
+                        : null
+                    }
+                    value={form.stock}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <InputField
+                    keyboardType="number-pad"
+                    label="Min stock"
+                    onChangeText={(value) => setForm((current) => ({ ...current, minStock: value }))}
+                    placeholder="5"
+                    error={
+                      shouldShowValidationMessage &&
+                      (!Number.isInteger(Number.parseInt(form.minStock, 10)) || Number.parseInt(form.minStock, 10) < 0)
+                        ? "Use a whole number."
+                        : null
+                    }
+                    value={form.minStock}
+                  />
+                </View>
               </View>
-              <View style={{ flex: 1 }}>
-                <InputField
-                  keyboardType="number-pad"
-                  label="Min stock"
-                  onChangeText={(value) => setForm((current) => ({ ...current, minStock: value }))}
-                  placeholder="5"
-                  error={
-                    shouldShowValidationMessage &&
-                    (!Number.isInteger(Number.parseInt(form.minStock, 10)) || Number.parseInt(form.minStock, 10) < 0)
-                      ? "Use a whole number."
-                      : null
-                  }
-                  value={form.minStock}
-                />
-              </View>
-            </View>
+            ) : (
+              <SurfaceCard style={{ gap: theme.spacing.xs }}>
+                <Text
+                  style={{
+                    color: theme.colors.text,
+                    fontFamily: theme.typography.body,
+                    fontSize: 13,
+                    fontWeight: "700",
+                  }}
+                >
+                  Shared inventory controls stock
+                </Text>
+                <Text
+                  style={{
+                    color: theme.colors.textMuted,
+                    fontFamily: theme.typography.body,
+                    fontSize: 13,
+                    lineHeight: 19,
+                  }}
+                >
+                  Visible stock and low-stock alerts will be calculated from the linked inventory pool.
+                </Text>
+              </SurfaceCard>
+            )}
           </>
         )}
 
@@ -1560,6 +2071,316 @@ export default function ProduktoScreen() {
               <Feather color={theme.colors.primary} name="camera" size={18} />
             </Pressable>
           </View>
+        </View>
+      </ModalSheet>
+
+      <ModalSheet
+        footer={
+          <View style={{ gap: theme.spacing.sm }}>
+            <ActionButton
+              disabled={savingRepack || !hasMultipleRepackProducts}
+              label={savingRepack ? "Saving Repack..." : "Save Repack"}
+              onPress={() => void handleSaveRepackSession()}
+            />
+            <ActionButton label="Close" onPress={resetRepackState} variant="ghost" />
+          </View>
+        }
+        onClose={resetRepackState}
+        subtitle="Record how bulk stock was converted into a smaller sellable product."
+        title="Log Repack"
+        visible={repackModalVisible}
+      >
+        <View style={{ gap: theme.spacing.sm }}>
+          {repackPool ? (
+            <SurfaceCard style={{ gap: theme.spacing.sm }}>
+              <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                <Text
+                  style={{
+                    color: theme.colors.text,
+                    fontFamily: theme.typography.body,
+                    fontSize: 14,
+                    fontWeight: "700",
+                  }}
+                >
+                  {repackPool.name}
+                </Text>
+                <Text
+                  style={{
+                    color: theme.colors.primary,
+                    fontFamily: theme.typography.body,
+                    fontSize: 13,
+                    fontWeight: "700",
+                  }}
+                >
+                  {formatWeightKg(repackPool.quantityAvailable)} {repackPool.baseUnitLabel}
+                </Text>
+              </View>
+              <Text
+                style={{
+                  color: theme.colors.textMuted,
+                  fontFamily: theme.typography.body,
+                  fontSize: 12,
+                }}
+              >
+                Reorder threshold: {formatWeightKg(repackPool.reorderThreshold)} {repackPool.baseUnitLabel}
+              </Text>
+            </SurfaceCard>
+          ) : null}
+
+          {hasMultipleRepackProducts ? (
+            <>
+              <View style={{ gap: theme.spacing.xs }}>
+                <Text
+                  style={{
+                    color: theme.colors.textMuted,
+                    fontFamily: theme.typography.body,
+                    fontSize: 12,
+                    fontWeight: "700",
+                  }}
+                >
+                  Source product
+                </Text>
+                <ScrollView
+                  horizontal
+                  keyboardShouldPersistTaps="handled"
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={{ gap: theme.spacing.sm, paddingRight: theme.spacing.sm }}
+                >
+                  {repackSourceOptions.map((product) => {
+                    const active = product.id === repackSourceProductId;
+
+                    return (
+                      <Pressable
+                        key={`repack-source-${product.id}`}
+                        onPress={() => setRepackSourceProductId(product.id)}
+                        style={({ pressed }) => ({
+                          backgroundColor: active ? theme.colors.primary : theme.colors.surface,
+                          borderColor: active ? theme.colors.primary : theme.colors.border,
+                          borderRadius: theme.radius.pill,
+                          borderWidth: 1,
+                          opacity: pressed ? 0.9 : 1,
+                          paddingHorizontal: theme.spacing.md,
+                          paddingVertical: 10,
+                        })}
+                      >
+                        <Text
+                          style={{
+                            color: active ? theme.colors.primaryText : theme.colors.text,
+                            fontFamily: theme.typography.body,
+                            fontSize: 12,
+                            fontWeight: "700",
+                          }}
+                        >
+                          {product.name}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+
+              <View style={{ gap: theme.spacing.xs }}>
+                <Text
+                  style={{
+                    color: theme.colors.textMuted,
+                    fontFamily: theme.typography.body,
+                    fontSize: 12,
+                    fontWeight: "700",
+                  }}
+                >
+                  Output product
+                </Text>
+                <ScrollView
+                  horizontal
+                  keyboardShouldPersistTaps="handled"
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={{ gap: theme.spacing.sm, paddingRight: theme.spacing.sm }}
+                >
+                  {repackOutputOptions.map((product) => {
+                    const active = product.id === repackOutputProductId;
+
+                    return (
+                      <Pressable
+                        key={`repack-output-${product.id}`}
+                        onPress={() => setRepackOutputProductId(product.id)}
+                        style={({ pressed }) => ({
+                          backgroundColor: active ? theme.colors.primary : theme.colors.surface,
+                          borderColor: active ? theme.colors.primary : theme.colors.border,
+                          borderRadius: theme.radius.pill,
+                          borderWidth: 1,
+                          opacity: pressed ? 0.9 : 1,
+                          paddingHorizontal: theme.spacing.md,
+                          paddingVertical: 10,
+                        })}
+                      >
+                        <Text
+                          style={{
+                            color: active ? theme.colors.primaryText : theme.colors.text,
+                            fontFamily: theme.typography.body,
+                            fontSize: 12,
+                            fontWeight: "700",
+                          }}
+                        >
+                          {product.name}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+
+              <View style={{ flexDirection: "row", gap: theme.spacing.md }}>
+                <View style={{ flex: 1 }}>
+                  <InputField
+                    keyboardType="decimal-pad"
+                    label={`Source quantity${selectedRepackSourceProduct?.linkedDisplayUnitLabel ? ` (${selectedRepackSourceProduct.linkedDisplayUnitLabel})` : ""}`}
+                    onChangeText={setRepackSourceQuantity}
+                    placeholder="0"
+                    value={repackSourceQuantity}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <InputField
+                    keyboardType="decimal-pad"
+                    label={`Output created${selectedRepackOutputProduct?.linkedDisplayUnitLabel ? ` (${selectedRepackOutputProduct.linkedDisplayUnitLabel})` : ""}`}
+                    onChangeText={setRepackOutputUnits}
+                    placeholder="0"
+                    value={repackOutputUnits}
+                  />
+                </View>
+              </View>
+
+              <View style={{ flexDirection: "row", gap: theme.spacing.md }}>
+                <View style={{ flex: 1 }}>
+                  <InputField
+                    keyboardType="decimal-pad"
+                    label={`Wastage${repackPool ? ` (${repackPool.baseUnitLabel})` : ""}`}
+                    onChangeText={setRepackWastage}
+                    placeholder="0"
+                    value={repackWastage}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <InputField
+                    label="Note"
+                    onChangeText={setRepackNote}
+                    placeholder="Optional note"
+                    value={repackNote}
+                  />
+                </View>
+              </View>
+            </>
+          ) : (
+            <SurfaceCard style={{ gap: theme.spacing.xs }}>
+              <Text
+                style={{
+                  color: theme.colors.text,
+                  fontFamily: theme.typography.body,
+                  fontSize: 13,
+                  fontWeight: "700",
+                }}
+              >
+                Link one more product first
+              </Text>
+              <Text
+                style={{
+                  color: theme.colors.textMuted,
+                  fontFamily: theme.typography.body,
+                  fontSize: 13,
+                  lineHeight: 19,
+                }}
+              >
+                Repack sessions need at least two linked products in the same inventory pool, like a bulk item and its tingi version.
+              </Text>
+            </SurfaceCard>
+          )}
+
+          <SurfaceCard style={{ gap: theme.spacing.sm }}>
+            <Text
+              style={{
+                color: theme.colors.text,
+                fontFamily: theme.typography.body,
+                fontSize: 14,
+                fontWeight: "700",
+              }}
+            >
+              Recent repack sessions
+            </Text>
+            {repackSessions.length > 0 ? (
+              repackSessions.map((session) => {
+                const sourceProduct =
+                  repackProducts.find((product) => product.id === session.sourceProductId) ?? null;
+                const outputProduct =
+                  repackProducts.find((product) => product.id === session.outputProductId) ?? null;
+
+                return (
+                  <View
+                    key={session.id}
+                    style={{
+                      borderTopColor: theme.colors.border,
+                      borderTopWidth: 1,
+                      gap: theme.spacing.xs,
+                      paddingTop: theme.spacing.sm,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: theme.colors.text,
+                        fontFamily: theme.typography.body,
+                        fontSize: 13,
+                        fontWeight: "700",
+                      }}
+                    >
+                      {session.sourceProductName} to {session.outputProductName}
+                    </Text>
+                    <Text
+                      style={{
+                        color: theme.colors.textMuted,
+                        fontFamily: theme.typography.body,
+                        fontSize: 12,
+                        lineHeight: 18,
+                      }}
+                    >
+                      Used {formatWeightKg(session.sourceQuantityUsed)} {sourceProduct?.linkedDisplayUnitLabel ?? "units"} •
+                      Created {formatWeightKg(session.outputUnitsCreated)} {outputProduct?.linkedDisplayUnitLabel ?? "units"} •
+                      Wastage {formatWeightKg(session.wastageUnits)} {repackPool?.baseUnitLabel ?? "units"}
+                    </Text>
+                    <Text
+                      style={{
+                        color: theme.colors.textSoft,
+                        fontFamily: theme.typography.body,
+                        fontSize: 12,
+                      }}
+                    >
+                      {formatDateTimeLabel(session.createdAt)}
+                    </Text>
+                    {session.note ? (
+                      <Text
+                        style={{
+                          color: theme.colors.textMuted,
+                          fontFamily: theme.typography.body,
+                          fontSize: 12,
+                          lineHeight: 18,
+                        }}
+                      >
+                        {session.note}
+                      </Text>
+                    ) : null}
+                  </View>
+                );
+              })
+            ) : (
+              <Text
+                style={{
+                  color: theme.colors.textSoft,
+                  fontFamily: theme.typography.body,
+                  fontSize: 12,
+                }}
+              >
+                No repack sessions recorded yet.
+              </Text>
+            )}
+          </SurfaceCard>
         </View>
       </ModalSheet>
 
