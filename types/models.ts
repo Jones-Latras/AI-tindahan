@@ -144,6 +144,37 @@ export interface ExpenseSummary {
   recentCategories: string[];
 }
 
+export type RestockListStatus = "open" | "completed" | "archived";
+
+export interface RestockListItem {
+  id: number;
+  restockListId: number;
+  productId: number | null;
+  productNameSnapshot: string;
+  categorySnapshot: string | null;
+  currentStockSnapshot: number;
+  minStockSnapshot: number;
+  suggestedQuantity: number;
+  isWeightBasedSnapshot: boolean;
+  isChecked: boolean;
+  checkedAt: string | null;
+  note: string | null;
+}
+
+export interface RestockListSummary {
+  id: number;
+  title: string;
+  status: RestockListStatus;
+  createdAt: string;
+  completedAt: string | null;
+  totalItems: number;
+  checkedItems: number;
+}
+
+export interface RestockList extends RestockListSummary {
+  items: RestockListItem[];
+}
+
 export interface WeeklyPaymentReport {
   weekLabel: string;
   totalCents: number;

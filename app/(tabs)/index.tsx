@@ -24,6 +24,7 @@ import type { TranslationKey } from "@/constants/translations";
 import { useAppLanguage } from "@/contexts/LanguageContext";
 import { useAppTheme } from "@/contexts/ThemeContext";
 import {
+  createRestockListFromThresholds,
   getExpenseSummary,
   getHomeMetrics,
   getProductSalesVelocity,
@@ -248,6 +249,7 @@ export default function HomeScreen() {
   const [chatInput, setChatInput] = useState("");
   const [sendingChat, setSendingChat] = useState(false);
   const [activePanel, setActivePanel] = useState<HomePanel | null>(null);
+  const [creatingRestockList, setCreatingRestockList] = useState(false);
   const [salesHistory, setSalesHistory] = useState<StoreAiSale[]>([]);
   const [historySearch, setHistorySearch] = useState("");
   const [historySort, setHistorySort] = useState<HistorySort>("latest");
@@ -440,6 +442,28 @@ export default function HomeScreen() {
       setHistoryLoading(false);
     }
   }, [db]);
+
+  const handleOpenRestockLists = useCallback(() => {
+    setActivePanel(null);
+    router.push("../restock");
+  }, [router]);
+
+  const handleGenerateRestockList = useCallback(async () => {
+    setCreatingRestockList(true);
+
+    try {
+      await createRestockListFromThresholds(db);
+      setActivePanel(null);
+      router.push("../restock");
+    } catch (error) {
+      Alert.alert(
+        t("restock.alert.generateFailedTitle"),
+        error instanceof Error ? error.message : t("restock.alert.generateFailedMessage"),
+      );
+    } finally {
+      setCreatingRestockList(false);
+    }
+  }, [db, router, t]);
 
   useEffect(() => {
     if (activePanel === "history") {
@@ -959,6 +983,23 @@ export default function HomeScreen() {
               title={t("home.lowStock.emptyTitle")}
             />
           )}
+
+          <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
+            <ActionButton
+              disabled={creatingRestockList}
+              label={creatingRestockList ? t("restock.generating") : t("restock.generate")}
+              onPress={() => {
+                void handleGenerateRestockList();
+              }}
+              style={{ flex: 1 }}
+            />
+            <ActionButton
+              label={t("restock.open")}
+              onPress={handleOpenRestockLists}
+              style={{ flex: 1 }}
+              variant="ghost"
+            />
+          </View>
         </SurfaceCard>
       </>
     );

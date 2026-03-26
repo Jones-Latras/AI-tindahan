@@ -20,6 +20,10 @@ import type {
   ProductPricingMode,
   ProductPricingStrategy,
   ProductVelocity,
+  RestockList,
+  RestockListItem,
+  RestockListStatus,
+  RestockListSummary,
   RiskCustomerAlert,
   SaleItemInput,
   SalesInsightContext,
@@ -144,6 +148,29 @@ type ExpenseCategorySummaryRow = {
   entry_count: number;
 };
 
+type RestockListRow = {
+  id: number;
+  title: string;
+  status: RestockListStatus;
+  created_at: string;
+  completed_at: string | null;
+};
+
+type RestockListItemRow = {
+  id: number;
+  restock_list_id: number;
+  product_id: number | null;
+  product_name_snapshot: string;
+  category_snapshot: string | null;
+  current_stock_snapshot: number;
+  min_stock_snapshot: number;
+  suggested_quantity: number;
+  is_weight_based_snapshot: number;
+  is_checked: number;
+  checked_at: string | null;
+  note: string | null;
+};
+
 type DailySalesRow = {
   sale_date: string;
   total_cents: number;
@@ -222,6 +249,37 @@ function mapExpense(row: ExpenseRow): Expense {
     expenseDate: row.expense_date,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+  };
+}
+
+function mapRestockListItem(row: RestockListItemRow): RestockListItem {
+  return {
+    id: row.id,
+    restockListId: row.restock_list_id,
+    productId: row.product_id,
+    productNameSnapshot: row.product_name_snapshot,
+    categorySnapshot: row.category_snapshot,
+    currentStockSnapshot: row.current_stock_snapshot,
+    minStockSnapshot: row.min_stock_snapshot,
+    suggestedQuantity: row.suggested_quantity,
+    isWeightBasedSnapshot: Boolean(row.is_weight_based_snapshot),
+    isChecked: Boolean(row.is_checked),
+    checkedAt: row.checked_at,
+    note: row.note,
+  };
+}
+
+function mapRestockListSummary(
+  row: RestockListRow & { total_items: number; checked_items: number },
+): RestockListSummary {
+  return {
+    id: row.id,
+    title: row.title,
+    status: row.status,
+    createdAt: row.created_at,
+    completedAt: row.completed_at,
+    totalItems: row.total_items,
+    checkedItems: row.checked_items,
   };
 }
 
@@ -684,6 +742,95 @@ function normalizeExpenseDate(expenseDate?: string) {
   return parsed.toISOString();
 }
 
+function formatDefaultRestockListTitle(createdAt = new Date()) {
+  const formatted = new Intl.DateTimeFormat("en-PH", {
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    month: "short",
+  }).format(createdAt);
+
+  return `Restock ${formatted}`;
+}
+
+function computeSuggestedRestockQuantity(product: Product) {
+  const currentStock = product.isWeightBased ? product.totalKgAvailable ?? 0 : product.stock;
+  const baseSuggestion = Math.max(product.minStock * 2 - currentStock, product.minStock - currentStock, 0);
+
+  if (product.isWeightBased) {
+    return Number(baseSuggestion.toFixed(2));
+  }
+
+  return Math.max(1, Math.ceil(baseSuggestion));
+}
+
+async function getLowStockProductRows(db: SQLiteDatabase, limit?: number) {
+  const normalizedLimit =
+    typeof limit === "number" && Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : null;
+  const limitClause = normalizedLimit ? `LIMIT ${normalizedLimit}` : "";
+
+  return db.getAllAsync<ProductRow>(
+    `
+      SELECT *
+      FROM products
+      WHERE
+        CASE
+          WHEN is_weight_based = 1 THEN COALESCE(total_kg_available, 0)
+          ELSE stock
+        END <= min_stock
+      ORDER BY
+        CASE
+          WHEN is_weight_based = 1 THEN COALESCE(total_kg_available, 0)
+          ELSE stock
+        END ASC,
+        name ASC
+      ${limitClause}
+    `,
+  );
+}
+
+type SqlExecutor = Pick<SQLiteDatabase, "getFirstAsync" | "runAsync">;
+
+async function refreshRestockListStatus(db: SqlExecutor, restockListId: number) {
+  const counts = await db.getFirstAsync<{
+    status: RestockListStatus;
+    total_items: number;
+    checked_items: number;
+  }>(
+    `
+      SELECT
+        rl.status,
+        COUNT(rli.id) AS total_items,
+        COALESCE(SUM(CASE WHEN rli.is_checked = 1 THEN 1 ELSE 0 END), 0) AS checked_items
+      FROM restock_lists rl
+      LEFT JOIN restock_list_items rli ON rli.restock_list_id = rl.id
+      WHERE rl.id = ?
+      GROUP BY rl.id, rl.status
+    `,
+    restockListId,
+  );
+
+  if (!counts || counts.status === "archived") {
+    return;
+  }
+
+  const isCompleted = counts.total_items > 0 && counts.checked_items >= counts.total_items;
+
+  await db.runAsync(
+    `
+      UPDATE restock_lists
+      SET
+        status = ?,
+        completed_at = ?,
+        synced = 0
+      WHERE id = ?
+    `,
+    isCompleted ? "completed" : "open",
+    isCompleted ? new Date().toISOString() : null,
+    restockListId,
+  );
+}
+
 export async function listExpenses(db: SQLiteDatabase): Promise<Expense[]> {
   const rows = await db.getAllAsync<ExpenseRow>(
     `
@@ -701,6 +848,11 @@ export async function listExpenses(db: SQLiteDatabase): Promise<Expense[]> {
   );
 
   return rows.map(mapExpense);
+}
+
+export async function listLowStockProducts(db: SQLiteDatabase, limit?: number): Promise<Product[]> {
+  const rows = await getLowStockProductRows(db, limit);
+  return rows.map(mapProduct);
 }
 
 export async function listExpenseCategories(db: SQLiteDatabase) {
@@ -865,6 +1017,250 @@ export async function getExpenseSummary(db: SQLiteDatabase): Promise<ExpenseSumm
   };
 }
 
+export async function createRestockListFromThresholds(
+  db: SQLiteDatabase,
+  title?: string,
+): Promise<RestockList> {
+  const products = await listLowStockProducts(db);
+
+  if (products.length === 0) {
+    throw new Error("No low-stock or out-of-stock products need restocking right now.");
+  }
+
+  const createdAt = new Date();
+  const safeTitle = sanitizeText(title ?? formatDefaultRestockListTitle(createdAt), 80);
+
+  let restockListId = 0;
+
+  await db.withExclusiveTransactionAsync(async (txn) => {
+    const result = await txn.runAsync(
+      `
+        INSERT INTO restock_lists (title, status, created_at, synced)
+        VALUES (?, 'open', ?, 0)
+      `,
+      safeTitle,
+      createdAt.toISOString(),
+    );
+
+    restockListId = Number(result.lastInsertRowId);
+
+    for (const product of products) {
+      const currentStock = product.isWeightBased ? product.totalKgAvailable ?? 0 : product.stock;
+
+      await txn.runAsync(
+        `
+          INSERT INTO restock_list_items (
+            restock_list_id,
+            product_id,
+            product_name_snapshot,
+            category_snapshot,
+            current_stock_snapshot,
+            min_stock_snapshot,
+            suggested_quantity,
+            is_weight_based_snapshot,
+            is_checked,
+            checked_at,
+            note,
+            synced
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, NULL, 0)
+        `,
+        restockListId,
+        product.id,
+        product.name,
+        sanitizeOptionalText(product.category ?? "", 40),
+        currentStock,
+        product.minStock,
+        computeSuggestedRestockQuantity(product),
+        product.isWeightBased ? 1 : 0,
+      );
+    }
+  });
+
+  const nextList = await getRestockListById(db, restockListId);
+
+  if (!nextList) {
+    throw new Error("The restock list was created but could not be loaded.");
+  }
+
+  return nextList;
+}
+
+export async function listRestockLists(db: SQLiteDatabase): Promise<RestockListSummary[]> {
+  const rows = await db.getAllAsync<RestockListRow & { total_items: number; checked_items: number }>(
+    `
+      SELECT
+        rl.id,
+        rl.title,
+        rl.status,
+        rl.created_at,
+        rl.completed_at,
+        COUNT(rli.id) AS total_items,
+        COALESCE(SUM(CASE WHEN rli.is_checked = 1 THEN 1 ELSE 0 END), 0) AS checked_items
+      FROM restock_lists rl
+      LEFT JOIN restock_list_items rli ON rli.restock_list_id = rl.id
+      GROUP BY rl.id, rl.title, rl.status, rl.created_at, rl.completed_at
+      ORDER BY
+        CASE rl.status
+          WHEN 'open' THEN 0
+          WHEN 'completed' THEN 1
+          ELSE 2
+        END,
+        rl.created_at DESC,
+        rl.id DESC
+    `,
+  );
+
+  return rows.map(mapRestockListSummary);
+}
+
+export async function getRestockListById(db: SQLiteDatabase, restockListId: number): Promise<RestockList | null> {
+  const summaryRow = await db.getFirstAsync<RestockListRow & { total_items: number; checked_items: number }>(
+    `
+      SELECT
+        rl.id,
+        rl.title,
+        rl.status,
+        rl.created_at,
+        rl.completed_at,
+        COUNT(rli.id) AS total_items,
+        COALESCE(SUM(CASE WHEN rli.is_checked = 1 THEN 1 ELSE 0 END), 0) AS checked_items
+      FROM restock_lists rl
+      LEFT JOIN restock_list_items rli ON rli.restock_list_id = rl.id
+      WHERE rl.id = ?
+      GROUP BY rl.id, rl.title, rl.status, rl.created_at, rl.completed_at
+      LIMIT 1
+    `,
+    restockListId,
+  );
+
+  if (!summaryRow) {
+    return null;
+  }
+
+  const itemRows = await db.getAllAsync<RestockListItemRow>(
+    `
+      SELECT
+        id,
+        restock_list_id,
+        product_id,
+        product_name_snapshot,
+        category_snapshot,
+        current_stock_snapshot,
+        min_stock_snapshot,
+        suggested_quantity,
+        is_weight_based_snapshot,
+        is_checked,
+        checked_at,
+        note
+      FROM restock_list_items
+      WHERE restock_list_id = ?
+      ORDER BY is_checked ASC, id ASC
+    `,
+    restockListId,
+  );
+
+  return {
+    ...mapRestockListSummary(summaryRow),
+    items: itemRows.map(mapRestockListItem),
+  };
+}
+
+export async function toggleRestockListItem(
+  db: SQLiteDatabase,
+  restockListItemId: number,
+  nextChecked?: boolean,
+): Promise<RestockList> {
+  const row = await db.getFirstAsync<{ id: number; restock_list_id: number; is_checked: number }>(
+    `
+      SELECT id, restock_list_id, is_checked
+      FROM restock_list_items
+      WHERE id = ?
+      LIMIT 1
+    `,
+    restockListItemId,
+  );
+
+  if (!row) {
+    throw new Error("Restock list item not found.");
+  }
+
+  const resolvedChecked = typeof nextChecked === "boolean" ? nextChecked : row.is_checked === 0;
+
+  await db.withExclusiveTransactionAsync(async (txn) => {
+    await txn.runAsync(
+      `
+        UPDATE restock_list_items
+        SET
+          is_checked = ?,
+          checked_at = ?,
+          synced = 0
+        WHERE id = ?
+      `,
+      resolvedChecked ? 1 : 0,
+      resolvedChecked ? new Date().toISOString() : null,
+      restockListItemId,
+    );
+
+    await refreshRestockListStatus(txn, row.restock_list_id);
+  });
+
+  const nextList = await getRestockListById(db, row.restock_list_id);
+
+  if (!nextList) {
+    throw new Error("The restock list could not be reloaded.");
+  }
+
+  return nextList;
+}
+
+export async function updateRestockListItemNote(
+  db: SQLiteDatabase,
+  restockListItemId: number,
+  note: string,
+): Promise<void> {
+  const safeNote = sanitizeOptionalText(note, 140);
+
+  await db.runAsync(
+    `
+      UPDATE restock_list_items
+      SET
+        note = ?,
+        synced = 0
+      WHERE id = ?
+    `,
+    safeNote,
+    restockListItemId,
+  );
+}
+
+export async function archiveRestockList(db: SQLiteDatabase, restockListId: number): Promise<void> {
+  const existing = await db.getFirstAsync<{ id: number }>(
+    `
+      SELECT id
+      FROM restock_lists
+      WHERE id = ?
+      LIMIT 1
+    `,
+    restockListId,
+  );
+
+  if (!existing) {
+    throw new Error("Restock list not found.");
+  }
+
+  await db.runAsync(
+    `
+      UPDATE restock_lists
+      SET
+        status = 'archived',
+        synced = 0
+      WHERE id = ?
+    `,
+    restockListId,
+  );
+}
+
 export async function getHomeMetrics(db: SQLiteDatabase): Promise<HomeMetrics> {
   const salesRow = await db.getFirstAsync<{ today_sales_cents: number | null; transaction_count: number | null }>(
     `
@@ -916,24 +1312,7 @@ export async function getHomeMetrics(db: SQLiteDatabase): Promise<HomeMetrics> {
     `,
   );
 
-  const lowStockRows = await db.getAllAsync<ProductRow>(
-    `
-      SELECT *
-      FROM products
-      WHERE
-        CASE
-          WHEN is_weight_based = 1 THEN COALESCE(total_kg_available, 0)
-          ELSE stock
-        END <= min_stock
-      ORDER BY
-        CASE
-          WHEN is_weight_based = 1 THEN COALESCE(total_kg_available, 0)
-          ELSE stock
-        END ASC,
-        name ASC
-      LIMIT 5
-    `,
-  );
+  const lowStockProducts = await listLowStockProducts(db, 5);
 
   const delikadoRows = await db.getAllAsync<{
     id: number;
@@ -966,7 +1345,7 @@ export async function getHomeMetrics(db: SQLiteDatabase): Promise<HomeMetrics> {
     todayExpenseCents,
     todayNetProfitCents: todayGrossProfitCents - todayExpenseCents,
     totalUtangCents: utangRow?.total_utang_cents ?? 0,
-    lowStockProducts: lowStockRows.map(mapProduct),
+    lowStockProducts,
     delikadoCustomers: delikadoRows.map<RiskCustomerAlert>((row) => ({
       id: row.id,
       name: row.name,

@@ -105,6 +105,14 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="restock"
+        options={{
+          href: null,
+          title: t("restock.title"),
+          tabBarIcon: ({ color, size }) => <Feather color={color} name="shopping-bag" size={size} />,
+        }}
+      />
+      <Tabs.Screen
         name="settings"
         options={{
           href: null,

@@ -107,6 +107,29 @@ CREATE TABLE IF NOT EXISTS expenses (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS restock_lists (
+  id BIGINT PRIMARY KEY,
+  title TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'open',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  completed_at TIMESTAMPTZ
+);
+
+CREATE TABLE IF NOT EXISTS restock_list_items (
+  id BIGINT PRIMARY KEY,
+  restock_list_id BIGINT NOT NULL REFERENCES restock_lists(id) ON DELETE CASCADE,
+  product_id BIGINT REFERENCES products(id) ON DELETE SET NULL,
+  product_name_snapshot TEXT NOT NULL,
+  category_snapshot TEXT,
+  current_stock_snapshot NUMERIC(10,4) NOT NULL DEFAULT 0,
+  min_stock_snapshot NUMERIC(10,4) NOT NULL DEFAULT 0,
+  suggested_quantity NUMERIC(10,4) NOT NULL DEFAULT 0,
+  is_weight_based_snapshot BOOLEAN NOT NULL DEFAULT false,
+  is_checked BOOLEAN NOT NULL DEFAULT false,
+  checked_at TIMESTAMPTZ,
+  note TEXT
+);
+
 CREATE TABLE IF NOT EXISTS app_settings (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL,
@@ -121,6 +144,8 @@ ALTER TABLE sale_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE utang ENABLE ROW LEVEL SECURITY;
 ALTER TABLE utang_payments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE expenses ENABLE ROW LEVEL SECURITY;
+ALTER TABLE restock_lists ENABLE ROW LEVEL SECURITY;
+ALTER TABLE restock_list_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE app_settings ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Allow all" ON products;
@@ -130,6 +155,8 @@ DROP POLICY IF EXISTS "Allow all" ON sale_items;
 DROP POLICY IF EXISTS "Allow all" ON utang;
 DROP POLICY IF EXISTS "Allow all" ON utang_payments;
 DROP POLICY IF EXISTS "Allow all" ON expenses;
+DROP POLICY IF EXISTS "Allow all" ON restock_lists;
+DROP POLICY IF EXISTS "Allow all" ON restock_list_items;
 DROP POLICY IF EXISTS "Allow all" ON app_settings;
 
 CREATE POLICY "Allow all" ON products FOR ALL USING (true) WITH CHECK (true);
@@ -139,6 +166,8 @@ CREATE POLICY "Allow all" ON sale_items FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all" ON utang FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all" ON utang_payments FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all" ON expenses FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all" ON restock_lists FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all" ON restock_list_items FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all" ON app_settings FOR ALL USING (true) WITH CHECK (true);
 
 -- Public bucket for compressed product photos stored during cloud backup.

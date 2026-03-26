@@ -227,6 +227,47 @@ export async function syncToCloud(db: SQLiteDatabase): Promise<string> {
     pushed += expenses.length;
   }
 
+  // Sync restock_lists
+  const restockLists = await db.getAllAsync<Record<string, unknown>>(
+    `SELECT
+      id,
+      title,
+      status,
+      created_at,
+      completed_at
+    FROM restock_lists
+    WHERE synced = 0`,
+  );
+  if (restockLists.length > 0) {
+    await supabaseUpsert("restock_lists", restockLists);
+    await db.runAsync("UPDATE restock_lists SET synced = 1 WHERE synced = 0");
+    pushed += restockLists.length;
+  }
+
+  // Sync restock_list_items
+  const restockListItems = await db.getAllAsync<Record<string, unknown>>(
+    `SELECT
+      id,
+      restock_list_id,
+      product_id,
+      product_name_snapshot,
+      category_snapshot,
+      current_stock_snapshot,
+      min_stock_snapshot,
+      suggested_quantity,
+      is_weight_based_snapshot,
+      is_checked,
+      checked_at,
+      note
+    FROM restock_list_items
+    WHERE synced = 0`,
+  );
+  if (restockListItems.length > 0) {
+    await supabaseUpsert("restock_list_items", restockListItems);
+    await db.runAsync("UPDATE restock_list_items SET synced = 1 WHERE synced = 0");
+    pushed += restockListItems.length;
+  }
+
   const timestamp = new Date().toLocaleString("en-PH", { dateStyle: "medium", timeStyle: "short" });
   await Storage.setItem(LAST_SYNC_KEY, timestamp);
 
@@ -350,6 +391,66 @@ export async function restoreFromCloud(db: SQLiteDatabase): Promise<string> {
         row.expense_date as string,
         row.created_at as string,
         row.updated_at as string,
+      );
+      restored++;
+    }
+
+    // Restore restock lists before their checklist items
+    const restockLists = await supabaseSelectAll("restock_lists");
+    for (const restockList of restockLists) {
+      const row = restockList as Record<string, unknown>;
+      await db.runAsync(
+        `INSERT OR REPLACE INTO restock_lists (
+          id,
+          title,
+          status,
+          created_at,
+          completed_at,
+          synced
+        )
+         VALUES (?, ?, ?, ?, ?, 1)`,
+        row.id as number,
+        row.title as string,
+        row.status as string,
+        row.created_at as string,
+        (row.completed_at as string | null) ?? null,
+      );
+      restored++;
+    }
+
+    // Restore restock list items after lists and products exist
+    const restockListItems = await supabaseSelectAll("restock_list_items");
+    for (const item of restockListItems) {
+      const row = item as Record<string, unknown>;
+      await db.runAsync(
+        `INSERT OR REPLACE INTO restock_list_items (
+          id,
+          restock_list_id,
+          product_id,
+          product_name_snapshot,
+          category_snapshot,
+          current_stock_snapshot,
+          min_stock_snapshot,
+          suggested_quantity,
+          is_weight_based_snapshot,
+          is_checked,
+          checked_at,
+          note,
+          synced
+        )
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+        row.id as number,
+        row.restock_list_id as number,
+        (row.product_id as number | null) ?? null,
+        row.product_name_snapshot as string,
+        (row.category_snapshot as string | null) ?? null,
+        row.current_stock_snapshot as number,
+        row.min_stock_snapshot as number,
+        row.suggested_quantity as number,
+        row.is_weight_based_snapshot as number,
+        row.is_checked as number,
+        (row.checked_at as string | null) ?? null,
+        (row.note as string | null) ?? null,
       );
       restored++;
     }

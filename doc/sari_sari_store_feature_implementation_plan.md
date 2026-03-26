@@ -26,7 +26,7 @@ The goal is not just to add UI. The goal is to make these features reliable acro
 
 - [x] Phase 1 core slice: payment-event audit trail for utang
 - [x] Phase 2: Expenses tab and true net profit
-- [ ] Phase 3: Restock shopping list
+- [x] Phase 3: Restock shopping list
 - [ ] Phase 4: Tingi / linked inventory
 - [ ] Phase 5: Bottle deposit tracker
 - [ ] Phase 6: AI, sync, analytics, receipts, and rollout hardening
@@ -542,6 +542,16 @@ Add sync + restore support for:
 
 ## Phase 3: Palengke Restock Shopping List
 
+Current implementation progress:
+
+- [x] SQLite schema added for `restock_lists` and `restock_list_items`
+- [x] Shared TypeScript models added for restock list summaries, items, and statuses
+- [x] Snapshot-based repository flow added for create, load, toggle, note-save, and archive
+- [x] Hidden in-app restock screen added with persistent checklist UI
+- [x] Home low-stock card can generate and open restock lists
+- [x] Stock screen can open the restock screen directly
+- [x] Sync / restore and Supabase schema updated for restock data
+
 ### Problem
 
 Owners already know which items are low or out of stock, but they still need to:
@@ -579,30 +589,30 @@ If the user needs a persistent checklist they can tick off while shopping, do no
 
 ##### `restock_lists`
 
-- `id`
-- `title`
-- `status`
+- [x] `id`
+- [x] `title`
+- [x] `status`
   Suggested:
-  - `open`
-  - `completed`
-  - `archived`
-- `created_at`
-- `completed_at`
-- `synced`
+  - [x] `open`
+  - [x] `completed`
+  - [x] `archived`
+- [x] `created_at`
+- [x] `completed_at`
+- [x] `synced`
 
 ##### `restock_list_items`
 
-- `id`
-- `restock_list_id`
-- `product_id`
-- `product_name_snapshot`
-- `current_stock_snapshot`
-- `min_stock_snapshot`
-- `suggested_quantity`
-- `is_checked`
-- `checked_at`
-- `note`
-- `synced`
+- [x] `id`
+- [x] `restock_list_id`
+- [x] `product_id`
+- [x] `product_name_snapshot`
+- [x] `current_stock_snapshot`
+- [x] `min_stock_snapshot`
+- [x] `suggested_quantity`
+- [x] `is_checked`
+- [x] `checked_at`
+- [x] `note`
+- [x] `synced`
 
 Why snapshot fields matter:
 
@@ -616,35 +626,35 @@ Start simple in v1.
 Suggested quantity can be:
 
 - for normal products:
-  - `max(minStock * 2 - currentStock, minStock - currentStock)`
+  - [x] `max(minStock * 2 - currentStock, minStock - currentStock)`
 - for weight-based products:
-  - recommended target kg above threshold
+  - [x] recommended target kg above threshold
 - later, use product velocity for smarter reorder suggestions
 
 ### UI plan
 
 Recommended entry points:
 
-- Home `Restock` shortcut
-- Stock screen action button
-- Low-stock summary card
+- [x] Home `Restock` shortcut / inventory modal
+- [x] Stock screen action button
+- [x] Low-stock summary card action row
 
 Recommended screen behavior:
 
-1. Tap `Generate Restock List`
-2. App creates a snapshot list from current low / out-of-stock products
-3. User sees a checklist view
-4. User checks off items while shopping
-5. User can reopen unfinished lists later
+1. [x] Tap `Generate Restock List`
+2. [x] App creates a snapshot list from current low / out-of-stock products
+3. [x] User sees a checklist view
+4. [x] User checks off items while shopping
+5. [x] User can reopen unfinished lists later
 
 Recommended checklist row contents:
 
-- product name
-- category
-- current stock / min stock
-- suggested buy quantity
-- note field
-- checkbox
+- [x] product name
+- [x] category
+- [x] current stock / min stock
+- [x] suggested buy quantity
+- [x] note field
+- [x] checkbox
 
 ### Linked-inventory consideration
 
@@ -661,24 +671,25 @@ So the restock list should eventually become inventory-pool aware.
 
 Add:
 
-- `createRestockListFromThresholds()`
-- `listRestockLists()`
-- `getRestockListById()`
-- `toggleRestockListItem()`
-- `archiveRestockList()`
+- [x] `createRestockListFromThresholds()`
+- [x] `listRestockLists()`
+- [x] `getRestockListById()`
+- [x] `toggleRestockListItem()`
+- [x] `archiveRestockList()`
+- [x] `updateRestockListItemNote()`
 
 ### Sync impact
 
 Add:
 
-- `restock_lists`
-- `restock_list_items`
+- [x] `restock_lists`
+- [x] `restock_list_items`
 
 ### Definition of done
 
-- One tap generates a shopping checklist from low-stock items.
-- The checklist is persistent, checkable, and reusable during the trip.
-- Later product edits do not corrupt the checklist snapshot.
+- [x] One tap generates a shopping checklist from low-stock items.
+- [x] The checklist is persistent, checkable, and reusable during the trip.
+- [x] Later product edits do not corrupt the checklist snapshot.
 
 ---
 

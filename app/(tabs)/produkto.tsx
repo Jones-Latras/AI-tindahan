@@ -1,7 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import { CameraView, useCameraPermissions as useBarcodeCameraPermissions, type BarcodeScanningResult } from "expo-camera";
 import * as ImagePicker from "expo-image-picker";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { useSQLiteContext } from "expo-sqlite";
 import Storage from "expo-sqlite/kv-store";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -162,6 +162,7 @@ export default function ProduktoScreen() {
   const db = useSQLiteContext();
   const { theme } = useAppTheme();
   const { t } = useAppLanguage();
+  const router = useRouter();
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
@@ -837,11 +838,21 @@ export default function ProduktoScreen() {
             </>
           ) : null}
         </ScrollView>
-        <ActionButton
-          icon={<Feather color={theme.colors.primaryText} name="plus" size={16} />}
-          label={t("produkto.addProductButton")}
-          onPress={openCreateModal}
-        />
+        <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
+          <ActionButton
+            icon={<Feather color={theme.colors.primaryText} name="plus" size={16} />}
+            label={t("produkto.addProductButton")}
+            onPress={openCreateModal}
+            style={{ flex: 1 }}
+          />
+          <ActionButton
+            icon={<Feather color={theme.colors.text} name="shopping-bag" size={16} />}
+            label={t("produkto.restockButton")}
+            onPress={() => router.push("../restock")}
+            style={{ flex: 1 }}
+            variant="ghost"
+          />
+        </View>
       </SurfaceCard>
 
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.md }}>

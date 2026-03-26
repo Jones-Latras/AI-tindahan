@@ -1,7 +1,7 @@
 import type { SQLiteDatabase } from "expo-sqlite";
 
 export const DATABASE_NAME = "tindahan-ai.db";
-export const DATABASE_VERSION = 10;
+export const DATABASE_VERSION = 11;
 
 export async function migrateDbIfNeeded(db: SQLiteDatabase) {
   await db.execAsync("PRAGMA journal_mode = WAL;");
@@ -111,6 +111,31 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
         synced INTEGER NOT NULL DEFAULT 0
       );
 
+      CREATE TABLE IF NOT EXISTS restock_lists (
+        id INTEGER PRIMARY KEY NOT NULL,
+        title TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open', 'completed', 'archived')),
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        completed_at TEXT,
+        synced INTEGER NOT NULL DEFAULT 0
+      );
+
+      CREATE TABLE IF NOT EXISTS restock_list_items (
+        id INTEGER PRIMARY KEY NOT NULL,
+        restock_list_id INTEGER NOT NULL REFERENCES restock_lists(id) ON DELETE CASCADE,
+        product_id INTEGER REFERENCES products(id) ON DELETE SET NULL,
+        product_name_snapshot TEXT NOT NULL,
+        category_snapshot TEXT,
+        current_stock_snapshot REAL NOT NULL DEFAULT 0 CHECK(current_stock_snapshot >= 0),
+        min_stock_snapshot REAL NOT NULL DEFAULT 0 CHECK(min_stock_snapshot >= 0),
+        suggested_quantity REAL NOT NULL DEFAULT 0 CHECK(suggested_quantity >= 0),
+        is_weight_based_snapshot INTEGER NOT NULL DEFAULT 0 CHECK(is_weight_based_snapshot IN (0, 1)),
+        is_checked INTEGER NOT NULL DEFAULT 0 CHECK(is_checked IN (0, 1)),
+        checked_at TEXT,
+        note TEXT,
+        synced INTEGER NOT NULL DEFAULT 0
+      );
+
       CREATE TABLE IF NOT EXISTS app_settings (
         key TEXT PRIMARY KEY NOT NULL,
         value TEXT NOT NULL,
@@ -129,10 +154,12 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
       CREATE INDEX IF NOT EXISTS idx_utang_payments_customer ON utang_payments(customer_id, created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_expenses_date ON expenses(expense_date DESC);
       CREATE INDEX IF NOT EXISTS idx_expenses_category ON expenses(category, expense_date DESC);
+      CREATE INDEX IF NOT EXISTS idx_restock_lists_status ON restock_lists(status, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_restock_list_items_list ON restock_list_items(restock_list_id, is_checked ASC, id ASC);
       CREATE INDEX IF NOT EXISTS idx_app_settings_updated_at ON app_settings(updated_at DESC);
     `);
 
-    currentVersion = 10;
+    currentVersion = 11;
   }
 
   if (currentVersion === 1) {
@@ -347,6 +374,40 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
     `);
 
     currentVersion = 10;
+  }
+
+  if (currentVersion < 11) {
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS restock_lists (
+        id INTEGER PRIMARY KEY NOT NULL,
+        title TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open', 'completed', 'archived')),
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        completed_at TEXT,
+        synced INTEGER NOT NULL DEFAULT 0
+      );
+
+      CREATE TABLE IF NOT EXISTS restock_list_items (
+        id INTEGER PRIMARY KEY NOT NULL,
+        restock_list_id INTEGER NOT NULL REFERENCES restock_lists(id) ON DELETE CASCADE,
+        product_id INTEGER REFERENCES products(id) ON DELETE SET NULL,
+        product_name_snapshot TEXT NOT NULL,
+        category_snapshot TEXT,
+        current_stock_snapshot REAL NOT NULL DEFAULT 0 CHECK(current_stock_snapshot >= 0),
+        min_stock_snapshot REAL NOT NULL DEFAULT 0 CHECK(min_stock_snapshot >= 0),
+        suggested_quantity REAL NOT NULL DEFAULT 0 CHECK(suggested_quantity >= 0),
+        is_weight_based_snapshot INTEGER NOT NULL DEFAULT 0 CHECK(is_weight_based_snapshot IN (0, 1)),
+        is_checked INTEGER NOT NULL DEFAULT 0 CHECK(is_checked IN (0, 1)),
+        checked_at TEXT,
+        note TEXT,
+        synced INTEGER NOT NULL DEFAULT 0
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_restock_lists_status ON restock_lists(status, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_restock_list_items_list ON restock_list_items(restock_list_id, is_checked ASC, id ASC);
+    `);
+
+    currentVersion = 11;
   }
 
   await db.execAsync(`PRAGMA user_version = ${currentVersion};`);
