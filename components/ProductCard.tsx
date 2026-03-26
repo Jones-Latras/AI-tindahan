@@ -1,11 +1,13 @@
 import { Feather } from "@expo/vector-icons";
-import { useEffect, useRef, useState, type ComponentProps } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Animated,
   Easing,
   Image,
+  Platform,
   Pressable,
   Text,
+  Vibration,
   View,
   type GestureResponderEvent,
 } from "react-native";
@@ -33,11 +35,11 @@ type ProductCardProps = {
   useRegularImageSizing?: boolean;
   useRegularTextSizing?: boolean;
   showInfoFlip?: boolean;
-  actionLabel?: string;
-  actionIconName?: ComponentProps<typeof Feather>["name"];
+  quantityBadgeCount?: number;
+  enablePrimaryTapFeedback?: boolean;
   cardPressEnabled?: boolean;
-  onActionPress?: () => void;
   showStockAndMargin?: boolean;
+  onLongPress?: () => void;
   onPress?: () => void;
 };
 
@@ -59,29 +61,25 @@ export function ProductCard({
   useRegularImageSizing = false,
   useRegularTextSizing = false,
   showInfoFlip = false,
-  actionLabel,
-  actionIconName,
+  quantityBadgeCount = 0,
+  enablePrimaryTapFeedback = false,
   cardPressEnabled = true,
-  onActionPress,
   showStockAndMargin = true,
+  onLongPress,
   onPress,
 }: ProductCardProps) {
   const { theme } = useAppTheme();
   const { t } = useAppLanguage();
-  const resolvedActionPress = onActionPress ?? onPress;
-  const resolvedActionLabel = actionLabel ?? "Add to cart";
-  const shouldRenderFrontAction = Boolean(actionLabel && resolvedActionPress);
-  const isOutOfStock = stock <= 0;
-  const isLowStock = !isOutOfStock && stock <= minStock;
   const [imageFailed, setImageFailed] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
   const flipAnimation = useRef(new Animated.Value(0)).current;
+  const pressScale = useRef(new Animated.Value(1)).current;
   const hasImage = Boolean(imageUri && !imageFailed);
   const usesRegularImageSizing = !compact || useRegularImageSizing;
   const usesRegularTextSizing = !compact || useRegularTextSizing;
   const faceGap = compact ? theme.spacing.sm : theme.spacing.md;
   const facePadding = compact ? theme.spacing.md : theme.spacing.lg;
-  const infoButtonSize = compact ? 32 : 36;
+  const infoButtonSize = compact ? 28 : 30;
   const frontImageHeight = showInfoFlip
     ? usesRegularImageSizing
       ? 138
@@ -89,13 +87,33 @@ export function ProductCard({
     : usesRegularImageSizing
       ? 116
       : 88;
-  const fallbackCardHeight = showInfoFlip ? (compact ? 336 : 384) : compact ? 304 : 336;
+  const namePriceBlockMinHeight = showInfoFlip
+    ? usesRegularTextSizing
+      ? compact
+        ? 82
+        : 84
+      : compact
+        ? 74
+        : 78
+    : usesRegularTextSizing
+      ? compact
+        ? 58
+        : 62
+      : compact
+        ? 54
+        : 58;
+  const fallbackCardHeight = showInfoFlip ? (compact ? 336 : 368) : compact ? 280 : 320;
+  const normalizedBadgeCount = Number.isFinite(quantityBadgeCount) ? Math.max(0, Math.trunc(quantityBadgeCount)) : 0;
+  const quantityBadgeLabel = normalizedBadgeCount > 99 ? "99+" : String(normalizedBadgeCount);
   const resolvedCategory = category || t("productCard.value.general");
   const resolvedPriceLabel = priceLabel ?? formatCurrencyFromCents(priceCents);
   const quantityLabel = (value: number) => (isWeightBased ? `${formatWeightKg(value)} kg` : `${value}`);
   const resolvedStockLabel = stockLabel ?? t("productCard.value.stockLeft", { count: quantityLabel(stock) });
   const resolvedMinStockLabel =
     minStockLabel ?? t("productCard.value.minStockTarget", { count: quantityLabel(minStock) });
+  const isOutOfStock = stock <= 0;
+  const isLowStock = !isOutOfStock && stock <= minStock;
+  const hasPrimaryAction = Boolean(onPress) && cardPressEnabled && !showDetails && !disabled;
   const imageOpacity = isOutOfStock ? 0.5 : 1;
   const priceTone = isOutOfStock ? theme.colors.textSoft : theme.colors.success;
   const warningBadge = {
@@ -139,6 +157,49 @@ export function ProductCard({
     }).start();
   }, [flipAnimation, showDetails]);
 
+  const handlePrimaryPressIn = () => {
+    if (!enablePrimaryTapFeedback || !hasPrimaryAction) {
+      return;
+    }
+
+    Animated.spring(pressScale, {
+      bounciness: 0,
+      speed: 36,
+      toValue: 0.975,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const handlePrimaryPressOut = () => {
+    if (!enablePrimaryTapFeedback) {
+      return;
+    }
+
+    Animated.spring(pressScale, {
+      bounciness: 10,
+      speed: 20,
+      toValue: 1,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const handlePrimaryPress = () => {
+    if (!hasPrimaryAction || !onPress) {
+      return;
+    }
+
+    if (enablePrimaryTapFeedback && Platform.OS !== "web") {
+      Vibration.vibrate(10);
+    }
+
+    onPress();
+  };
+
+  const handleToggleDetails = (event: GestureResponderEvent) => {
+    event.stopPropagation();
+    setShowDetails((current) => !current);
+  };
+
   const cardShellStyle = {
     backgroundColor: theme.colors.card,
     borderColor: theme.colors.border,
@@ -148,8 +209,10 @@ export function ProductCard({
     flexGrow: 0,
     flexShrink: 1,
     maxWidth: "47%" as const,
+    minHeight: fallbackCardHeight,
     minWidth: "47%" as const,
     overflow: "hidden" as const,
+    transform: [{ scale: pressScale }],
   };
 
   const frontRotation = flipAnimation.interpolate({
@@ -188,27 +251,11 @@ export function ProductCard({
     },
   ];
 
-  const handleToggleDetails = (event: GestureResponderEvent) => {
-    event.stopPropagation();
-    setShowDetails((current) => !current);
-  };
-
-  const handleActionPress = (event: GestureResponderEvent) => {
-    event.stopPropagation();
-
-    if (disabled || !resolvedActionPress) {
-      return;
-    }
-
-    resolvedActionPress();
-  };
-
   const renderInfoButton = (absolute = false) => (
     <Pressable
       accessibilityLabel={
         showDetails ? t("productCard.accessibility.hideDetails") : t("productCard.accessibility.showDetails")
       }
-      hitSlop={10}
       onPress={handleToggleDetails}
       style={({ pressed }) => ({
         alignItems: "center",
@@ -229,49 +276,9 @@ export function ProductCard({
         width: infoButtonSize,
       })}
     >
-      <Feather color={theme.colors.primary} name="info" size={compact ? 15 : 16} />
+      <Feather color={theme.colors.primary} name="info" size={compact ? 14 : 15} />
     </Pressable>
   );
-
-  const renderActionButton = () => {
-    return (
-      <Pressable
-        disabled={disabled || !resolvedActionPress}
-        onPress={handleActionPress}
-        style={({ pressed }) => ({
-          alignItems: "center",
-          alignSelf: "stretch",
-          backgroundColor: disabled ? theme.colors.surfaceMuted : theme.colors.primary,
-          borderRadius: theme.radius.pill,
-          flexDirection: "row",
-          gap: theme.spacing.xs,
-          justifyContent: "center",
-          opacity: pressed ? 0.88 : 1,
-          paddingHorizontal: compact ? 10 : 14,
-          paddingVertical: compact ? 7 : 9,
-        })}
-      >
-        <Feather
-          color={disabled ? theme.colors.textSoft : theme.colors.primaryText}
-          name={actionIconName ?? "shopping-cart"}
-          size={compact ? 13 : 14}
-        />
-        <Text
-          numberOfLines={1}
-          style={{
-            color: disabled ? theme.colors.textSoft : theme.colors.primaryText,
-            flexShrink: 1,
-            fontFamily: theme.typography.body,
-            fontSize: usesRegularTextSizing ? 12 : 11,
-            fontWeight: "700",
-            textAlign: "center",
-          }}
-        >
-          {disabled ? t("productCard.action.outOfStock") : resolvedActionLabel}
-        </Text>
-      </Pressable>
-    );
-  };
 
   const renderImageBlock = () => (
     <View
@@ -307,6 +314,7 @@ export function ProductCard({
           <Feather color={theme.colors.textSoft} name="package" size={compact ? 18 : 22} />
         </View>
       )}
+
       {stockStatus ? (
         <View
           style={{
@@ -331,6 +339,37 @@ export function ProductCard({
             }}
           >
             {stockStatus.label}
+          </Text>
+        </View>
+      ) : null}
+
+      {normalizedBadgeCount > 0 ? (
+        <View
+          style={{
+            alignItems: "center",
+            backgroundColor: theme.colors.primary,
+            borderColor: theme.colors.card,
+            borderRadius: theme.radius.pill,
+            borderWidth: 2,
+            height: compact ? 28 : 30,
+            justifyContent: "center",
+            minWidth: compact ? 28 : 30,
+            paddingHorizontal: normalizedBadgeCount > 9 ? 8 : 0,
+            position: "absolute",
+            right: compact ? 8 : 10,
+            top: compact ? 8 : 10,
+          }}
+        >
+          <Text
+            numberOfLines={1}
+            style={{
+              color: theme.colors.primaryText,
+              fontFamily: theme.typography.body,
+              fontSize: usesRegularTextSizing ? 12 : 11,
+              fontWeight: "700",
+            }}
+          >
+            {quantityBadgeLabel}
           </Text>
         </View>
       ) : null}
@@ -404,7 +443,12 @@ export function ProductCard({
           ) : null}
         </View>
 
-        <View style={{ gap: compact ? 6 : 8 }}>
+        <View
+          style={{
+            gap: compact ? 6 : 8,
+            minHeight: namePriceBlockMinHeight,
+          }}
+        >
           <Text
             ellipsizeMode="tail"
             numberOfLines={2}
@@ -419,8 +463,10 @@ export function ProductCard({
             {name}
           </Text>
           <Text
+            numberOfLines={1}
             style={{
               color: priceTone,
+              flexShrink: 0,
               fontFamily: showInfoFlip ? theme.typography.display : theme.typography.body,
               fontSize: showInfoFlip
                 ? usesRegularTextSizing
@@ -437,7 +483,7 @@ export function ProductCard({
         </View>
 
         {!showInfoFlip && showStockAndMargin ? (
-          <View style={{ gap: compact ? 8 : 10 }}>
+          <View style={{ gap: compact ? 8 : 10, marginTop: "auto" }}>
             <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
               <Text
                 style={{
@@ -482,48 +528,39 @@ export function ProductCard({
             </View>
           </View>
         ) : null}
-
-        {shouldRenderFrontAction ? <View style={{ marginTop: "auto", paddingTop: faceGap }}>{renderActionButton()}</View> : null}
       </View>
     </View>
   );
 
-  if (!showInfoFlip) {
-    if (!cardPressEnabled || !onPress) {
-      return (
-        <View
-          style={{
-            ...cardShellStyle,
-            minHeight: fallbackCardHeight,
-            padding: facePadding,
-          }}
-        >
-          {renderFrontContent()}
-        </View>
-      );
-    }
+  const renderPressableFace = () => (
+    <Pressable
+      disabled={!hasPrimaryAction}
+      onLongPress={onLongPress}
+      onPress={handlePrimaryPress}
+      onPressIn={handlePrimaryPressIn}
+      onPressOut={handlePrimaryPressOut}
+      style={({ pressed }) => ({
+        flex: 1,
+        opacity: pressed && !enablePrimaryTapFeedback ? 0.92 : 1,
+        padding: facePadding,
+      })}
+    >
+      {renderFrontContent()}
+    </Pressable>
+  );
 
+  if (!showInfoFlip) {
     return (
-      <Pressable
-        disabled={disabled}
-        onPress={onPress}
-        style={({ pressed }) => ({
-          ...cardShellStyle,
-          minHeight: fallbackCardHeight,
-          opacity: pressed ? 0.92 : 1,
-          padding: facePadding,
-        })}
-      >
-        {renderFrontContent()}
-      </Pressable>
+      <Animated.View style={cardShellStyle}>
+        {hasPrimaryAction ? renderPressableFace() : <View style={{ flex: 1, padding: facePadding }}>{renderFrontContent()}</View>}
+      </Animated.View>
     );
   }
 
   return (
-    <View
+    <Animated.View
       style={{
         ...cardShellStyle,
-        minHeight: fallbackCardHeight,
         position: "relative",
       }}
     >
@@ -536,28 +573,7 @@ export function ProductCard({
           transform: [{ perspective: 1200 }, { rotateY: frontRotation }],
         }}
       >
-        {cardPressEnabled && onPress ? (
-          <Pressable
-            disabled={disabled || showDetails}
-            onPress={onPress}
-            style={({ pressed }) => ({
-              flex: 1,
-              opacity: pressed ? 0.92 : 1,
-              padding: facePadding,
-            })}
-          >
-            {renderFrontContent()}
-          </Pressable>
-        ) : (
-          <View
-            style={{
-              flex: 1,
-              padding: facePadding,
-            }}
-          >
-            {renderFrontContent()}
-          </View>
-        )}
+        {hasPrimaryAction ? renderPressableFace() : <View style={{ flex: 1, padding: facePadding }}>{renderFrontContent()}</View>}
       </Animated.View>
 
       <Animated.View
@@ -630,13 +646,11 @@ export function ProductCard({
                 </View>
               ))}
             </View>
-
-            {resolvedActionPress ? <View style={{ marginTop: "auto", paddingTop: theme.spacing.sm }}>{renderActionButton()}</View> : null}
           </View>
         </View>
 
         {renderInfoButton(true)}
       </Animated.View>
-    </View>
+    </Animated.View>
   );
 }

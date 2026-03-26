@@ -156,6 +156,15 @@ export default function BentaScreen() {
   } as const;
 
   const productById = useMemo(() => new Map(products.map((product) => [product.id, product])), [products]);
+  const cartSelectionCountByProductId = useMemo(() => {
+    const selectionCount = new Map<number, number>();
+
+    for (const item of cartItems) {
+      selectionCount.set(item.id, item.isWeightBased ? 1 : Math.max(1, Math.trunc(item.quantity)));
+    }
+
+    return selectionCount;
+  }, [cartItems]);
   const reservedQuantityByProductId = useMemo(() => {
     const reservedQuantity = new Map<number, number>();
 
@@ -278,9 +287,15 @@ export default function BentaScreen() {
       : parseCurrencyToCents(tawadInput) || 0
     : 0;
   const finalTotalCents = Math.max(0, totalCents - discountCents);
+  const cartUnitCount = cartItems.reduce(
+    (runningTotal, item) => runningTotal + (item.isWeightBased ? 1 : Math.max(1, Math.trunc(item.quantity))),
+    0,
+  );
 
   const changeCents = paymentMethod === "cash" && hasValidCash ? cashPaidCents - finalTotalCents : 0;
-  const cartCountLabel = cartItems.length === 1 ? "1 item" : `${cartItems.length} items`;
+  const cartCountLabel =
+    cartUnitCount === 1 ? t("benta.cartCount.single") : t("benta.cartCount.plural", { count: cartUnitCount });
+  const cartSummaryLabel = `${cartCountLabel} - ${formatCurrencyFromCents(finalTotalCents)}`;
   const categoryCountLabel = categories.length === 1 ? "1 category" : `${categories.length} categories`;
   const selectedCustomerName = selectedCustomer?.name ?? "";
   const selectedCustomerBalanceText = selectedCustomer ? formatCurrencyFromCents(selectedCustomer.balanceCents) : "";
@@ -860,7 +875,7 @@ export default function BentaScreen() {
               <Pressable
                 onPress={() => setCartSheetVisible(true)}
                 style={({ pressed }) => ({
-                  backgroundColor: theme.colors.card,
+                  backgroundColor: cartItems.length > 0 ? theme.colors.primary : theme.colors.card,
                   borderColor: cartItems.length > 0 ? theme.colors.primary : theme.colors.border,
                   borderRadius: theme.radius.md,
                   borderWidth: 1,
@@ -877,7 +892,7 @@ export default function BentaScreen() {
                   <View
                     style={{
                       alignItems: "center",
-                      backgroundColor: cartItems.length > 0 ? theme.colors.primaryMuted : theme.colors.surfaceMuted,
+                      backgroundColor: cartItems.length > 0 ? "rgba(255, 255, 255, 0.14)" : theme.colors.surfaceMuted,
                       borderRadius: theme.radius.pill,
                       height: 42,
                       justifyContent: "center",
@@ -885,7 +900,7 @@ export default function BentaScreen() {
                     }}
                   >
                     <Feather
-                      color={cartItems.length > 0 ? theme.colors.primary : theme.colors.textSoft}
+                      color={cartItems.length > 0 ? theme.colors.primaryText : theme.colors.textSoft}
                       name="shopping-cart"
                       size={18}
                     />
@@ -893,29 +908,30 @@ export default function BentaScreen() {
                   <View style={{ flex: 1, gap: 2 }}>
                     <Text
                       style={{
-                        color: theme.colors.text,
+                        color: cartItems.length > 0 ? theme.colors.primaryText : theme.colors.text,
                         fontFamily: theme.typography.body,
                         fontSize: 14,
                         fontWeight: "700",
                       }}
                     >
-                      {cartItems.length > 0 ? "Cart ready" : "Cart is empty"}
+                      {cartItems.length > 0 ? cartSummaryLabel : t("benta.cartBar.emptyTitle")}
                     </Text>
                     <Text
                       style={{
-                        color: theme.colors.textMuted,
+                        color: cartItems.length > 0 ? theme.colors.primaryText : theme.colors.textMuted,
                         fontFamily: theme.typography.body,
                         fontSize: 12,
+                        opacity: cartItems.length > 0 ? 0.86 : 1,
                       }}
                     >
                       {cartItems.length > 0
-                        ? `${cartCountLabel} - ${formatCurrencyFromCents(finalTotalCents)}`
-                        : "Tap products now, then open cart anytime."}
+                        ? t("benta.cartBar.activeSubtitle")
+                        : t("benta.cartBar.emptySubtitle")}
                     </Text>
                   </View>
                   <View
                     style={{
-                      backgroundColor: theme.colors.primary,
+                      backgroundColor: cartItems.length > 0 ? theme.colors.primaryText : theme.colors.primary,
                       borderRadius: theme.radius.pill,
                       paddingHorizontal: theme.spacing.md,
                       paddingVertical: 10,
@@ -923,13 +939,13 @@ export default function BentaScreen() {
                   >
                     <Text
                       style={{
-                        color: theme.colors.primaryText,
+                        color: cartItems.length > 0 ? theme.colors.primary : theme.colors.primaryText,
                         fontFamily: theme.typography.body,
                         fontSize: 12,
                         fontWeight: "700",
                       }}
                     >
-                      View Cart
+                      {t("benta.cartBar.view")}
                     </Text>
                   </View>
                 </View>
@@ -1104,22 +1120,22 @@ export default function BentaScreen() {
 
                 return (
                   <ProductCard
-                    actionLabel={product.isWeightBased ? t("benta.cardAction.weighItem") : t("benta.cardAction.addToCart")}
                     barcode={product.barcode}
-                    cardPressEnabled={product.isWeightBased}
                     category={product.category}
                     compact
                     disabled={availableStock <= 0}
+                    enablePrimaryTapFeedback
                     imageUri={product.imageUri}
                     isWeightBased={product.isWeightBased}
                     key={product.id}
                     marginPercent={formatMarginPercent(computeProfitMargin(product.costPriceCents, product.priceCents))}
                     minStock={product.minStock}
                     name={product.name}
-                    onActionPress={() => handleAddToCart(product)}
-                    onPress={() => openQuickEditModal(product)}
+                    onLongPress={product.isWeightBased ? () => openQuickEditModal(product) : undefined}
+                    onPress={() => handleAddToCart(product)}
                     priceCents={product.priceCents}
                     priceLabel={formatProductPriceLabel(product)}
+                    quantityBadgeCount={cartSelectionCountByProductId.get(product.id) ?? 0}
                     showInfoFlip
                     stock={availableStock}
                     useRegularImageSizing

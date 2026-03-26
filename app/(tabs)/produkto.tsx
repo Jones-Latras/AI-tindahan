@@ -738,9 +738,6 @@ export default function ProduktoScreen() {
 
               return (
                 <ProductCard
-                  actionIconName="edit-2"
-                  actionLabel={t("produkto.cardAction.edit")}
-                  cardPressEnabled={false}
                   category={product.category}
                   imageUri={product.imageUri}
                   isWeightBased={product.isWeightBased}
@@ -748,7 +745,7 @@ export default function ProduktoScreen() {
                   marginPercent={formatMarginPercent(computeProfitMargin(product.costPriceCents, product.priceCents))}
                   minStock={product.minStock}
                   name={product.name}
-                  onActionPress={() => openEditModal(product)}
+                  onPress={() => openEditModal(product)}
                   priceCents={product.priceCents}
                   priceLabel={formatProductPriceLabel(product)}
                   showInfoFlip
