@@ -25,7 +25,7 @@ The goal is not just to add UI. The goal is to make these features reliable acro
 ## Progress Tracker
 
 - [x] Phase 1 core slice: payment-event audit trail for utang
-- [ ] Phase 2: Expenses tab and true net profit
+- [x] Phase 2: Expenses tab and true net profit
 - [ ] Phase 3: Restock shopping list
 - [ ] Phase 4: Tingi / linked inventory
 - [ ] Phase 5: Bottle deposit tracker
@@ -339,6 +339,18 @@ Update `utils/sync.ts` and Supabase schema to include:
 
 ## Phase 2: Expenses Tab and True Net Profit
 
+Current implementation progress:
+
+- [x] Added local SQLite `expenses` table and migration
+- [x] Added Supabase schema plus sync / restore support for expenses
+- [x] Added repository helpers for add / update / delete / list / summary / category breakdown
+- [x] Added shared expense types and net-profit metric fields
+- [x] Added a new `app/(tabs)/gastos.tsx` screen
+- [x] Replaced the bottom-tab `Settings` slot with the new `Gastos` tab
+- [x] Kept `Settings` reachable from the Home header instead of the bottom tab bar
+- [x] Updated Home analytics to show gross profit, expenses, and net profit
+- [x] Added expense context into Aling AI chat and daily brief generation
+
 ### Problem
 
 The app tracks:
@@ -510,10 +522,10 @@ Add sync + restore support for:
 
 ### Definition of done
 
-- Store owner can log expenses quickly.
-- Home metrics show net profit, not just gross margin.
-- AI brief uses expense data.
-- Expense records survive backup and restore.
+- [x] Store owner can log expenses quickly.
+- [x] Home metrics show net profit, not just gross margin.
+- [x] AI brief uses expense data.
+- [x] Expense records survive backup and restore.
 
 ---
 

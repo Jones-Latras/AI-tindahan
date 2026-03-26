@@ -208,6 +208,25 @@ export async function syncToCloud(db: SQLiteDatabase): Promise<string> {
     pushed += utangPayments.length;
   }
 
+  // Sync expenses
+  const expenses = await db.getAllAsync<Record<string, unknown>>(
+    `SELECT
+      id,
+      category,
+      amount_cents,
+      description,
+      expense_date,
+      created_at,
+      updated_at
+    FROM expenses
+    WHERE synced = 0`,
+  );
+  if (expenses.length > 0) {
+    await supabaseUpsert("expenses", expenses);
+    await db.runAsync("UPDATE expenses SET synced = 1 WHERE synced = 0");
+    pushed += expenses.length;
+  }
+
   const timestamp = new Date().toLocaleString("en-PH", { dateStyle: "medium", timeStyle: "short" });
   await Storage.setItem(LAST_SYNC_KEY, timestamp);
 
@@ -304,6 +323,33 @@ export async function restoreFromCloud(db: SQLiteDatabase): Promise<string> {
         row.target_margin_percent as number | null,
         row.computed_price_per_kg_cents as number | null,
         row.created_at as string,
+      );
+      restored++;
+    }
+
+    // Restore expenses
+    const expenses = await supabaseSelectAll("expenses");
+    for (const expense of expenses) {
+      const row = expense as Record<string, unknown>;
+      await db.runAsync(
+        `INSERT OR REPLACE INTO expenses (
+          id,
+          category,
+          amount_cents,
+          description,
+          expense_date,
+          created_at,
+          updated_at,
+          synced
+        )
+         VALUES (?, ?, ?, ?, ?, ?, ?, 1)`,
+        row.id as number,
+        row.category as string,
+        row.amount_cents as number,
+        (row.description as string | null) ?? null,
+        row.expense_date as string,
+        row.created_at as string,
+        row.updated_at as string,
       );
       restored++;
     }

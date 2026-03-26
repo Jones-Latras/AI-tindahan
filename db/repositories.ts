@@ -10,6 +10,9 @@ import { sanitizeOptionalText, sanitizePhone, sanitizeText } from "@/utils/valid
 import type {
   CustomerRiskProfile,
   CustomerSummary,
+  Expense,
+  ExpenseCategorySummary,
+  ExpenseSummary,
   HomeMetrics,
   PaymentBreakdown,
   PaymentMethod,
@@ -119,6 +122,28 @@ type PaymentBreakdownRow = {
   utang_cents: number | null;
 };
 
+type ExpenseRow = {
+  id: number;
+  category: string;
+  amount_cents: number;
+  description: string | null;
+  expense_date: string;
+  created_at: string;
+  updated_at: string;
+};
+
+type ExpenseSummaryTotalsRow = {
+  today_expense_cents: number | null;
+  week_expense_cents: number | null;
+  month_expense_cents: number | null;
+};
+
+type ExpenseCategorySummaryRow = {
+  category: string;
+  total_cents: number;
+  entry_count: number;
+};
+
 type DailySalesRow = {
   sale_date: string;
   total_cents: number;
@@ -185,6 +210,18 @@ function normalizePaymentBreakdown(row?: PaymentBreakdownRow | null): PaymentBre
     gcashCents: row?.gcash_cents ?? 0,
     mayaCents: row?.maya_cents ?? 0,
     utangCents: row?.utang_cents ?? 0,
+  };
+}
+
+function mapExpense(row: ExpenseRow): Expense {
+  return {
+    id: row.id,
+    category: row.category,
+    amountCents: row.amount_cents,
+    description: row.description,
+    expenseDate: row.expense_date,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
   };
 }
 
@@ -332,6 +369,13 @@ export type UtangInput = {
   customerId: number;
   amountCents: number;
   description: string;
+};
+
+export type ExpenseInput = {
+  category: string;
+  amountCents: number;
+  description?: string;
+  expenseDate?: string;
 };
 
 export type CheckoutInput = {
@@ -616,6 +660,211 @@ export async function saveStoreName(db: SQLiteDatabase, storeName: string) {
   return normalizedStoreName;
 }
 
+function sanitizeExpenseCategory(category: string) {
+  const normalized = sanitizeText(category, 40).toLowerCase().replace(/\s+/g, "_");
+
+  if (normalized.length < 2) {
+    throw new Error("Expense category must be at least 2 characters.");
+  }
+
+  return normalized;
+}
+
+function normalizeExpenseDate(expenseDate?: string) {
+  if (!expenseDate) {
+    return new Date().toISOString();
+  }
+
+  const parsed = new Date(expenseDate);
+
+  if (Number.isNaN(parsed.getTime())) {
+    throw new Error("Expense date is invalid.");
+  }
+
+  return parsed.toISOString();
+}
+
+export async function listExpenses(db: SQLiteDatabase): Promise<Expense[]> {
+  const rows = await db.getAllAsync<ExpenseRow>(
+    `
+      SELECT
+        id,
+        category,
+        amount_cents,
+        description,
+        expense_date,
+        created_at,
+        updated_at
+      FROM expenses
+      ORDER BY expense_date DESC, id DESC
+    `,
+  );
+
+  return rows.map(mapExpense);
+}
+
+export async function listExpenseCategories(db: SQLiteDatabase) {
+  const rows = await db.getAllAsync<{ category: string }>(
+    `
+      SELECT category
+      FROM expenses
+      GROUP BY category
+      ORDER BY MAX(expense_date) DESC, category ASC
+    `,
+  );
+
+  return rows.map((row) => row.category);
+}
+
+export async function addExpense(db: SQLiteDatabase, input: ExpenseInput) {
+  assertMoney(input.amountCents, "Expense amount");
+
+  if (input.amountCents <= 0) {
+    throw new Error("Expense amount must be greater than zero.");
+  }
+
+  const category = sanitizeExpenseCategory(input.category);
+  const description = sanitizeOptionalText(input.description ?? "", 140);
+  const expenseDate = normalizeExpenseDate(input.expenseDate);
+
+  const result = await db.runAsync(
+    `
+      INSERT INTO expenses (
+        category,
+        amount_cents,
+        description,
+        expense_date,
+        created_at,
+        updated_at,
+        synced
+      )
+      VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0)
+    `,
+    category,
+    input.amountCents,
+    description,
+    expenseDate,
+  );
+
+  return Number(result.lastInsertRowId);
+}
+
+export async function updateExpense(db: SQLiteDatabase, expenseId: number, input: ExpenseInput) {
+  assertMoney(input.amountCents, "Expense amount");
+
+  if (input.amountCents <= 0) {
+    throw new Error("Expense amount must be greater than zero.");
+  }
+
+  const category = sanitizeExpenseCategory(input.category);
+  const description = sanitizeOptionalText(input.description ?? "", 140);
+  const expenseDate = normalizeExpenseDate(input.expenseDate);
+
+  await db.runAsync(
+    `
+      UPDATE expenses
+      SET
+        category = ?,
+        amount_cents = ?,
+        description = ?,
+        expense_date = ?,
+        updated_at = CURRENT_TIMESTAMP,
+        synced = 0
+      WHERE id = ?
+    `,
+    category,
+    input.amountCents,
+    description,
+    expenseDate,
+    expenseId,
+  );
+}
+
+export async function deleteExpense(db: SQLiteDatabase, expenseId: number) {
+  await db.runAsync("DELETE FROM expenses WHERE id = ?", expenseId);
+}
+
+export async function getTodayExpenseTotal(db: SQLiteDatabase) {
+  const row = await db.getFirstAsync<{ today_expense_cents: number | null }>(
+    `
+      SELECT
+        COALESCE(SUM(amount_cents), 0) AS today_expense_cents
+      FROM expenses
+      WHERE DATE(expense_date, 'localtime') = DATE('now', 'localtime')
+    `,
+  );
+
+  return row?.today_expense_cents ?? 0;
+}
+
+export async function getExpenseBreakdownByCategory(
+  db: SQLiteDatabase,
+  days = 30,
+): Promise<ExpenseCategorySummary[]> {
+  const lookbackModifier = `-${Math.max(0, days - 1)} days`;
+  const rows = await db.getAllAsync<ExpenseCategorySummaryRow>(
+    `
+      SELECT
+        category,
+        COALESCE(SUM(amount_cents), 0) AS total_cents,
+        COUNT(*) AS entry_count
+      FROM expenses
+      WHERE DATE(expense_date, 'localtime') >= DATE('now', ?, 'localtime')
+      GROUP BY category
+      ORDER BY total_cents DESC, entry_count DESC, category ASC
+      LIMIT 5
+    `,
+    lookbackModifier,
+  );
+
+  return rows.map((row) => ({
+    category: row.category,
+    totalCents: row.total_cents,
+    count: row.entry_count,
+  }));
+}
+
+export async function getExpenseSummary(db: SQLiteDatabase): Promise<ExpenseSummary> {
+  const [totalsRow, topCategories, recentCategoryRows] = await Promise.all([
+    db.getFirstAsync<ExpenseSummaryTotalsRow>(
+      `
+        SELECT
+          COALESCE(SUM(CASE WHEN DATE(expense_date, 'localtime') = DATE('now', 'localtime') THEN amount_cents ELSE 0 END), 0) AS today_expense_cents,
+          COALESCE(SUM(CASE WHEN DATE(expense_date, 'localtime') >= DATE('now', '-6 days', 'localtime') THEN amount_cents ELSE 0 END), 0) AS week_expense_cents,
+          COALESCE(
+            SUM(
+              CASE
+                WHEN STRFTIME('%Y-%m', expense_date, 'localtime') = STRFTIME('%Y-%m', 'now', 'localtime')
+                  THEN amount_cents
+                ELSE 0
+              END
+            ),
+            0
+          ) AS month_expense_cents
+        FROM expenses
+      `,
+    ),
+    getExpenseBreakdownByCategory(db),
+    db.getAllAsync<{ category: string }>(
+      `
+        SELECT category
+        FROM expenses
+        GROUP BY category
+        ORDER BY MAX(expense_date) DESC, category ASC
+        LIMIT 6
+      `,
+    ),
+  ]);
+
+  return {
+    todayExpenseCents: totalsRow?.today_expense_cents ?? 0,
+    weekExpenseCents: totalsRow?.week_expense_cents ?? 0,
+    monthExpenseCents: totalsRow?.month_expense_cents ?? 0,
+    topCategories,
+    recentCategories: recentCategoryRows.map((row) => row.category),
+  };
+}
+
 export async function getHomeMetrics(db: SQLiteDatabase): Promise<HomeMetrics> {
   const salesRow = await db.getFirstAsync<{ today_sales_cents: number | null; transaction_count: number | null }>(
     `
@@ -627,13 +876,22 @@ export async function getHomeMetrics(db: SQLiteDatabase): Promise<HomeMetrics> {
     `,
   );
 
-  const profitRow = await db.getFirstAsync<{ today_profit_cents: number | null }>(
+  const profitRow = await db.getFirstAsync<{ today_gross_profit_cents: number | null }>(
     `
       SELECT
-        COALESCE(SUM(si.line_total_cents - si.line_cost_total_cents), 0) AS today_profit_cents
+        COALESCE(SUM(si.line_total_cents - si.line_cost_total_cents), 0) AS today_gross_profit_cents
       FROM sale_items si
       INNER JOIN sales s ON s.id = si.sale_id
       WHERE DATE(s.created_at, 'localtime') = DATE('now', 'localtime')
+    `,
+  );
+
+  const expenseRow = await db.getFirstAsync<{ today_expense_cents: number | null }>(
+    `
+      SELECT
+        COALESCE(SUM(amount_cents), 0) AS today_expense_cents
+      FROM expenses
+      WHERE DATE(expense_date, 'localtime') = DATE('now', 'localtime')
     `,
   );
 
@@ -697,10 +955,16 @@ export async function getHomeMetrics(db: SQLiteDatabase): Promise<HomeMetrics> {
     `,
   );
 
+  const todayGrossProfitCents = profitRow?.today_gross_profit_cents ?? 0;
+  const todayExpenseCents = expenseRow?.today_expense_cents ?? 0;
+
   return {
     todaySalesCents: salesRow?.today_sales_cents ?? 0,
     todayTransactions: salesRow?.transaction_count ?? 0,
-    todayProfitCents: profitRow?.today_profit_cents ?? 0,
+    todayProfitCents: todayGrossProfitCents,
+    todayGrossProfitCents,
+    todayExpenseCents,
+    todayNetProfitCents: todayGrossProfitCents - todayExpenseCents,
     totalUtangCents: utangRow?.total_utang_cents ?? 0,
     lowStockProducts: lowStockRows.map(mapProduct),
     delikadoCustomers: delikadoRows.map<RiskCustomerAlert>((row) => ({
@@ -823,9 +1087,11 @@ export async function getStoreAiContext(db: SQLiteDatabase): Promise<StoreAiCont
   const [
     homeMetrics,
     salesInsight,
+    expenseSummary,
     productVelocity,
     weeklyReports,
     products,
+    expenses,
     customers,
     ledgerRows,
     salesRows,
@@ -834,9 +1100,25 @@ export async function getStoreAiContext(db: SQLiteDatabase): Promise<StoreAiCont
   ] = await Promise.all([
     getHomeMetrics(db),
     getSalesInsightContext(db),
+    getExpenseSummary(db),
     getProductSalesVelocity(db),
     getWeeklyPaymentBreakdown(db),
     listProducts(db),
+    db.getAllAsync<ExpenseRow>(
+      `
+        SELECT
+          id,
+          category,
+          amount_cents,
+          description,
+          expense_date,
+          created_at,
+          updated_at
+        FROM expenses
+        ORDER BY expense_date DESC, id DESC
+        LIMIT 40
+      `,
+    ),
     listCustomersWithBalances(db),
     db.getAllAsync<LedgerRow>(
       `
@@ -923,6 +1205,9 @@ export async function getStoreAiContext(db: SQLiteDatabase): Promise<StoreAiCont
     todaySalesCents: homeMetrics.todaySalesCents,
     todayTransactions: homeMetrics.todayTransactions,
     todayProfitCents: homeMetrics.todayProfitCents,
+    todayGrossProfitCents: homeMetrics.todayGrossProfitCents,
+    todayExpenseCents: homeMetrics.todayExpenseCents,
+    todayNetProfitCents: homeMetrics.todayNetProfitCents,
     totalUtangCents: homeMetrics.totalUtangCents,
     lowStockProducts: homeMetrics.lowStockProducts,
     topProducts: salesInsight.topProducts,
@@ -930,6 +1215,7 @@ export async function getStoreAiContext(db: SQLiteDatabase): Promise<StoreAiCont
     paymentBreakdown: homeMetrics.paymentBreakdown,
     dailySales: salesInsight.dailySales,
     weeklyReports,
+    expenseSummary,
     productVelocity,
     products: products.map((product) => ({
       id: product.id,
@@ -963,6 +1249,7 @@ export async function getStoreAiContext(db: SQLiteDatabase): Promise<StoreAiCont
       ledgerEntries: ledgerByCustomer.get(customer.id) ?? [],
     })),
     sales,
+    expenses: expenses.map(mapExpense),
   };
 }
 

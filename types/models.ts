@@ -65,6 +65,9 @@ export interface HomeMetrics {
   todaySalesCents: number;
   todayTransactions: number;
   todayProfitCents: number;
+  todayGrossProfitCents: number;
+  todayExpenseCents: number;
+  todayNetProfitCents: number;
   totalUtangCents: number;
   lowStockProducts: Product[];
   delikadoCustomers: RiskCustomerAlert[];
@@ -115,6 +118,30 @@ export interface PaymentBreakdown {
   gcashCents: number;
   mayaCents: number;
   utangCents: number;
+}
+
+export interface Expense {
+  id: number;
+  category: string;
+  amountCents: number;
+  description: string | null;
+  expenseDate: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ExpenseCategorySummary {
+  category: string;
+  totalCents: number;
+  count: number;
+}
+
+export interface ExpenseSummary {
+  todayExpenseCents: number;
+  weekExpenseCents: number;
+  monthExpenseCents: number;
+  topCategories: ExpenseCategorySummary[];
+  recentCategories: string[];
 }
 
 export interface WeeklyPaymentReport {
@@ -226,6 +253,9 @@ export interface StoreAiContext {
   todaySalesCents: number;
   todayTransactions: number;
   todayProfitCents: number;
+  todayGrossProfitCents: number;
+  todayExpenseCents: number;
+  todayNetProfitCents: number;
   totalUtangCents: number;
   lowStockProducts: Product[];
   topProducts: TopProductSummary[];
@@ -233,10 +263,12 @@ export interface StoreAiContext {
   paymentBreakdown: PaymentBreakdown;
   dailySales: DailySalesPoint[];
   weeklyReports: WeeklyPaymentReport[];
+  expenseSummary: ExpenseSummary;
   productVelocity: ProductVelocity[];
   products: StoreAiProduct[];
   customers: StoreAiCustomer[];
   sales: StoreAiSale[];
+  expenses: Expense[];
 }
 
 export interface CustomerRiskProfile {

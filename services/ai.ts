@@ -3,6 +3,7 @@ import Storage from "expo-sqlite/kv-store";
 import type { SQLiteDatabase } from "expo-sqlite";
 
 import {
+  getExpenseSummary,
   getCustomerRiskProfile,
   getHomeMetrics,
   getProductSalesVelocity,
@@ -29,7 +30,7 @@ const GEMINI_MODELS = [
   "gemini-2.5-flash",
 ] as const;
 const REQUEST_TIMEOUT_MS = 18_000;
-const HOME_AI_BRIEF_KEY_PREFIX = "ai.home-brief";
+const HOME_AI_BRIEF_KEY_PREFIX = "ai.home-brief.v2";
 
 type GeminiContent = {
   role?: "user" | "model";
@@ -360,18 +361,23 @@ function buildStoreAiPromptContext(context: StoreAiContext) {
         todaySalesCents: context.todaySalesCents,
         todayTransactions: context.todayTransactions,
         todayProfitCents: context.todayProfitCents,
+        todayGrossProfitCents: context.todayGrossProfitCents,
+        todayExpenseCents: context.todayExpenseCents,
+        todayNetProfitCents: context.todayNetProfitCents,
         totalUtangCents: context.totalUtangCents,
         paymentBreakdown: context.paymentBreakdown,
         lowStockProducts: context.lowStockProducts,
         delikadoCustomers: context.delikadoCustomers,
         dailySales: context.dailySales,
         weeklyReports: context.weeklyReports,
+        expenseSummary: context.expenseSummary,
         topProducts: context.topProducts,
         productVelocity: context.productVelocity,
       }),
       catalog: convertMoneyFieldsForAi(context.products),
       customers: convertMoneyFieldsForAi(context.customers),
       sales: convertMoneyFieldsForAi(context.sales),
+      expenses: convertMoneyFieldsForAi(context.expenses),
     },
     null,
     2,
@@ -428,10 +434,50 @@ function buildFallbackRestockSuggestions(
   return [...atRiskSuggestions, ...lowStockSuggestions].slice(0, 5);
 }
 
+function humanizeExpenseCategory(category: string | undefined) {
+  if (!category) {
+    return "";
+  }
+
+  return category
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function buildFallbackExpenseInsight(
+  language: AppLanguage,
+  todayExpenseCents: number,
+  todayNetProfitCents: number,
+  topCategoryLabel?: string,
+) {
+  if (todayExpenseCents <= 0) {
+    return "";
+  }
+
+  const expenseAmount = formatCurrencyFromCents(todayExpenseCents);
+  const netProfitAmount = formatCurrencyFromCents(todayNetProfitCents);
+  const categorySuffix = topCategoryLabel ?? "";
+
+  if (language === "english") {
+    return todayNetProfitCents < 0
+      ? `Today's expenses are already at ${expenseAmount}, pushing net profit down to ${netProfitAmount}.${categorySuffix ? ` Biggest pressure: ${categorySuffix}.` : ""}`
+      : `Today's expenses are ${expenseAmount}, leaving net profit at ${netProfitAmount}.${categorySuffix ? ` Biggest pressure: ${categorySuffix}.` : ""}`;
+  }
+
+  return todayNetProfitCents < 0
+    ? `Umabot na sa ${expenseAmount} ang gastos ngayon kaya nasa ${netProfitAmount} ang net profit.${categorySuffix ? ` Pinakamalaking pressure: ${categorySuffix}.` : ""}`
+    : `Nasa ${expenseAmount} ang gastos ngayon kaya ${netProfitAmount} ang net profit.${categorySuffix ? ` Pinakamalaking pressure: ${categorySuffix}.` : ""}`;
+}
+
 function buildFallbackHomeAiBrief(
   language: AppLanguage,
   restockSuggestions: string[] = [],
   error?: unknown,
+  options?: {
+    todayExpenseCents?: number;
+    todayNetProfitCents?: number;
+    topExpenseCategory?: string;
+  },
 ): HomeAiBrief {
   const failure = error ? parseGeminiFailure(error) : null;
   let insight: string;
@@ -459,8 +505,15 @@ function buildFallbackHomeAiBrief(
         : "Unavailable si Aling AI ngayon. Gumagana pa rin ang core POS features, at puwede kang sumubok ulit mamaya.";
   }
 
+  const expenseInsight = buildFallbackExpenseInsight(
+    language,
+    options?.todayExpenseCents ?? 0,
+    options?.todayNetProfitCents ?? 0,
+    options?.topExpenseCategory,
+  );
+
   return {
-    insight,
+    insight: expenseInsight ? `${insight} ${expenseInsight}` : insight,
     restockSuggestions,
     generatedOn: new Date().toISOString(),
     source: "fallback",
@@ -541,10 +594,11 @@ export async function getOrCreateHomeAiBrief(db: SQLiteDatabase, language: AppLa
     }
   }
 
-  const [salesContext, velocity, homeMetrics] = await Promise.all([
+  const [salesContext, velocity, homeMetrics, expenseSummary] = await Promise.all([
     getSalesInsightContext(db),
     getProductSalesVelocity(db),
     getHomeMetrics(db),
+    getExpenseSummary(db),
   ]);
   const atRiskProducts = velocity
     .filter(
@@ -560,7 +614,11 @@ export async function getOrCreateHomeAiBrief(db: SQLiteDatabase, language: AppLa
   );
 
   if (!geminiReady) {
-    const fallback = buildFallbackHomeAiBrief(language, heuristicRestockSuggestions);
+    const fallback = buildFallbackHomeAiBrief(language, heuristicRestockSuggestions, undefined, {
+      todayExpenseCents: homeMetrics.todayExpenseCents,
+      todayNetProfitCents: homeMetrics.todayNetProfitCents,
+      topExpenseCategory: humanizeExpenseCategory(expenseSummary.topCategories[0]?.category),
+    });
     await Storage.setItem(cacheKey, JSON.stringify(fallback));
     return fallback;
   }
@@ -582,7 +640,17 @@ export async function getOrCreateHomeAiBrief(db: SQLiteDatabase, language: AppLa
                 "Create a daily store brief.",
                 `7-day total sales: ${formatCurrencyFromCents(salesContext.totalSalesCents)}`,
                 `7-day transaction count: ${salesContext.totalTransactions}`,
+                `Today's gross profit: ${formatCurrencyFromCents(homeMetrics.todayGrossProfitCents)}`,
+                `Today's expenses: ${formatCurrencyFromCents(homeMetrics.todayExpenseCents)}`,
+                `Today's net profit: ${formatCurrencyFromCents(homeMetrics.todayNetProfitCents)}`,
                 `Top products this week: ${salesContext.topProducts.map((product) => product.name).join(", ") || "None yet"}`,
+                `Top expense categories this month: ${
+                  expenseSummary.topCategories.length > 0
+                    ? expenseSummary.topCategories
+                        .map((entry) => `${humanizeExpenseCategory(entry.category)}=${formatCurrencyFromCents(entry.totalCents)}`)
+                        .join("; ")
+                    : "None"
+                }`,
                 `Daily sales trend: ${salesContext.dailySales
                   .map((day) => `${day.date}=${formatCurrencyFromCents(day.totalCents)} (${day.transactions} txns)`)
                   .join("; ") || "No sales yet"}`,
@@ -647,7 +715,11 @@ export async function getOrCreateHomeAiBrief(db: SQLiteDatabase, language: AppLa
     return finalizedBrief;
   } catch (error) {
     console.warn("Gemini home brief failed:", getGeminiErrorMessage(error));
-    const fallback = buildFallbackHomeAiBrief(language, heuristicRestockSuggestions, error);
+    const fallback = buildFallbackHomeAiBrief(language, heuristicRestockSuggestions, error, {
+      todayExpenseCents: homeMetrics.todayExpenseCents,
+      todayNetProfitCents: homeMetrics.todayNetProfitCents,
+      topExpenseCategory: humanizeExpenseCategory(expenseSummary.topCategories[0]?.category),
+    });
     return fallback;
   }
 }

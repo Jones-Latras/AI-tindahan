@@ -1,7 +1,7 @@
 import type { SQLiteDatabase } from "expo-sqlite";
 
 export const DATABASE_NAME = "tindahan-ai.db";
-export const DATABASE_VERSION = 9;
+export const DATABASE_VERSION = 10;
 
 export async function migrateDbIfNeeded(db: SQLiteDatabase) {
   await db.execAsync("PRAGMA journal_mode = WAL;");
@@ -100,6 +100,17 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
         synced INTEGER NOT NULL DEFAULT 0
       );
 
+      CREATE TABLE IF NOT EXISTS expenses (
+        id INTEGER PRIMARY KEY NOT NULL,
+        category TEXT NOT NULL,
+        amount_cents INTEGER NOT NULL CHECK(amount_cents > 0),
+        description TEXT,
+        expense_date TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        synced INTEGER NOT NULL DEFAULT 0
+      );
+
       CREATE TABLE IF NOT EXISTS app_settings (
         key TEXT PRIMARY KEY NOT NULL,
         value TEXT NOT NULL,
@@ -116,10 +127,12 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
       CREATE INDEX IF NOT EXISTS idx_utang_customer ON utang(customer_id, created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_utang_payments_utang ON utang_payments(utang_id, created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_utang_payments_customer ON utang_payments(customer_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_expenses_date ON expenses(expense_date DESC);
+      CREATE INDEX IF NOT EXISTS idx_expenses_category ON expenses(category, expense_date DESC);
       CREATE INDEX IF NOT EXISTS idx_app_settings_updated_at ON app_settings(updated_at DESC);
     `);
 
-    currentVersion = 9;
+    currentVersion = 10;
   }
 
   if (currentVersion === 1) {
@@ -314,6 +327,26 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
     `);
 
     currentVersion = 9;
+  }
+
+  if (currentVersion < 10) {
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS expenses (
+        id INTEGER PRIMARY KEY NOT NULL,
+        category TEXT NOT NULL,
+        amount_cents INTEGER NOT NULL CHECK(amount_cents > 0),
+        description TEXT,
+        expense_date TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        synced INTEGER NOT NULL DEFAULT 0
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_expenses_date ON expenses(expense_date DESC);
+      CREATE INDEX IF NOT EXISTS idx_expenses_category ON expenses(category, expense_date DESC);
+    `);
+
+    currentVersion = 10;
   }
 
   await db.execAsync(`PRAGMA user_version = ${currentVersion};`);

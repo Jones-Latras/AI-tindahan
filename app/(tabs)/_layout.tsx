@@ -98,8 +98,16 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="gastos"
+        options={{
+          title: t("tabs.gastos"),
+          tabBarIcon: ({ color, size }) => <Feather color={color} name="minus-circle" size={size} />,
+        }}
+      />
+      <Tabs.Screen
         name="settings"
         options={{
+          href: null,
           title: t("tabs.settings"),
           tabBarIcon: ({ color, size }) => <Feather color={color} name="settings" size={size} />,
         }}

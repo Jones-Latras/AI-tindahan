@@ -97,6 +97,16 @@ CREATE TABLE IF NOT EXISTS utang_payments (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS expenses (
+  id BIGINT PRIMARY KEY,
+  category TEXT NOT NULL,
+  amount_cents INTEGER NOT NULL,
+  description TEXT,
+  expense_date TIMESTAMPTZ NOT NULL DEFAULT now(),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS app_settings (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL,
@@ -110,6 +120,7 @@ ALTER TABLE sales ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sale_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE utang ENABLE ROW LEVEL SECURITY;
 ALTER TABLE utang_payments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE expenses ENABLE ROW LEVEL SECURITY;
 ALTER TABLE app_settings ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Allow all" ON products;
@@ -118,6 +129,7 @@ DROP POLICY IF EXISTS "Allow all" ON sales;
 DROP POLICY IF EXISTS "Allow all" ON sale_items;
 DROP POLICY IF EXISTS "Allow all" ON utang;
 DROP POLICY IF EXISTS "Allow all" ON utang_payments;
+DROP POLICY IF EXISTS "Allow all" ON expenses;
 DROP POLICY IF EXISTS "Allow all" ON app_settings;
 
 CREATE POLICY "Allow all" ON products FOR ALL USING (true) WITH CHECK (true);
@@ -126,6 +138,7 @@ CREATE POLICY "Allow all" ON sales FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all" ON sale_items FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all" ON utang FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all" ON utang_payments FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all" ON expenses FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all" ON app_settings FOR ALL USING (true) WITH CHECK (true);
 
 -- Public bucket for compressed product photos stored during cloud backup.

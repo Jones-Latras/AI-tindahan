@@ -15,7 +15,7 @@ type ScreenProps = {
   contentContainerStyle?: StyleProp<ViewStyle>;
 };
 
-const TAB_ROUTES = ["/", "/produkto", "/benta", "/palista", "/settings"] as const;
+const TAB_ROUTES = ["/", "/produkto", "/benta", "/palista", "/gastos"] as const;
 const HORIZONTAL_SWIPE_DISTANCE = 72;
 const HORIZONTAL_SWIPE_RATIO = 1.15;
 const HORIZONTAL_SWIPE_TRIGGER = 18;

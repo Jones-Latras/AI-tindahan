@@ -2,7 +2,7 @@ import { Feather } from "@expo/vector-icons";
 import Constants, { ExecutionEnvironment } from "expo-constants";
 import * as MediaLibrary from "expo-media-library";
 import * as Sharing from "expo-sharing";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { useSQLiteContext } from "expo-sqlite";
 import Storage from "expo-sqlite/kv-store";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -20,9 +20,11 @@ import { Screen } from "@/components/Screen";
 import { StatCard } from "@/components/StatCard";
 import { StatusBadge } from "@/components/StatusBadge";
 import { SurfaceCard } from "@/components/SurfaceCard";
+import type { TranslationKey } from "@/constants/translations";
 import { useAppLanguage } from "@/contexts/LanguageContext";
 import { useAppTheme } from "@/contexts/ThemeContext";
 import {
+  getExpenseSummary,
   getHomeMetrics,
   getProductSalesVelocity,
   getStoreName,
@@ -31,7 +33,15 @@ import {
   saveStoreName,
 } from "@/db/repositories";
 import { chatWithAlingAi, getOrCreateHomeAiBrief, isGeminiReady } from "@/services/ai";
-import type { ChatMessage, HomeAiBrief, HomeMetrics, ProductVelocity, StoreAiSale, WeeklyPaymentReport } from "@/types/models";
+import type {
+  ChatMessage,
+  ExpenseSummary,
+  HomeAiBrief,
+  HomeMetrics,
+  ProductVelocity,
+  StoreAiSale,
+  WeeklyPaymentReport,
+} from "@/types/models";
 import { formatCurrencyFromCents } from "@/utils/money";
 import { formatWeightKg } from "@/utils/pricing";
 
@@ -53,9 +63,34 @@ type HistorySaleMatch = {
 };
 
 const STORE_NAME_KEY = "tindahan.store-name";
+const EXPENSE_CATEGORY_TRANSLATION_KEYS: Partial<Record<string, TranslationKey>> = {
+  electricity: "gastos.category.electricity",
+  ice: "gastos.category.ice",
+  other: "gastos.category.other",
+  pamasahe: "gastos.category.pamasahe",
+  plastic_bags: "gastos.category.plastic_bags",
+  rent: "gastos.category.rent",
+  restock_transport: "gastos.category.restock_transport",
+  supplies: "gastos.category.supplies",
+};
 
 function normalizeSearchValue(value: string) {
   return value.trim().toLowerCase();
+}
+
+function formatExpenseCategoryLabel(
+  category: string,
+  t: (key: TranslationKey, params?: Record<string, number | string>) => string,
+) {
+  const translationKey = EXPENSE_CATEGORY_TRANSLATION_KEYS[category];
+
+  if (translationKey) {
+    return t(translationKey);
+  }
+
+  return category
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 function getSaleItemQuantity(sale: StoreAiSale) {
@@ -199,8 +234,10 @@ export default function HomeScreen() {
   const db = useSQLiteContext();
   const { theme } = useAppTheme();
   const { language, t } = useAppLanguage();
+  const router = useRouter();
   const geminiReady = isGeminiReady();
   const [metrics, setMetrics] = useState<HomeMetrics | null>(null);
+  const [expenseSummary, setExpenseSummary] = useState<ExpenseSummary | null>(null);
   const [brief, setBrief] = useState<HomeAiBrief | null>(null);
   const [velocity, setVelocity] = useState<ProductVelocity[]>([]);
   const [weeklyReports, setWeeklyReports] = useState<WeeklyPaymentReport[]>([]);
@@ -317,13 +354,15 @@ export default function HomeScreen() {
     }
 
     try {
-      const [nextMetrics, nextBrief, nextVelocity, nextWeekly] = await Promise.all([
+      const [nextMetrics, nextExpenseSummary, nextBrief, nextVelocity, nextWeekly] = await Promise.all([
         getHomeMetrics(db),
+        getExpenseSummary(db),
         getOrCreateHomeAiBrief(db, language),
         getProductSalesVelocity(db),
         getWeeklyPaymentBreakdown(db),
       ]);
       setMetrics(nextMetrics);
+      setExpenseSummary(nextExpenseSummary);
       setBrief(nextBrief);
       setVelocity(nextVelocity.filter((item) => item.unitsPerDay > 0 && (item.daysUntilOutOfStock ?? Infinity) <= 7).slice(0, 5));
       setWeeklyReports(nextWeekly);
@@ -519,25 +558,37 @@ export default function HomeScreen() {
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
           <StatCard
             icon="bar-chart-2"
-            label={language === "english" ? "Sales Today" : "Kita Today"}
+            label={t("home.analytics.salesToday")}
             tone="primary"
             value={formatCurrencyFromCents(metrics.todaySalesCents)}
           />
           <StatCard
             icon="layers"
-            label="Transactions"
+            label={t("home.analytics.transactions")}
             tone="accent"
             value={String(metrics.todayTransactions)}
           />
           <StatCard
             icon="trending-up"
-            label={language === "english" ? "Profit Today" : "Profit Today"}
+            label={t("home.analytics.grossProfit")}
             tone="primary"
-            value={formatCurrencyFromCents(metrics.todayProfitCents)}
+            value={formatCurrencyFromCents(metrics.todayGrossProfitCents)}
+          />
+          <StatCard
+            icon="minus-circle"
+            label={t("home.analytics.expenses")}
+            tone="warning"
+            value={formatCurrencyFromCents(metrics.todayExpenseCents)}
+          />
+          <StatCard
+            icon="dollar-sign"
+            label={t("home.analytics.netProfit")}
+            tone={metrics.todayNetProfitCents >= 0 ? "accent" : "warning"}
+            value={formatCurrencyFromCents(metrics.todayNetProfitCents)}
           />
           <StatCard
             icon="alert-circle"
-            label={language === "english" ? "Many Debts" : "Maraming Utang"}
+            label={t("home.analytics.debts")}
             tone="warning"
             value={formatCurrencyFromCents(metrics.totalUtangCents)}
           />
@@ -572,6 +623,67 @@ export default function HomeScreen() {
             <StatusBadge label={`Maya ${formatCurrencyFromCents(metrics.paymentBreakdown.mayaCents)}`} tone="primary" />
             <StatusBadge label={`Utang ${formatCurrencyFromCents(metrics.paymentBreakdown.utangCents)}`} tone="warning" />
           </View>
+        </SurfaceCard>
+
+        <SurfaceCard style={compactCardStyle}>
+          <View style={{ gap: 4 }}>
+            <Text
+              style={{
+                color: theme.colors.text,
+                fontFamily: theme.typography.display,
+                fontSize: 24,
+                fontWeight: "700",
+              }}
+            >
+              {t("home.expenses.title")}
+            </Text>
+            <Text
+              style={{
+                color: theme.colors.textMuted,
+                fontFamily: theme.typography.body,
+                fontSize: 14,
+              }}
+            >
+              {t("home.expenses.subtitle")}
+            </Text>
+          </View>
+
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
+            <StatusBadge
+              label={`${t("gastos.summary.today")} ${formatCurrencyFromCents(expenseSummary?.todayExpenseCents ?? 0)}`}
+              tone="warning"
+            />
+            <StatusBadge
+              label={`${t("gastos.summary.week")} ${formatCurrencyFromCents(expenseSummary?.weekExpenseCents ?? 0)}`}
+              tone="warning"
+            />
+            <StatusBadge
+              label={`${t("gastos.summary.month")} ${formatCurrencyFromCents(expenseSummary?.monthExpenseCents ?? 0)}`}
+              tone="warning"
+            />
+          </View>
+
+          {expenseSummary && expenseSummary.topCategories.length > 0 ? (
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
+              {expenseSummary.topCategories.map((entry) => (
+                <StatusBadge
+                  key={entry.category}
+                  label={`${formatExpenseCategoryLabel(entry.category, t)} ${formatCurrencyFromCents(entry.totalCents)}`}
+                  tone="neutral"
+                />
+              ))}
+            </View>
+          ) : (
+            <Text
+              style={{
+                color: theme.colors.textMuted,
+                fontFamily: theme.typography.body,
+                fontSize: 14,
+              }}
+            >
+              {t("home.expenses.empty")}
+            </Text>
+          )}
         </SurfaceCard>
 
         <SurfaceCard style={compactCardStyle}>
@@ -1184,6 +1296,26 @@ export default function HomeScreen() {
             >
               {t("home.aiButton")}
             </Text>
+          </Pressable>
+        }
+        rightSlot={
+          <Pressable
+            accessibilityLabel={t("home.openSettings")}
+            hitSlop={6}
+            onPress={() => router.push("/settings")}
+            style={({ pressed }) => ({
+              alignItems: "center",
+              backgroundColor: theme.colors.surfaceMuted,
+              borderColor: theme.colors.border,
+              borderRadius: theme.radius.pill,
+              borderWidth: 1,
+              height: 38,
+              justifyContent: "center",
+              opacity: pressed ? 0.9 : 1,
+              width: 38,
+            })}
+          >
+            <Feather color={theme.colors.text} name="settings" size={16} />
           </Pressable>
         }
         title={storeName || "TindaHan AI"}
