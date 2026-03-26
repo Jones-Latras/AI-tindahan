@@ -297,6 +297,8 @@ export default function BentaScreen() {
   const requiresCustomer = paymentMethod === "utang";
   const isCheckoutReady =
     cartItems.length > 0 && isEnoughCash && (!requiresCustomer || Boolean(selectedCustomer));
+  const floatingCartBottomOffset = theme.spacing.xl + theme.spacing.xs;
+  const screenBottomPadding = floatingCartBottomOffset + (hasActiveCart ? 80 : 58);
 
   const triggerCartPulse = useCallback(() => {
     cartPulseScale.stopAnimation();
@@ -703,7 +705,7 @@ export default function BentaScreen() {
       <Screen
         contentContainerStyle={{
           gap: theme.spacing.md,
-          paddingBottom: hasActiveCart ? 96 : 76,
+          paddingBottom: screenBottomPadding,
           paddingTop: theme.spacing.md,
         }}
         overlay={
@@ -711,7 +713,7 @@ export default function BentaScreen() {
             <Animated.View
               pointerEvents={hasActiveCart ? "none" : "auto"}
               style={{
-                bottom: theme.spacing.sm,
+                bottom: floatingCartBottomOffset,
                 opacity: cartActiveProgress.interpolate({
                   inputRange: [0, 1],
                   outputRange: [1, 0],
@@ -761,7 +763,7 @@ export default function BentaScreen() {
             <Animated.View
               pointerEvents={hasActiveCart ? "auto" : "none"}
               style={{
-                bottom: theme.spacing.sm,
+                bottom: floatingCartBottomOffset,
                 left: theme.spacing.lg,
                 opacity: cartActiveProgress,
                 position: "absolute",
