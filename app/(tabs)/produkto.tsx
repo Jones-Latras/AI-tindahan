@@ -4,7 +4,7 @@ import { useFocusEffect } from "expo-router";
 import { useSQLiteContext } from "expo-sqlite";
 import Storage from "expo-sqlite/kv-store";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Alert, Image, Pressable, Text, View } from "react-native";
+import { Alert, Image, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 
 import { ActionButton } from "@/components/ActionButton";
 import { EmptyState } from "@/components/EmptyState";
@@ -183,6 +183,10 @@ export default function ProduktoScreen() {
   const [mediaPermission, requestMediaPermission] = ImagePicker.useMediaLibraryPermissions();
   const [cameraPermission, requestCameraPermission] = ImagePicker.useCameraPermissions();
   const removeCartItem = useCartStore((state) => state.removeItem);
+  const compactCatalogControlsStyle = {
+    gap: theme.spacing.sm,
+    padding: theme.spacing.sm,
+  } as const;
   const pricingPreview = useMemo<ProductFormPreview>(() => {
     const name = form.name.trim();
 
@@ -564,22 +568,114 @@ export default function ProduktoScreen() {
 
   return (
     <Screen title={t("produkto.title")}>
-      <SurfaceCard style={{ gap: theme.spacing.md }}>
-        <InputField
-          label={t("produkto.searchLabel")}
-          onChangeText={setSearchTerm}
-          placeholder={t("produkto.searchPlaceholder")}
-          value={searchTerm}
-        />
-        <View style={{ gap: theme.spacing.sm }}>
-          <View
+      <SurfaceCard style={compactCatalogControlsStyle}>
+        <View
+          style={{
+            alignItems: "center",
+            backgroundColor: theme.colors.surface,
+            borderColor: theme.colors.border,
+            borderRadius: theme.radius.sm,
+            borderWidth: 1,
+            flexDirection: "row",
+            minHeight: 52,
+            paddingHorizontal: theme.spacing.md,
+          }}
+        >
+          <TextInput
+            onChangeText={setSearchTerm}
+            placeholder={t("produkto.searchPlaceholder")}
+            placeholderTextColor={theme.colors.textSoft}
+            style={{
+              color: theme.colors.text,
+              flex: 1,
+              fontFamily: theme.typography.body,
+              fontSize: 15,
+              minHeight: 50,
+            }}
+            value={searchTerm}
+          />
+        </View>
+        <ScrollView
+          horizontal
+          keyboardShouldPersistTaps="handled"
+          nestedScrollEnabled
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{
+            alignItems: "center",
+            gap: theme.spacing.sm,
+            paddingRight: theme.spacing.sm,
+          }}
+        >
+          <Pressable
+            onPress={() => openCategoryModal("catalog")}
+            style={({ pressed }) => ({
+              alignItems: "center",
+              backgroundColor: pressed ? theme.colors.primaryMuted : theme.colors.surface,
+              borderColor: theme.colors.primary,
+              borderRadius: theme.radius.pill,
+              borderWidth: 1,
+              flexDirection: "row",
+              gap: theme.spacing.xs,
+              opacity: pressed ? 0.92 : 1,
+              paddingHorizontal: theme.spacing.md,
+              paddingVertical: 10,
+            })}
+          >
+            <Feather color={theme.colors.primary} name="plus" size={14} />
+            <Text
+              style={{
+                color: theme.colors.primary,
+                fontFamily: theme.typography.body,
+                fontSize: 12,
+                fontWeight: "700",
+              }}
+            >
+              {t("produkto.newCategoryChip")}
+            </Text>
+          </Pressable>
+          {[
+            { label: t("produkto.categoryAll"), value: null as string | null },
+            ...categories.map((category) => ({ label: category, value: category })),
+          ].map((option) => {
+            const active = selectedCategory === option.value;
+
+            return (
+              <Pressable
+                key={`compact-${option.label}`}
+                onPress={() => setSelectedCategory(option.value)}
+                style={({ pressed }) => ({
+                  backgroundColor: active ? theme.colors.primary : theme.colors.surface,
+                  borderColor: active ? theme.colors.primary : theme.colors.border,
+                  borderRadius: theme.radius.pill,
+                  borderWidth: 1,
+                  opacity: pressed ? 0.9 : 1,
+                  paddingHorizontal: theme.spacing.md,
+                  paddingVertical: 10,
+                })}
+              >
+                <Text
+                  style={{
+                    color: active ? theme.colors.primaryText : theme.colors.text,
+                    fontFamily: theme.typography.body,
+                    fontSize: 12,
+                    fontWeight: "700",
+                  }}
+                >
+                  {option.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+          {false ? (
+            <>
+            <View
             style={{
               alignItems: "center",
               flexDirection: "row",
               gap: theme.spacing.sm,
               justifyContent: "space-between",
             }}
-          >
+            >
             <View style={{ flex: 1, gap: 2 }}>
               <Text
                 style={{
@@ -710,7 +806,9 @@ export default function ProduktoScreen() {
               })}
             </View>
           ) : null}
-        </View>
+            </>
+          ) : null}
+        </ScrollView>
         <ActionButton
           icon={<Feather color={theme.colors.primaryText} name="plus" size={16} />}
           label={t("produkto.addProductButton")}
