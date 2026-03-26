@@ -112,79 +112,50 @@ function createReceiptFileName(storeName: string, saleId: number) {
 
 type HomeShortcutCardProps = {
   icon: keyof typeof Feather.glyphMap;
+  label: string;
   onPress: () => void;
-  subtitle: string;
-  title: string;
-  tone: "primary" | "accent" | "warning" | "danger" | "neutral";
 };
 
-function HomeShortcutCard({ icon, onPress, subtitle, title, tone }: HomeShortcutCardProps) {
+function HomeShortcutCard({ icon, label, onPress }: HomeShortcutCardProps) {
   const { theme } = useAppTheme();
-
-  const palette =
-    tone === "accent"
-      ? { backgroundColor: theme.colors.accentMuted, color: theme.colors.accent }
-      : tone === "warning"
-        ? { backgroundColor: theme.colors.warningMuted, color: theme.colors.warning }
-        : tone === "danger"
-          ? { backgroundColor: theme.colors.dangerMuted, color: theme.colors.danger }
-          : tone === "neutral"
-            ? { backgroundColor: theme.colors.surfaceMuted, color: theme.colors.textMuted }
-            : { backgroundColor: theme.colors.primaryMuted, color: theme.colors.primary };
 
   return (
     <Pressable
       onPress={onPress}
       style={({ pressed }) => ({
-        backgroundColor: theme.colors.surface,
-        borderColor: theme.colors.border,
-        borderRadius: theme.radius.md,
-        borderWidth: 1,
-        flex: 1,
-        gap: theme.spacing.md,
-        minWidth: "47%",
-        opacity: pressed ? 0.9 : 1,
-        padding: theme.spacing.md,
+        alignItems: "center",
+        flexBasis: "23%",
+        gap: theme.spacing.sm,
+        maxWidth: "23.5%",
+        opacity: pressed ? 0.82 : 1,
+        paddingVertical: theme.spacing.xs,
       })}
     >
-      <View style={{ alignItems: "center", flexDirection: "row", justifyContent: "space-between" }}>
-        <View
-          style={{
-            alignItems: "center",
-            backgroundColor: palette.backgroundColor,
-            borderRadius: theme.radius.pill,
-            height: 42,
-            justifyContent: "center",
-            width: 42,
-          }}
-        >
-          <Feather color={palette.color} name={icon} size={18} />
-        </View>
-        <Feather color={theme.colors.textSoft} name="chevron-right" size={18} />
+      <View
+        style={{
+          alignItems: "center",
+          backgroundColor: theme.colors.primaryMuted,
+          borderRadius: theme.radius.pill,
+          height: 52,
+          justifyContent: "center",
+          width: 52,
+        }}
+      >
+        <Feather color={theme.colors.primary} name={icon} size={24} />
       </View>
-
-      <View style={{ gap: 6 }}>
-        <Text
-          style={{
-            color: theme.colors.text,
-            fontFamily: theme.typography.display,
-            fontSize: 20,
-            fontWeight: "700",
-          }}
-        >
-          {title}
-        </Text>
-        <Text
-          style={{
-            color: theme.colors.textMuted,
-            fontFamily: theme.typography.body,
-            fontSize: 13,
-            lineHeight: 19,
-          }}
-        >
-          {subtitle}
-        </Text>
-      </View>
+      <Text
+        numberOfLines={2}
+        style={{
+          color: theme.colors.text,
+          fontFamily: theme.typography.body,
+          fontSize: 12,
+          fontWeight: "700",
+          lineHeight: 16,
+          textAlign: "center",
+        }}
+      >
+        {label}
+      </Text>
     </Pressable>
   );
 }
@@ -258,35 +229,30 @@ export default function HomeScreen() {
       key: HomePanel;
       subtitle: string;
       title: string;
-      tone: HomeShortcutCardProps["tone"];
     }> = [
         {
           icon: "bar-chart-2",
           key: "analytics",
           subtitle: t("home.shortcuts.analytics.subtitle"),
           title: t("home.shortcuts.analytics.title"),
-          tone: "primary",
         },
         {
           icon: "package",
           key: "inventory",
           subtitle: t("home.shortcuts.inventory.subtitle"),
           title: t("home.shortcuts.inventory.title"),
-          tone: "warning",
         },
         {
           icon: "users",
           key: "credit",
           subtitle: t("home.shortcuts.credit.subtitle"),
           title: t("home.shortcuts.credit.title"),
-          tone: "danger",
         },
         {
           icon: "file-text",
           key: "history",
           subtitle: t("home.shortcuts.history.subtitle"),
           title: t("home.shortcuts.history.title"),
-          tone: "accent",
         },
       ];
 
@@ -1525,37 +1491,20 @@ export default function HomeScreen() {
           </SurfaceCard>
         ) : metrics ? (
           <SurfaceCard style={compactCardStyle}>
-            <View style={{ gap: 4 }}>
-              <Text
-                style={{
-                  color: theme.colors.text,
-                  fontFamily: theme.typography.display,
-                  fontSize: 24,
-                  fontWeight: "700",
-                }}
-              >
-                {t("home.shortcuts.title")}
-              </Text>
-              <Text
-                style={{
-                  color: theme.colors.textMuted,
-                  fontFamily: theme.typography.body,
-                  fontSize: 14,
-                }}
-              >
-                {t("home.shortcuts.subtitle")}
-              </Text>
-            </View>
-
-            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
+            <View
+              style={{
+                flexDirection: "row",
+                flexWrap: "wrap",
+                justifyContent: "space-between",
+                rowGap: theme.spacing.lg,
+              }}
+            >
               {shortcutItems.map((item) => (
                 <HomeShortcutCard
                   icon={item.icon}
                   key={item.key}
+                  label={item.title}
                   onPress={() => setActivePanel(item.key)}
-                  subtitle={item.subtitle}
-                  title={item.title}
-                  tone={item.tone}
                 />
               ))}
             </View>
