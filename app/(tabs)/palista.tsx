@@ -32,7 +32,7 @@ import {
 } from "@/db/repositories";
 import { refreshAllCustomerTrustScores, refreshCustomerTrustScore } from "@/services/ai";
 import type { CustomerSummary, UtangLedgerEntry } from "@/types/models";
-import { formatDateLabel, getDaysBetween } from "@/utils/date";
+import { formatDateLabel, formatDateTimeLabel, getDaysBetween } from "@/utils/date";
 import { formatCurrencyFromCents, parseCurrencyToCents } from "@/utils/money";
 
 type CustomerFormState = {
@@ -86,7 +86,7 @@ function getTrustTone(trustScore: CustomerSummary["trustScore"]) {
 export default function PalistaScreen() {
   const db = useSQLiteContext();
   const { theme } = useAppTheme();
-  const { t } = useAppLanguage();
+  const { language, t } = useAppLanguage();
   const [customers, setCustomers] = useState<CustomerSummary[]>([]);
   const [ledgerEntries, setLedgerEntries] = useState<UtangLedgerEntry[]>([]);
   const [customerModalVisible, setCustomerModalVisible] = useState(false);
@@ -165,6 +165,11 @@ export default function PalistaScreen() {
       const nextLedger = await listCustomerLedger(db, customerId);
       LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
       setLedgerEntries(nextLedger);
+      setSelectedEntry((currentSelected) =>
+        currentSelected
+          ? nextLedger.find((entry) => entry.id === currentSelected.id) ?? null
+          : currentSelected,
+      );
     },
     [db],
   );
@@ -180,6 +185,7 @@ export default function PalistaScreen() {
       ledgerEntries.reduce((total, entry) => total + Math.max(0, entry.amountCents - entry.amountPaidCents), 0),
     [ledgerEntries],
   );
+  const dateLocale = language === "english" ? "en-PH" : "fil-PH";
   const selectedEntryOutstanding = selectedEntry
     ? Math.max(0, selectedEntry.amountCents - selectedEntry.amountPaidCents)
     : 0;
@@ -192,6 +198,10 @@ export default function PalistaScreen() {
   const changeDueCents = hasValidPaymentAmount
     ? Math.max(0, paymentAmountCents - selectedEntryOutstanding)
     : 0;
+  const quickPaymentOptions = selectedEntryOutstanding > 0
+    ? [5000, 10000, 20000, selectedEntryOutstanding]
+        .filter((amount, index, amounts) => amount > 0 && amounts.indexOf(amount) === index)
+    : [];
 
   const getTrustLabel = useCallback(
     (trustScore: CustomerSummary["trustScore"]) => {
@@ -802,6 +812,11 @@ export default function PalistaScreen() {
               ledgerEntries.map((entry) => {
                 const outstanding = Math.max(0, entry.amountCents - entry.amountPaidCents);
                 const isPaid = outstanding === 0;
+                const totalPaidLabel = entry.amountPaidCents > 0
+                  ? t("palista.paidAmount", {
+                      amount: formatCurrencyFromCents(entry.amountPaidCents),
+                    })
+                  : t("palista.noPaymentsYet");
 
                 return (
                   <SurfaceCard key={entry.id} style={{ gap: theme.spacing.md }}>
@@ -848,16 +863,157 @@ export default function PalistaScreen() {
                         >
                           {isPaid
                             ? t("palista.paid")
-                            : t("palista.paidAmount", {
-                                amount: formatCurrencyFromCents(entry.amountPaidCents),
-                              })}
+                            : totalPaidLabel}
                         </Text>
+                      </View>
+                    </View>
+
+                    <View
+                      style={{
+                        borderTopColor: theme.colors.border,
+                        borderTopWidth: 1,
+                        gap: theme.spacing.sm,
+                        paddingTop: theme.spacing.sm,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          color: theme.colors.textMuted,
+                          fontFamily: theme.typography.body,
+                          fontSize: 12,
+                          fontWeight: "700",
+                        }}
+                      >
+                        {t("palista.paymentHistoryTitle")}
+                      </Text>
+
+                      <View style={{ gap: theme.spacing.xs }}>
+                        <View
+                          style={{
+                            alignItems: "center",
+                            flexDirection: "row",
+                            gap: theme.spacing.sm,
+                          }}
+                        >
+                          <View
+                            style={{
+                              alignItems: "center",
+                              backgroundColor: theme.colors.primaryMuted,
+                              borderRadius: theme.radius.pill,
+                              height: 28,
+                              justifyContent: "center",
+                              width: 28,
+                            }}
+                          >
+                            <Feather color={theme.colors.primary} name="file-text" size={13} />
+                          </View>
+                          <View style={{ flex: 1, gap: 2 }}>
+                            <Text
+                              style={{
+                                color: theme.colors.text,
+                                fontFamily: theme.typography.body,
+                                fontSize: 13,
+                                fontWeight: "700",
+                              }}
+                            >
+                              {t("palista.timeline.creditLogged")}
+                            </Text>
+                            <Text
+                              style={{
+                                color: theme.colors.textMuted,
+                                fontFamily: theme.typography.body,
+                                fontSize: 12,
+                              }}
+                            >
+                              {formatDateTimeLabel(entry.createdAt, dateLocale)}
+                            </Text>
+                          </View>
+                          <Text
+                            style={{
+                              color: theme.colors.text,
+                              fontFamily: theme.typography.body,
+                              fontSize: 13,
+                              fontWeight: "700",
+                            }}
+                          >
+                            {formatCurrencyFromCents(entry.amountCents)}
+                          </Text>
+                        </View>
+
+                        {entry.payments.length > 0 ? (
+                          entry.payments.map((payment) => (
+                            <View
+                              key={payment.id}
+                              style={{
+                                alignItems: "center",
+                                flexDirection: "row",
+                                gap: theme.spacing.sm,
+                              }}
+                            >
+                              <View
+                                style={{
+                                  alignItems: "center",
+                                  backgroundColor: theme.colors.successMuted,
+                                  borderRadius: theme.radius.pill,
+                                  height: 28,
+                                  justifyContent: "center",
+                                  width: 28,
+                                }}
+                              >
+                                <Feather color={theme.colors.success} name="arrow-down-left" size={13} />
+                              </View>
+                              <View style={{ flex: 1, gap: 2 }}>
+                                <Text
+                                  style={{
+                                    color: theme.colors.text,
+                                    fontFamily: theme.typography.body,
+                                    fontSize: 13,
+                                    fontWeight: "700",
+                                  }}
+                                >
+                                  {t("palista.timeline.paymentReceived")}
+                                </Text>
+                                <Text
+                                  style={{
+                                    color: theme.colors.textMuted,
+                                    fontFamily: theme.typography.body,
+                                    fontSize: 12,
+                                  }}
+                                >
+                                  {formatDateTimeLabel(payment.createdAt, dateLocale)}
+                                </Text>
+                              </View>
+                              <Text
+                                style={{
+                                  color: theme.colors.success,
+                                  fontFamily: theme.typography.body,
+                                  fontSize: 13,
+                                  fontWeight: "700",
+                                }}
+                              >
+                                {formatCurrencyFromCents(payment.amountCents)}
+                              </Text>
+                            </View>
+                          ))
+                        ) : (
+                          <Text
+                            style={{
+                              color: theme.colors.textSoft,
+                              fontFamily: theme.typography.body,
+                              fontSize: 12,
+                              lineHeight: 18,
+                              paddingLeft: 38,
+                            }}
+                          >
+                            {t("palista.paymentHistoryEmpty")}
+                          </Text>
+                        )}
                       </View>
                     </View>
 
                     {!isPaid ? (
                       <ActionButton
-                        label={t("palista.receivePaymentTitle")}
+                        label={t("palista.logPayment")}
                         onPress={() => {
                           setSelectedEntry(entry);
                           setPaymentAmount("");
@@ -937,6 +1093,43 @@ export default function PalistaScreen() {
           placeholder="0.00"
           value={paymentAmount}
         />
+        {quickPaymentOptions.length > 0 ? (
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
+            {quickPaymentOptions.map((amountCents, index) => {
+              const isFullAmount = amountCents === selectedEntryOutstanding;
+              const label = isFullAmount
+                ? t("palista.quickPayment.full")
+                : formatCurrencyFromCents(amountCents);
+
+              return (
+                <Pressable
+                  key={`${amountCents}-${index}`}
+                  onPress={() => setPaymentAmount((amountCents / 100).toFixed(2))}
+                  style={({ pressed }) => ({
+                    backgroundColor: isFullAmount ? theme.colors.primaryMuted : theme.colors.surface,
+                    borderColor: isFullAmount ? theme.colors.primary : theme.colors.border,
+                    borderRadius: theme.radius.pill,
+                    borderWidth: 1,
+                    opacity: pressed ? 0.9 : 1,
+                    paddingHorizontal: theme.spacing.md,
+                    paddingVertical: 10,
+                  })}
+                >
+                  <Text
+                    style={{
+                      color: isFullAmount ? theme.colors.primary : theme.colors.text,
+                      fontFamily: theme.typography.body,
+                      fontSize: 12,
+                      fontWeight: "700",
+                    }}
+                  >
+                    {label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        ) : null}
         {selectedEntry ? (
           <SurfaceCard style={{ gap: theme.spacing.sm }}>
             <Text

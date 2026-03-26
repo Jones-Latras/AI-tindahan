@@ -38,3 +38,18 @@ export function formatDateLabel(dateIso: string | null) {
   }).format(date);
 }
 
+export function formatDateTimeLabel(dateIso: string | null, locale = "en-PH") {
+  if (!dateIso) {
+    return "No recent entry";
+  }
+
+  const date = new Date(dateIso);
+
+  return new Intl.DateTimeFormat(locale, {
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(date);
+}

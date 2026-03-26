@@ -1,7 +1,7 @@
 import type { SQLiteDatabase } from "expo-sqlite";
 
 export const DATABASE_NAME = "tindahan-ai.db";
-export const DATABASE_VERSION = 8;
+export const DATABASE_VERSION = 9;
 
 export async function migrateDbIfNeeded(db: SQLiteDatabase) {
   await db.execAsync("PRAGMA journal_mode = WAL;");
@@ -89,6 +89,17 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
         synced INTEGER NOT NULL DEFAULT 0
       );
 
+      CREATE TABLE IF NOT EXISTS utang_payments (
+        id INTEGER PRIMARY KEY NOT NULL,
+        utang_id INTEGER NOT NULL REFERENCES utang(id) ON DELETE CASCADE,
+        customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+        amount_cents INTEGER NOT NULL CHECK(amount_cents > 0),
+        note TEXT,
+        source TEXT NOT NULL DEFAULT 'manual' CHECK(source IN ('manual', 'migration', 'sale_adjustment')),
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        synced INTEGER NOT NULL DEFAULT 0
+      );
+
       CREATE TABLE IF NOT EXISTS app_settings (
         key TEXT PRIMARY KEY NOT NULL,
         value TEXT NOT NULL,
@@ -103,10 +114,12 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
       CREATE INDEX IF NOT EXISTS idx_sale_items_sale_id ON sale_items(sale_id);
       CREATE INDEX IF NOT EXISTS idx_sale_items_product_id ON sale_items(product_id);
       CREATE INDEX IF NOT EXISTS idx_utang_customer ON utang(customer_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_utang_payments_utang ON utang_payments(utang_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_utang_payments_customer ON utang_payments(customer_id, created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_app_settings_updated_at ON app_settings(updated_at DESC);
     `);
 
-    currentVersion = 8;
+    currentVersion = 9;
   }
 
   if (currentVersion === 1) {
@@ -256,6 +269,51 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
     `);
 
     currentVersion = 8;
+  }
+
+  if (currentVersion < 9) {
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS utang_payments (
+        id INTEGER PRIMARY KEY NOT NULL,
+        utang_id INTEGER NOT NULL REFERENCES utang(id) ON DELETE CASCADE,
+        customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+        amount_cents INTEGER NOT NULL CHECK(amount_cents > 0),
+        note TEXT,
+        source TEXT NOT NULL DEFAULT 'manual' CHECK(source IN ('manual', 'migration', 'sale_adjustment')),
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        synced INTEGER NOT NULL DEFAULT 0
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_utang_payments_utang ON utang_payments(utang_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_utang_payments_customer ON utang_payments(customer_id, created_at DESC);
+
+      INSERT INTO utang_payments (
+        utang_id,
+        customer_id,
+        amount_cents,
+        note,
+        source,
+        created_at,
+        synced
+      )
+      SELECT
+        u.id,
+        u.customer_id,
+        u.amount_paid_cents,
+        'Migrated payment history',
+        'migration',
+        COALESCE(u.paid_at, u.created_at),
+        0
+      FROM utang u
+      WHERE u.amount_paid_cents > 0
+        AND NOT EXISTS (
+          SELECT 1
+          FROM utang_payments up
+          WHERE up.utang_id = u.id
+        );
+    `);
+
+    currentVersion = 9;
   }
 
   await db.execAsync(`PRAGMA user_version = ${currentVersion};`);

@@ -25,6 +25,8 @@ import type {
   TopProductSummary,
   TrustScore,
   UtangLedgerEntry,
+  UtangPayment,
+  UtangPaymentSource,
   WeeklyPaymentReport,
 } from "@/types/models";
 
@@ -72,6 +74,16 @@ type LedgerRow = {
   description: string | null;
   created_at: string;
   paid_at: string | null;
+};
+
+type UtangPaymentRow = {
+  id: number;
+  utang_id: number;
+  customer_id: number;
+  amount_cents: number;
+  note: string | null;
+  source: UtangPaymentSource;
+  created_at: string;
 };
 
 type SaleContextRow = {
@@ -1154,6 +1166,40 @@ export async function listCustomerLedger(db: SQLiteDatabase, customerId: number)
     customerId,
   );
 
+  const paymentRows = await db.getAllAsync<UtangPaymentRow>(
+    `
+      SELECT
+        id,
+        utang_id,
+        customer_id,
+        amount_cents,
+        note,
+        source,
+        created_at
+      FROM utang_payments
+      WHERE customer_id = ?
+      ORDER BY created_at ASC, id ASC
+    `,
+    customerId,
+  );
+
+  const paymentsByUtangId = new Map<number, UtangPayment[]>();
+
+  for (const paymentRow of paymentRows) {
+    const nextPayment: UtangPayment = {
+      id: paymentRow.id,
+      utangId: paymentRow.utang_id,
+      customerId: paymentRow.customer_id,
+      amountCents: paymentRow.amount_cents,
+      note: paymentRow.note,
+      createdAt: paymentRow.created_at,
+      source: paymentRow.source,
+    };
+    const payments = paymentsByUtangId.get(paymentRow.utang_id) ?? [];
+    payments.push(nextPayment);
+    paymentsByUtangId.set(paymentRow.utang_id, payments);
+  }
+
   return rows.map((row) => ({
     id: row.id,
     customerId: row.customer_id,
@@ -1162,6 +1208,7 @@ export async function listCustomerLedger(db: SQLiteDatabase, customerId: number)
     description: row.description,
     createdAt: row.created_at,
     paidAt: row.paid_at,
+    payments: paymentsByUtangId.get(row.id) ?? [],
   }));
 }
 
@@ -1193,20 +1240,45 @@ export async function applyUtangPayment(db: SQLiteDatabase, utangId: number, pay
   }
 
   const outstanding = entry.amount_cents - entry.amount_paid_cents;
+
+  if (outstanding <= 0) {
+    throw new Error("This utang entry is already fully paid.");
+  }
+
   const safePayment = Math.min(paymentCents, outstanding);
   const nextPaid = entry.amount_paid_cents + safePayment;
   const fullyPaid = nextPaid >= entry.amount_cents;
+  const paidAt = fullyPaid ? new Date().toISOString() : null;
 
-  await db.runAsync(
-    `
-      UPDATE utang
-      SET amount_paid_cents = ?, paid_at = ?
-      WHERE id = ?
-    `,
-    nextPaid,
-    fullyPaid ? new Date().toISOString() : null,
-    utangId,
-  );
+  await db.withExclusiveTransactionAsync(async (txn) => {
+    await txn.runAsync(
+      `
+        INSERT INTO utang_payments (
+          utang_id,
+          customer_id,
+          amount_cents,
+          note,
+          source,
+          synced
+        )
+        VALUES (?, ?, ?, NULL, 'manual', 0)
+      `,
+      utangId,
+      entry.customer_id,
+      safePayment,
+    );
+
+    await txn.runAsync(
+      `
+        UPDATE utang
+        SET amount_paid_cents = ?, paid_at = ?, synced = 0
+        WHERE id = ?
+      `,
+      nextPaid,
+      paidAt,
+      utangId,
+    );
+  });
 }
 
 export async function checkoutSale(db: SQLiteDatabase, input: CheckoutInput) {

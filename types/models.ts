@@ -89,6 +89,19 @@ export interface UtangLedgerEntry {
   description: string | null;
   createdAt: string;
   paidAt: string | null;
+  payments: UtangPayment[];
+}
+
+export type UtangPaymentSource = "manual" | "migration" | "sale_adjustment";
+
+export interface UtangPayment {
+  id: number;
+  utangId: number;
+  customerId: number;
+  amountCents: number;
+  note: string | null;
+  createdAt: string;
+  source: UtangPaymentSource;
 }
 
 export interface RiskCustomerAlert {

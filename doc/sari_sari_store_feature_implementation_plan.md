@@ -22,6 +22,17 @@ The goal is not just to add UI. The goal is to make these features reliable acro
 
 ---
 
+## Progress Tracker
+
+- [x] Phase 1 core slice: payment-event audit trail for utang
+- [ ] Phase 2: Expenses tab and true net profit
+- [ ] Phase 3: Restock shopping list
+- [ ] Phase 4: Tingi / linked inventory
+- [ ] Phase 5: Bottle deposit tracker
+- [ ] Phase 6: AI, sync, analytics, receipts, and rollout hardening
+
+---
+
 ## Current Codebase Snapshot
 
 The plan below is based on the current repo structure and behavior:
@@ -87,6 +98,15 @@ Do first before shipping any of the new features.
 ### Phase 1: Partial utang payment history and UI polish
 
 Do first because most of the backend is already present, and it immediately solves a real owner pain point.
+
+Current implementation progress:
+
+- [x] Local SQLite payment-event table planned and implemented
+- [x] Existing utang paid amounts migrated into payment history
+- [x] Partial payments now write audit rows transactionally
+- [x] Customer detail now shows payment history with timestamps
+- [x] Payment modal now has quick amount chips
+- [x] Sync / restore and Supabase schema updated for payment events
 
 ### Phase 2: Expenses tab and real net profit
 

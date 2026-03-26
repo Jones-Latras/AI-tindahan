@@ -198,6 +198,16 @@ export async function syncToCloud(db: SQLiteDatabase): Promise<string> {
     pushed += utang.length;
   }
 
+  // Sync utang_payments
+  const utangPayments = await db.getAllAsync<Record<string, unknown>>(
+    "SELECT id, utang_id, customer_id, amount_cents, note, source, created_at FROM utang_payments WHERE synced = 0",
+  );
+  if (utangPayments.length > 0) {
+    await supabaseUpsert("utang_payments", utangPayments);
+    await db.runAsync("UPDATE utang_payments SET synced = 1 WHERE synced = 0");
+    pushed += utangPayments.length;
+  }
+
   const timestamp = new Date().toLocaleString("en-PH", { dateStyle: "medium", timeStyle: "short" });
   await Storage.setItem(LAST_SYNC_KEY, timestamp);
 
@@ -357,6 +367,33 @@ export async function restoreFromCloud(db: SQLiteDatabase): Promise<string> {
         row.id as number, row.customer_id as number, row.amount_cents as number,
         row.amount_paid_cents as number, row.description as string | null,
         row.created_at as string, row.paid_at as string | null,
+      );
+      restored++;
+    }
+
+    // Restore utang payments after utang rows exist
+    const utangPayments = await supabaseSelectAll("utang_payments");
+    for (const payment of utangPayments) {
+      const row = payment as Record<string, unknown>;
+      await db.runAsync(
+        `INSERT OR REPLACE INTO utang_payments (
+          id,
+          utang_id,
+          customer_id,
+          amount_cents,
+          note,
+          source,
+          created_at,
+          synced
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, 1)`,
+        row.id as number,
+        row.utang_id as number,
+        row.customer_id as number,
+        row.amount_cents as number,
+        (row.note as string | null) ?? null,
+        row.source as string,
+        row.created_at as string,
       );
       restored++;
     }
