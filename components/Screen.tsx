@@ -54,7 +54,7 @@ function LiveDateChip() {
       new Intl.DateTimeFormat(locale, {
         day: "numeric",
         month: "short",
-        weekday: "short",
+        weekday: "long",
       }).format(now),
     [locale, now],
   );

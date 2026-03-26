@@ -69,7 +69,7 @@ function SettingsSection({ title, children }: SettingsSectionProps) {
   );
 }
 
-function SettingsValuePill({ icon, label }: { icon: keyof typeof Feather.glyphMap; label: string }) {
+function SettingsValuePill({ icon, label }: { icon?: keyof typeof Feather.glyphMap; label: string }) {
   const { theme } = useAppTheme();
 
   return (
@@ -96,7 +96,7 @@ function SettingsValuePill({ icon, label }: { icon: keyof typeof Feather.glyphMa
       >
         {label}
       </Text>
-      <Feather color={theme.colors.textSoft} name={icon} size={14} />
+      {icon ? <Feather color={theme.colors.textSoft} name={icon} size={14} /> : null}
     </View>
   );
 }
@@ -300,7 +300,7 @@ export default function SettingsScreen() {
         <SettingsRow
           icon="globe"
           onPress={toggleLanguage}
-          right={<SettingsValuePill icon="chevron-down" label={languageDisplayNames[language]} />}
+          right={<SettingsValuePill label={languageDisplayNames[language]} />}
           title={t("home.settings.language.title")}
           tone="primary"
         />
@@ -308,7 +308,7 @@ export default function SettingsScreen() {
           icon={mode === "dark" ? "moon" : "sun"}
           isLast
           onPress={toggleMode}
-          right={<SettingsValuePill icon="chevron-down" label={mode === "dark" ? t("theme.dark") : t("theme.light")} />}
+          right={<SettingsValuePill label={mode === "dark" ? t("theme.dark") : t("theme.light")} />}
           title={t("home.settings.theme.title")}
           tone={mode === "dark" ? "primary" : "warning"}
         />
