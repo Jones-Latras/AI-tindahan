@@ -5,7 +5,7 @@ import { useFocusEffect } from "expo-router";
 import { useSQLiteContext } from "expo-sqlite";
 import Storage from "expo-sqlite/kv-store";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Alert, Image, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, Image, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 
 import { ActionButton } from "@/components/ActionButton";
 import { EmptyState } from "@/components/EmptyState";
@@ -104,10 +104,6 @@ const PRODUCT_IMAGE_QUALITY = 0.72;
 const PRODUCT_CATEGORIES_KEY = "tindahan.product-categories";
 
 type CategoryModalTarget = "catalog" | "product";
-
-function isCloudImageUri(uri: string) {
-  return /^https?:\/\//i.test(uri.trim());
-}
 
 function normalizeCategoryName(value: string) {
   return value.trim().replace(/\s+/g, " ");
@@ -590,7 +586,6 @@ export default function ProduktoScreen() {
   );
 
   const hasImage = form.imageUri.trim().length > 0;
-  const imageAlreadyBackedUp = hasImage && isCloudImageUri(form.imageUri);
   const categoryCountLabel =
     categories.length === 1
       ? t("produkto.savedCategory.single")
@@ -1615,13 +1610,7 @@ export default function ProduktoScreen() {
             onPress={() => setPhotoSheetVisible(false)}
           />
         }
-        fullHeight
         onClose={() => setPhotoSheetVisible(false)}
-        subtitle={
-          hasImage
-            ? t("produkto.photoSubtitle.hasImage")
-            : t("produkto.photoSubtitle.empty")
-        }
         title={hasImage ? t("produkto.replacePhoto") : t("produkto.addPhoto")}
         visible={photoSheetVisible}
       >
@@ -1639,18 +1628,41 @@ export default function ProduktoScreen() {
               alignItems: "center",
               backgroundColor: theme.colors.card,
               justifyContent: "center",
-              minHeight: 280,
+              minHeight: 248,
               padding: theme.spacing.lg,
             }}
           >
             {hasImage ? (
-              <Image
-                resizeMode="cover"
-                source={{ uri: form.imageUri }}
-                style={{ backgroundColor: theme.colors.card, height: 280, width: "100%" }}
-              />
+              <>
+                <Image
+                  resizeMode="cover"
+                  source={{ uri: form.imageUri }}
+                  style={{ backgroundColor: theme.colors.card, height: 248, width: "100%" }}
+                />
+                <Pressable
+                  accessibilityLabel="Remove photo"
+                  hitSlop={8}
+                  onPress={() => setForm((current) => ({ ...current, imageUri: "" }))}
+                  style={({ pressed }) => ({
+                    alignItems: "center",
+                    backgroundColor: theme.colors.background,
+                    borderColor: theme.colors.border,
+                    borderRadius: theme.radius.pill,
+                    borderWidth: 1,
+                    height: 36,
+                    justifyContent: "center",
+                    opacity: pressed ? 0.92 : 1,
+                    position: "absolute",
+                    right: theme.spacing.md,
+                    top: theme.spacing.md,
+                    width: 36,
+                  })}
+                >
+                  <Feather color={theme.colors.danger} name="trash-2" size={16} />
+                </Pressable>
+              </>
             ) : (
-              <View style={{ alignItems: "center", gap: theme.spacing.sm, maxWidth: 240 }}>
+              <View style={{ alignItems: "center", gap: theme.spacing.sm }}>
                 <View
                   style={{
                     alignItems: "center",
@@ -1667,154 +1679,53 @@ export default function ProduktoScreen() {
                   style={{
                     color: theme.colors.text,
                     fontFamily: theme.typography.body,
-                    fontSize: 16,
+                    fontSize: 15,
                     fontWeight: "700",
                     textAlign: "center",
                   }}
                 >
-                  No photo selected yet
-                </Text>
-                <Text
-                  style={{
-                    color: theme.colors.textMuted,
-                    fontFamily: theme.typography.body,
-                    fontSize: 13,
-                    lineHeight: 19,
-                    textAlign: "center",
-                  }}
-                >
-                  Add one now so product cards feel easier to scan in both Produkto and Benta.
+                  No photo yet
                 </Text>
               </View>
             )}
-          </View>
 
-          <View
-            style={{
-              borderTopColor: theme.colors.border,
-              borderTopWidth: 1,
-              gap: theme.spacing.xs,
-              padding: theme.spacing.md,
-            }}
-          >
-            <Text
-              style={{
-                color: theme.colors.text,
-                fontFamily: theme.typography.body,
-                fontSize: 14,
-                fontWeight: "700",
-              }}
-            >
-              {hasImage
-                ? imageAlreadyBackedUp
-                  ? "Cloud copy ready"
-                  : "Saved locally, waiting for backup"
-                : "Auto-compresses before backup"}
-            </Text>
-            <Text
-              style={{
-                color: theme.colors.textMuted,
-                fontFamily: theme.typography.body,
-                fontSize: 13,
-                lineHeight: 19,
-              }}
-            >
-              {hasImage
-                ? imageAlreadyBackedUp
-                  ? "This image already points to Supabase Storage."
-                  : "The next time you tap backup, this photo will upload to Supabase Storage automatically."
-                : "The picker keeps the saved image lighter so backup stays practical on the free plan."}
-            </Text>
+            {pickingImage ? (
+              <View
+                style={{
+                  alignItems: "center",
+                  backgroundColor: theme.colors.overlay,
+                  borderRadius: theme.radius.pill,
+                  height: 28,
+                  justifyContent: "center",
+                  left: theme.spacing.md,
+                  position: "absolute",
+                  top: theme.spacing.md,
+                  width: 28,
+                }}
+              >
+                <ActivityIndicator color={theme.colors.background} size="small" />
+              </View>
+            ) : null}
           </View>
         </View>
 
-        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
+        <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
           <ActionButton
             disabled={pickingImage}
             icon={<Feather color={theme.colors.primaryText} name="camera" size={16} />}
-            label={pickingImage ? "Opening..." : hasImage ? "Take New Photo" : "Take Photo"}
+            label={pickingImage ? "Opening..." : "Take Photo"}
             onPress={() => void handlePickImage("camera")}
             style={{ flex: 1, minWidth: 150 }}
           />
           <ActionButton
             disabled={pickingImage}
             icon={<Feather color={theme.colors.primary} name="image" size={16} />}
-            label={pickingImage ? "Opening..." : hasImage ? "Choose New Photo" : "Choose Photo"}
+            label={pickingImage ? "Opening..." : "Choose Photo"}
             onPress={() => void handlePickImage("library")}
             style={{ flex: 1, minWidth: 150 }}
             variant="secondary"
           />
-          {hasImage ? (
-            <ActionButton
-              icon={<Feather color={theme.colors.danger} name="trash-2" size={16} />}
-              label="Remove Current Photo"
-              onPress={() => setForm((current) => ({ ...current, imageUri: "" }))}
-              style={{ width: "100%" }}
-              variant="ghost"
-            />
-          ) : null}
         </View>
-
-        <SurfaceCard style={{ gap: theme.spacing.sm }}>
-          <Text
-            style={{
-              color: theme.colors.text,
-              fontFamily: theme.typography.body,
-              fontSize: 15,
-              fontWeight: "700",
-            }}
-          >
-            Crop hints
-          </Text>
-
-          {[
-            {
-              icon: "box",
-              text: "Center the product and let the crop frame breathe so labels stay readable.",
-            },
-            {
-              icon: "sun",
-              text: "Use even lighting and avoid dark shelves or strong shadows when possible.",
-            },
-            {
-              icon: "sliders",
-              text: "Keep the background simple. One clear item photo works better than a busy scene.",
-            },
-          ].map((tip) => (
-            <View
-              key={tip.text}
-              style={{
-                alignItems: "flex-start",
-                flexDirection: "row",
-                gap: theme.spacing.sm,
-              }}
-            >
-              <View
-                style={{
-                  alignItems: "center",
-                  backgroundColor: theme.colors.primaryMuted,
-                  borderRadius: theme.radius.pill,
-                  height: 28,
-                  justifyContent: "center",
-                  width: 28,
-                }}
-              >
-                <Feather color={theme.colors.primary} name={tip.icon as "box" | "sun" | "sliders"} size={14} />
-              </View>
-              <Text
-                style={{
-                  color: theme.colors.textMuted,
-                  flex: 1,
-                  fontFamily: theme.typography.body,
-                  fontSize: 13,
-                  lineHeight: 19,
-                }}
-              >
-                {tip.text}
-              </Text>
-            </View>
-          ))}
-        </SurfaceCard>
       </ModalSheet>
 
       <ModalSheet

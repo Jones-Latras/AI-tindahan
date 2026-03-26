@@ -187,10 +187,6 @@ const translations = {
       "Keep names clear, prices accurate, and stock values realistic so checkout stays reliable.",
     "produkto.replacePhoto": "Replace Product Photo",
     "produkto.addPhoto": "Add Product Photo",
-    "produkto.photoSubtitle.hasImage":
-      "Swap the current product photo without cluttering the main form. New picks stay lighter and upload during your next cloud backup.",
-    "produkto.photoSubtitle.empty":
-      "Add a clean product shot here. The picker opens the built-in crop tool, then saves a lighter image before backup.",
     "produkto.newCategory": "New Category",
     "produkto.categorySubtitle.product": "Create a reusable category and apply it to the product you are editing.",
     "produkto.categorySubtitle.catalog": "Create a reusable category and immediately filter the catalog with it.",
@@ -504,10 +500,6 @@ const translations = {
       "Panatilihing malinaw ang names, tama ang prices, at realistic ang stock para reliable ang checkout.",
     "produkto.replacePhoto": "Palitan ang Product Photo",
     "produkto.addPhoto": "Magdagdag ng Product Photo",
-    "produkto.photoSubtitle.hasImage":
-      "Palitan ang kasalukuyang product photo nang hindi sumisikip ang main form. Ang bagong picks ay mananatiling lighter at mag-a-upload sa susunod mong cloud backup.",
-    "produkto.photoSubtitle.empty":
-      "Magdagdag ng malinaw na product shot dito. Bubuksan ng picker ang built-in crop tool, tapos magsa-save ng lighter image bago i-backup.",
     "produkto.newCategory": "Bagong Category",
     "produkto.categorySubtitle.product": "Gumawa ng reusable category at i-apply ito sa product na ini-edit mo.",
     "produkto.categorySubtitle.catalog": "Gumawa ng reusable category at i-filter agad ang catalog gamit ito.",
