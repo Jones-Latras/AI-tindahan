@@ -925,8 +925,10 @@ export default function HomeScreen() {
 
     const formatHistoryDate = (dateIso: string) =>
       new Date(dateIso).toLocaleString(locale, {
-        dateStyle: "medium",
-        timeStyle: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        month: "short",
       });
 
     if (historyLoading) {
@@ -1037,44 +1039,58 @@ export default function HomeScreen() {
         ) : null}
 
         {filteredSalesHistory.map(({ sale, matchedItems, totalQuantity }) => {
-          const subtotalCents = sale.totalCents + sale.discountCents;
+          const customerLabel = sale.customerName?.trim() || t("home.history.walkIn");
+          const itemCountLabel =
+            totalQuantity === 1
+              ? t("home.history.itemCount.single")
+              : t("home.history.itemCount.plural", { count: totalQuantity });
           const paymentLabel = getPaymentMethodLabel(sale.paymentMethod);
           const hasMatchedProducts = normalizedHistorySearch.length > 0 && matchedItems.length > 0;
 
           return (
-            <SurfaceCard
+            <Pressable
               key={sale.id}
-              style={[
-                compactCardStyle,
-                hasMatchedProducts ? { borderColor: theme.colors.primary, borderWidth: 1.5 } : null,
-              ]}
+              onPress={() => setReceiptSale(sale)}
+              style={({ pressed }) => ({ opacity: pressed ? 0.94 : 1 })}
             >
-              <View style={{ alignItems: "flex-start", flexDirection: "row", gap: theme.spacing.md, justifyContent: "space-between" }}>
-                <View style={{ flex: 1, gap: 4 }}>
-                  <Text
-                    style={{
-                      color: theme.colors.text,
-                      fontFamily: theme.typography.display,
-                      fontSize: 22,
-                      fontWeight: "700",
-                    }}
-                  >
-                    #{sale.id}
-                  </Text>
-                  <Text
-                    style={{
-                      color: theme.colors.textMuted,
-                      fontFamily: theme.typography.body,
-                      fontSize: 13,
-                      lineHeight: 19,
-                    }}
-                  >
-                    {formatHistoryDate(sale.createdAt)}
-                  </Text>
-                </View>
+              <SurfaceCard
+                style={[
+                  compactCardStyle,
+                  hasMatchedProducts ? { borderColor: theme.colors.primary, borderWidth: 1.5 } : null,
+                  { gap: theme.spacing.xs },
+                ]}
+              >
+                <View style={{ alignItems: "flex-start", flexDirection: "row", gap: theme.spacing.md, justifyContent: "space-between" }}>
+                  <View style={{ flex: 1, gap: theme.spacing.xs }}>
+                    <View style={{ alignItems: "center", columnGap: theme.spacing.sm, flexDirection: "row", flexWrap: "wrap", rowGap: theme.spacing.xs }}>
+                      <Text
+                        numberOfLines={1}
+                        style={{
+                          color: theme.colors.text,
+                          flexShrink: 1,
+                          fontFamily: theme.typography.display,
+                          fontSize: 19,
+                          fontWeight: "700",
+                        }}
+                      >
+                        {customerLabel}
+                      </Text>
+                      <StatusBadge label={paymentLabel} tone={getPaymentMethodTone(sale.paymentMethod)} />
+                    </View>
 
-                <View style={{ alignItems: "flex-end", gap: theme.spacing.xs }}>
-                  <StatusBadge label={paymentLabel} tone={getPaymentMethodTone(sale.paymentMethod)} />
+                    <Text
+                      numberOfLines={1}
+                      style={{
+                        color: theme.colors.textMuted,
+                        fontFamily: theme.typography.body,
+                        fontSize: 13,
+                        lineHeight: 18,
+                      }}
+                    >
+                      {`${formatHistoryDate(sale.createdAt)} | #${sale.id}`}
+                    </Text>
+                  </View>
+
                   <Text
                     style={{
                       color: theme.colors.primary,
@@ -1086,211 +1102,21 @@ export default function HomeScreen() {
                     {formatCurrencyFromCents(sale.totalCents)}
                   </Text>
                 </View>
-              </View>
 
-              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
-                <StatusBadge
-                  label={`${t("home.history.items")}: ${sale.items.length}`}
-                  tone="neutral"
-                />
-                <StatusBadge
-                  label={`${t("home.history.quantity")}: ${totalQuantity}`}
-                  tone="primary"
-                />
-                <StatusBadge
-                  label={`${t("home.history.customer")}: ${sale.customerName ?? t("home.history.walkIn")}`}
-                  tone={sale.customerName ? "warning" : "neutral"}
-                />
-                {hasMatchedProducts ? (
-                  <StatusBadge
-                    label={t("home.history.productMatches", { count: matchedItems.length })}
-                    tone="primary"
-                  />
-                ) : null}
-                {sale.discountCents > 0 ? (
-                  <StatusBadge
-                    label={`${t("home.history.discount")}: ${formatCurrencyFromCents(sale.discountCents)}`}
-                    tone="success"
-                  />
-                ) : null}
-              </View>
-
-              <View
-                style={{
-                  backgroundColor: theme.colors.surface,
-                  borderColor: theme.colors.border,
-                  borderRadius: theme.radius.sm,
-                  borderWidth: 1,
-                  gap: theme.spacing.sm,
-                  padding: theme.spacing.md,
-                }}
-              >
-                {sale.items.map((item) => {
-                  const isMatchedProduct =
-                    normalizedHistorySearch.length > 0 &&
-                    normalizeSearchValue(item.productName).includes(normalizedHistorySearch);
-
-                  return (
-                  <View
-                    key={item.id}
-                    style={{
-                      alignItems: "flex-start",
-                      backgroundColor: isMatchedProduct ? theme.colors.primaryMuted : "transparent",
-                      borderColor: isMatchedProduct ? theme.colors.primary : "transparent",
-                      borderRadius: theme.radius.sm,
-                      borderWidth: isMatchedProduct ? 1 : 0,
-                      flexDirection: "row",
-                      gap: theme.spacing.md,
-                      justifyContent: "space-between",
-                      padding: isMatchedProduct ? theme.spacing.sm : 0,
-                    }}
-                  >
-                    <View style={{ flex: 1, gap: 2 }}>
-                      <Text
-                        style={{
-                          color: theme.colors.text,
-                          fontFamily: theme.typography.body,
-                          fontSize: 14,
-                          fontWeight: "700",
-                        }}
-                      >
-                        {item.productName}
-                      </Text>
-                      <Text
-                        style={{
-                          color: theme.colors.textMuted,
-                          fontFamily: theme.typography.body,
-                          fontSize: 12,
-                          lineHeight: 18,
-                        }}
-                      >
-                        {item.isWeightBased
-                          ? `${formatWeightKg(item.weightKg ?? 0)} kg x ${formatCurrencyFromCents(item.unitPriceCents)}/kg`
-                          : `${item.quantity}x ${formatCurrencyFromCents(item.unitPriceCents)}`}
-                      </Text>
-                    </View>
-                    <Text
-                      style={{
-                        color: theme.colors.text,
-                        fontFamily: theme.typography.body,
-                        fontSize: 13,
-                        fontWeight: "700",
-                      }}
-                    >
-                      {formatCurrencyFromCents(item.lineTotalCents)}
-                    </Text>
-                  </View>
-                  );
-                })}
-              </View>
-
-              <View
-                style={{
-                  backgroundColor: theme.colors.surfaceMuted,
-                  borderRadius: theme.radius.sm,
-                  gap: theme.spacing.xs,
-                  padding: theme.spacing.md,
-                }}
-              >
-                <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                <View style={{ alignItems: "center", flexDirection: "row", justifyContent: "space-between" }}>
                   <Text
                     style={{
                       color: theme.colors.textMuted,
                       fontFamily: theme.typography.body,
-                      fontSize: 12,
+                      fontSize: 13,
                     }}
                   >
-                    {t("home.history.subtotal")}
+                    {itemCountLabel}
                   </Text>
-                  <Text
-                    style={{
-                      color: theme.colors.text,
-                      fontFamily: theme.typography.body,
-                      fontSize: 12,
-                      fontWeight: "700",
-                    }}
-                  >
-                    {formatCurrencyFromCents(subtotalCents)}
-                  </Text>
+                  <Feather color={theme.colors.textSoft} name="chevron-right" size={18} />
                 </View>
-                {sale.discountCents > 0 ? (
-                  <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                    <Text
-                      style={{
-                        color: theme.colors.success,
-                        fontFamily: theme.typography.body,
-                        fontSize: 12,
-                        fontWeight: "700",
-                      }}
-                    >
-                      {t("home.history.discount")}
-                    </Text>
-                    <Text
-                      style={{
-                        color: theme.colors.success,
-                        fontFamily: theme.typography.body,
-                        fontSize: 12,
-                        fontWeight: "700",
-                      }}
-                    >
-                      -{formatCurrencyFromCents(sale.discountCents)}
-                    </Text>
-                  </View>
-                ) : null}
-                {sale.paymentMethod === "cash" ? (
-                  <>
-                    <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                      <Text
-                        style={{
-                          color: theme.colors.textMuted,
-                          fontFamily: theme.typography.body,
-                          fontSize: 12,
-                        }}
-                      >
-                        {t("home.history.cashReceived")}
-                      </Text>
-                      <Text
-                        style={{
-                          color: theme.colors.text,
-                          fontFamily: theme.typography.body,
-                          fontSize: 12,
-                          fontWeight: "700",
-                        }}
-                      >
-                        {formatCurrencyFromCents(sale.cashPaidCents)}
-                      </Text>
-                    </View>
-                    <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                      <Text
-                        style={{
-                          color: theme.colors.textMuted,
-                          fontFamily: theme.typography.body,
-                          fontSize: 12,
-                        }}
-                      >
-                        {t("home.history.change")}
-                      </Text>
-                      <Text
-                        style={{
-                          color: theme.colors.text,
-                          fontFamily: theme.typography.body,
-                          fontSize: 12,
-                          fontWeight: "700",
-                        }}
-                      >
-                        {formatCurrencyFromCents(sale.changeGivenCents)}
-                      </Text>
-                    </View>
-                  </>
-                ) : null}
-              </View>
-
-              <ActionButton
-                label={t("home.history.viewReceipt")}
-                onPress={() => setReceiptSale(sale)}
-                variant="secondary"
-              />
-            </SurfaceCard>
+              </SurfaceCard>
+            </Pressable>
           );
         })}
       </>
@@ -1569,7 +1395,7 @@ export default function HomeScreen() {
               })
             : ""
         }
-        title={t("home.history.receiptTitle")}
+        title={t("home.history.receiptDetailsTitle")}
         visible={receiptSale !== null}
       >
         {receiptSale ? (
