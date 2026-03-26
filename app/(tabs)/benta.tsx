@@ -54,13 +54,6 @@ const PAYMENT_METHODS: Array<{ key: PaymentMethod; label: string }> = [
   { key: "utang", label: "Utang" },
 ];
 
-type CartFeedback = {
-  title: string;
-  message: string;
-  tone: "success" | "warning";
-  icon: "check-circle" | "alert-triangle";
-};
-
 function parseDecimalInput(value: string) {
   const normalized = value.replace(/[^0-9.]/g, "").trim();
 
@@ -102,7 +95,6 @@ export default function BentaScreen() {
   const [tawadType, setTawadType] = useState<"fixed" | "percent">("fixed");
   const [milestoneAmount, setMilestoneAmount] = useState(0);
   const [milestoneVisible, setMilestoneVisible] = useState(false);
-  const [cartFeedback, setCartFeedback] = useState<CartFeedback | null>(null);
   const [weightModalVisible, setWeightModalVisible] = useState(false);
   const [selectedWeightProduct, setSelectedWeightProduct] = useState<Product | null>(null);
   const [weightInput, setWeightInput] = useState("");
@@ -135,9 +127,6 @@ export default function BentaScreen() {
   const cartActiveProgress = useRef(new Animated.Value(0)).current;
   const cartPulseScale = useRef(new Animated.Value(1)).current;
   const cartPulseLift = useRef(new Animated.Value(0)).current;
-  const cartFeedbackOpacity = useRef(new Animated.Value(0)).current;
-  const cartFeedbackTranslateY = useRef(new Animated.Value(10)).current;
-  const cartFeedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasLoadedCatalogRef = useRef(false);
 
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
@@ -272,14 +261,6 @@ export default function BentaScreen() {
   }, [loadScreenData]);
 
   useEffect(() => {
-    return () => {
-      if (cartFeedbackTimeoutRef.current) {
-        clearTimeout(cartFeedbackTimeoutRef.current);
-      }
-    };
-  }, []);
-
-  useEffect(() => {
     cartActiveProgress.stopAnimation();
 
     Animated.spring(cartActiveProgress, {
@@ -317,63 +298,37 @@ export default function BentaScreen() {
   const isCheckoutReady =
     cartItems.length > 0 && isEnoughCash && (!requiresCustomer || Boolean(selectedCustomer));
 
-  const triggerCartFeedback = useCallback((feedback: CartFeedback) => {
-    if (cartFeedbackTimeoutRef.current) {
-      clearTimeout(cartFeedbackTimeoutRef.current);
-    }
-
-    setCartFeedback(feedback);
-
+  const triggerCartPulse = useCallback(() => {
     cartPulseScale.stopAnimation();
     cartPulseLift.stopAnimation();
-    cartFeedbackOpacity.stopAnimation();
-    cartFeedbackTranslateY.stopAnimation();
 
     cartPulseScale.setValue(1);
     cartPulseLift.setValue(0);
-    cartFeedbackOpacity.setValue(0);
-    cartFeedbackTranslateY.setValue(10);
 
-    Animated.parallel([
-      Animated.sequence([
-        Animated.parallel([
-          Animated.spring(cartPulseScale, {
-            damping: 10,
-            mass: 0.7,
-            stiffness: 220,
-            toValue: 1.035,
-            useNativeDriver: true,
-          }),
-          Animated.timing(cartPulseLift, {
-            duration: 140,
-            easing: Easing.out(Easing.cubic),
-            toValue: -4,
-            useNativeDriver: true,
-          }),
-        ]),
-        Animated.parallel([
-          Animated.timing(cartPulseScale, {
-            duration: 180,
-            easing: Easing.out(Easing.cubic),
-            toValue: 1,
-            useNativeDriver: true,
-          }),
-          Animated.timing(cartPulseLift, {
-            duration: 180,
-            easing: Easing.out(Easing.cubic),
-            toValue: 0,
-            useNativeDriver: true,
-          }),
-        ]),
+    Animated.sequence([
+      Animated.parallel([
+        Animated.spring(cartPulseScale, {
+          damping: 10,
+          mass: 0.7,
+          stiffness: 220,
+          toValue: 1.035,
+          useNativeDriver: true,
+        }),
+        Animated.timing(cartPulseLift, {
+          duration: 140,
+          easing: Easing.out(Easing.cubic),
+          toValue: -4,
+          useNativeDriver: true,
+        }),
       ]),
       Animated.parallel([
-        Animated.timing(cartFeedbackOpacity, {
+        Animated.timing(cartPulseScale, {
           duration: 180,
           easing: Easing.out(Easing.cubic),
           toValue: 1,
           useNativeDriver: true,
         }),
-        Animated.timing(cartFeedbackTranslateY, {
+        Animated.timing(cartPulseLift, {
           duration: 180,
           easing: Easing.out(Easing.cubic),
           toValue: 0,
@@ -381,28 +336,7 @@ export default function BentaScreen() {
         }),
       ]),
     ]).start();
-
-    cartFeedbackTimeoutRef.current = setTimeout(() => {
-      Animated.parallel([
-        Animated.timing(cartFeedbackOpacity, {
-          duration: 180,
-          easing: Easing.in(Easing.cubic),
-          toValue: 0,
-          useNativeDriver: true,
-        }),
-        Animated.timing(cartFeedbackTranslateY, {
-          duration: 180,
-          easing: Easing.in(Easing.cubic),
-          toValue: 8,
-          useNativeDriver: true,
-        }),
-      ]).start(({ finished }) => {
-        if (finished) {
-          setCartFeedback(null);
-        }
-      });
-    }, 1500);
-  }, [cartFeedbackOpacity, cartFeedbackTranslateY, cartPulseLift, cartPulseScale]);
+  }, [cartPulseLift, cartPulseScale]);
 
   const openWeightModal = useCallback(
     (product: Product) => {
@@ -423,12 +357,7 @@ export default function BentaScreen() {
         const reservedQuantity = reservedQuantityByProductId.get(product.id) ?? 0;
 
         if (reservedQuantity > 0) {
-          triggerCartFeedback({
-            icon: "alert-triangle",
-            message: `${product.name} is already fully reserved in the cart.`,
-            title: "Cart already has all available stock",
-            tone: "warning",
-          });
+          triggerCartPulse();
           return;
         }
 
@@ -441,8 +370,6 @@ export default function BentaScreen() {
         return;
       }
 
-      const existingItem = cartItems.find((item) => item.id === product.id);
-
       addItem({
         id: product.id,
         name: product.name,
@@ -451,19 +378,9 @@ export default function BentaScreen() {
         isWeightBased: false,
       });
 
-      const nextQuantity = existingItem ? Math.min(existingItem.quantity + 1, totalStock) : 1;
-
-      triggerCartFeedback({
-        icon: "check-circle",
-        message:
-          nextQuantity > 1
-            ? `${product.name} is now x${nextQuantity} in the cart.`
-            : `${product.name} is ready in the cart.`,
-        title: existingItem ? "Cart updated" : "Added to cart",
-        tone: "success",
-      });
+      triggerCartPulse();
     },
-    [addItem, cartItems, getRemainingProductStock, openWeightModal, reservedQuantityByProductId, triggerCartFeedback],
+    [addItem, getRemainingProductStock, openWeightModal, reservedQuantityByProductId, triggerCartPulse],
   );
 
   const handleConfirmWeightItem = useCallback(() => {
@@ -496,13 +413,8 @@ export default function BentaScreen() {
     setSelectedWeightProduct(null);
     setWeightInput("");
 
-    triggerCartFeedback({
-      icon: "check-circle",
-      message: `${formatWeightKg(selectedWeightValue)} kg of ${selectedWeightProduct.name} is ready in the cart.`,
-      title: "Weight added",
-      tone: "success",
-    });
-  }, [selectedWeightProduct, selectedWeightValue, setItem, triggerCartFeedback]);
+    triggerCartPulse();
+  }, [selectedWeightProduct, selectedWeightValue, setItem, triggerCartPulse]);
 
   const openQuickEditModal = useCallback(
     (product: Product) => {
@@ -791,91 +703,11 @@ export default function BentaScreen() {
       <Screen
         contentContainerStyle={{
           gap: theme.spacing.md,
-          paddingBottom: hasActiveCart ? 104 : 84,
+          paddingBottom: hasActiveCart ? 96 : 76,
           paddingTop: theme.spacing.md,
         }}
         overlay={
           <>
-            {cartFeedback ? (
-              <Animated.View
-                pointerEvents="none"
-                style={{
-                  bottom: 88,
-                  left: theme.spacing.lg,
-                  opacity: cartFeedbackOpacity,
-                  position: "absolute",
-                  right: theme.spacing.lg,
-                  transform: [{ translateY: cartFeedbackTranslateY }],
-                }}
-              >
-                <View
-                  style={{
-                    backgroundColor: theme.colors.card,
-                    borderColor:
-                      cartFeedback.tone === "success" ? theme.colors.success : theme.colors.warning,
-                    borderRadius: theme.radius.md,
-                    borderWidth: 1,
-                    flexDirection: "row",
-                    gap: theme.spacing.md,
-                    paddingHorizontal: theme.spacing.md,
-                    paddingVertical: theme.spacing.sm,
-                    shadowColor: theme.colors.shadow,
-                    shadowOffset: { width: 0, height: 6 },
-                    shadowOpacity: 1,
-                    shadowRadius: 14,
-                    elevation: 3,
-                  }}
-                >
-                  <View
-                    style={{
-                      alignItems: "center",
-                      backgroundColor:
-                        cartFeedback.tone === "success"
-                          ? theme.colors.successMuted
-                          : theme.colors.warningMuted,
-                      borderRadius: theme.radius.pill,
-                      height: 36,
-                      justifyContent: "center",
-                      width: 36,
-                    }}
-                  >
-                    <Feather
-                      color={
-                        cartFeedback.tone === "success"
-                          ? theme.colors.success
-                          : theme.colors.warning
-                      }
-                      name={cartFeedback.icon}
-                      size={16}
-                    />
-                  </View>
-                  <View style={{ flex: 1, gap: 2 }}>
-                    <Text
-                      style={{
-                        color: theme.colors.text,
-                        fontFamily: theme.typography.body,
-                        fontSize: 13,
-                        fontWeight: "700",
-                      }}
-                    >
-                      {cartFeedback.title}
-                    </Text>
-                    <Text
-                      numberOfLines={2}
-                      style={{
-                        color: theme.colors.textMuted,
-                        fontFamily: theme.typography.body,
-                        fontSize: 12,
-                        lineHeight: 17,
-                      }}
-                    >
-                      {cartFeedback.message}
-                    </Text>
-                  </View>
-                </View>
-              </Animated.View>
-            ) : null}
-
             <Animated.View
               pointerEvents={hasActiveCart ? "none" : "auto"}
               style={{
@@ -1057,7 +889,6 @@ export default function BentaScreen() {
                     : `${visibleProducts.length} products ready to add.`}
               </Text>
             </View>
-            <StatusBadge label={cartItems.length > 0 ? `${cartCountLabel} in cart` : "Cart empty"} tone={cartItems.length > 0 ? "primary" : "neutral"} />
           </View>
           <InputField
             label="Search products"
