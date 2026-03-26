@@ -35,7 +35,7 @@ function normalizeTabPathname(pathname: string) {
   return normalizedPathname;
 }
 
-function LiveDateTime() {
+function LiveDateChip() {
   const { theme } = useAppTheme();
   const { language } = useAppLanguage();
   const [now, setNow] = useState(() => new Date());
@@ -43,34 +43,18 @@ function LiveDateTime() {
   useEffect(() => {
     const timer = setInterval(() => {
       setNow(new Date());
-    }, 1000);
+    }, 60_000);
 
     return () => clearInterval(timer);
   }, []);
 
   const locale = language === "english" ? "en-PH" : "fil-PH";
-  const weekdayLocale = "en-PH";
   const dateLabel = useMemo(
-    () => {
-      const weekdayLabel = new Intl.DateTimeFormat(weekdayLocale, {
-        weekday: "short",
-      }).format(now);
-      const dateValueLabel = new Intl.DateTimeFormat(locale, {
-        day: "numeric",
-        month: "short",
-        year: "numeric",
-      }).format(now);
-
-      return `${weekdayLabel}, ${dateValueLabel}`;
-    },
-    [locale, now],
-  );
-  const timeLabel = useMemo(
     () =>
       new Intl.DateTimeFormat(locale, {
-        hour: "numeric",
-        minute: "2-digit",
-        second: "2-digit",
+        day: "numeric",
+        month: "short",
+        weekday: "short",
       }).format(now),
     [locale, now],
   );
@@ -78,30 +62,23 @@ function LiveDateTime() {
   return (
     <View
       style={{
-        backgroundColor: theme.colors.surface,
+        alignItems: "center",
+        backgroundColor: theme.colors.surfaceMuted,
         borderColor: theme.colors.border,
-        borderRadius: theme.radius.lg,
+        borderRadius: theme.radius.pill,
         borderWidth: 1,
-        gap: 4,
+        justifyContent: "center",
+        minHeight: 34,
         paddingHorizontal: theme.spacing.md,
-        paddingVertical: theme.spacing.sm,
+        paddingVertical: 6,
       }}
     >
-      <Text
-        style={{
-          color: theme.colors.text,
-          fontFamily: theme.typography.display,
-          fontSize: 18,
-          fontWeight: "700",
-        }}
-      >
-        {timeLabel}
-      </Text>
       <Text
         style={{
           color: theme.colors.textMuted,
           fontFamily: theme.typography.body,
           fontSize: 12,
+          fontWeight: "700",
         }}
       >
         {dateLabel}
@@ -185,10 +162,11 @@ export function Screen({
           style={{
             alignItems: "flex-start",
             flexDirection: "row",
+            gap: theme.spacing.md,
             justifyContent: "space-between",
           }}
         >
-          <View style={{ flex: 1, gap: theme.spacing.xs, paddingRight: theme.spacing.md }}>
+          <View style={{ flex: 1, gap: theme.spacing.xs, minWidth: 0 }}>
             <Text
               style={{
                 color: theme.colors.text,
@@ -213,17 +191,8 @@ export function Screen({
               </Text>
             ) : null}
           </View>
-          <View
-            style={{
-              alignSelf: "stretch",
-              backgroundColor: theme.colors.border,
-              marginRight: theme.spacing.md,
-              opacity: 0.45,
-              width: 1,
-            }}
-          />
-          <View style={{ alignItems: "flex-end", gap: theme.spacing.sm }}>
-            <LiveDateTime />
+          <View style={{ alignItems: "flex-end", flexShrink: 0, gap: theme.spacing.sm }}>
+            <LiveDateChip />
             {rightSlot}
           </View>
         </View>

@@ -213,27 +213,6 @@ export default function BentaScreen() {
     [reservedQuantityByProductId],
   );
 
-  const getRemainingStockLabel = useCallback(
-    (product: Product) => {
-      const remainingStock = getRemainingProductStock(product);
-      const reservedQuantity = reservedQuantityByProductId.get(product.id) ?? 0;
-      const remainingLabel = product.isWeightBased
-        ? `${formatWeightKg(remainingStock)} kg left to add`
-        : `${remainingStock} left to add`;
-
-      if (reservedQuantity <= 0) {
-        return remainingLabel;
-      }
-
-      const reservedLabel = product.isWeightBased
-        ? `${formatWeightKg(reservedQuantity)} kg in cart`
-        : `${reservedQuantity} in cart`;
-
-      return `${remainingLabel} (${reservedLabel})`;
-    },
-    [getRemainingProductStock, reservedQuantityByProductId],
-  );
-
   const loadScreenData = useCallback(async (mode: "foreground" | "background" = "background") => {
     const showSkeleton = mode === "foreground" && !hasLoadedCatalogRef.current;
 
@@ -1125,7 +1104,7 @@ export default function BentaScreen() {
 
                 return (
                   <ProductCard
-                    actionLabel={product.isWeightBased ? "Weigh item" : "Add to cart"}
+                    actionLabel={product.isWeightBased ? t("benta.cardAction.weighItem") : t("benta.cardAction.addToCart")}
                     barcode={product.barcode}
                     cardPressEnabled={product.isWeightBased}
                     category={product.category}
@@ -1136,7 +1115,6 @@ export default function BentaScreen() {
                     key={product.id}
                     marginPercent={formatMarginPercent(computeProfitMargin(product.costPriceCents, product.priceCents))}
                     minStock={product.minStock}
-                    minStockLabel={formatProductMinStockLabel(product)}
                     name={product.name}
                     onActionPress={() => handleAddToCart(product)}
                     onPress={() => openQuickEditModal(product)}
@@ -1144,7 +1122,6 @@ export default function BentaScreen() {
                     priceLabel={formatProductPriceLabel(product)}
                     showInfoFlip
                     stock={availableStock}
-                    stockLabel={getRemainingStockLabel(product)}
                     useRegularImageSizing
                     useRegularTextSizing
                   />

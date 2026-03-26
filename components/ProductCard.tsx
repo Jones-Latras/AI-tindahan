@@ -10,8 +10,10 @@ import {
   type GestureResponderEvent,
 } from "react-native";
 
+import { useAppLanguage } from "@/contexts/LanguageContext";
 import { useAppTheme } from "@/contexts/ThemeContext";
 import { formatCurrencyFromCents } from "@/utils/money";
+import { formatWeightKg } from "@/utils/pricing";
 
 type ProductCardProps = {
   name: string;
@@ -65,16 +67,12 @@ export function ProductCard({
   onPress,
 }: ProductCardProps) {
   const { theme } = useAppTheme();
+  const { t } = useAppLanguage();
   const resolvedActionPress = onActionPress ?? onPress;
   const resolvedActionLabel = actionLabel ?? "Add to cart";
   const shouldRenderFrontAction = Boolean(actionLabel && resolvedActionPress);
-  const isLowStock = stock <= minStock;
-  const stockStatus =
-    stock <= 0
-      ? { label: "Out of stock", tone: "danger" as const }
-      : isLowStock
-        ? { label: "Low stock", tone: "warning" as const }
-        : null;
+  const isOutOfStock = stock <= 0;
+  const isLowStock = !isOutOfStock && stock <= minStock;
   const [imageFailed, setImageFailed] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
   const flipAnimation = useRef(new Animated.Value(0)).current;
@@ -83,6 +81,7 @@ export function ProductCard({
   const usesRegularTextSizing = !compact || useRegularTextSizing;
   const faceGap = compact ? theme.spacing.sm : theme.spacing.md;
   const facePadding = compact ? theme.spacing.md : theme.spacing.lg;
+  const infoButtonSize = compact ? 32 : 36;
   const frontImageHeight = showInfoFlip
     ? usesRegularImageSizing
       ? 138
@@ -90,30 +89,36 @@ export function ProductCard({
     : usesRegularImageSizing
       ? 116
       : 88;
-  const baseCardHeight = compact
-    ? hasImage
-      ? showInfoFlip
-        ? 300
-        : 320
-      : 264
-    : hasImage
-      ? showInfoFlip
-        ? 344
-        : 360
-      : 292;
-  const extraFrontActionHeight = shouldRenderFrontAction ? (compact ? (usesRegularTextSizing ? 44 : 40) : 48) : 0;
-  const extraCompactImageHeight = compact && usesRegularImageSizing && hasImage ? 28 : 0;
-  const extraCompactTypographyHeight = compact && usesRegularTextSizing ? 18 : 0;
-  const extraCompactBadgeWrapHeight = compact && isWeightBased && stockStatus ? 30 : 0;
-  const estimatedBackNameLines = Math.max(2, Math.ceil(name.trim().length / (compact ? 16 : 20)));
-  const extraBackNameHeight = Math.max(0, estimatedBackNameLines - 2) * (usesRegularTextSizing ? 22 : 18);
-  const fallbackCardHeight =
-    baseCardHeight +
-    extraBackNameHeight +
-    extraFrontActionHeight +
-    extraCompactImageHeight +
-    extraCompactTypographyHeight +
-    extraCompactBadgeWrapHeight;
+  const fallbackCardHeight = showInfoFlip ? (compact ? 336 : 384) : compact ? 304 : 336;
+  const resolvedCategory = category || t("productCard.value.general");
+  const resolvedPriceLabel = priceLabel ?? formatCurrencyFromCents(priceCents);
+  const quantityLabel = (value: number) => (isWeightBased ? `${formatWeightKg(value)} kg` : `${value}`);
+  const resolvedStockLabel = stockLabel ?? t("productCard.value.stockLeft", { count: quantityLabel(stock) });
+  const resolvedMinStockLabel =
+    minStockLabel ?? t("productCard.value.minStockTarget", { count: quantityLabel(minStock) });
+  const imageOpacity = isOutOfStock ? 0.5 : 1;
+  const priceTone = isOutOfStock ? theme.colors.textSoft : theme.colors.success;
+  const warningBadge = {
+    backgroundColor: theme.mode === "dark" ? "#E0A748" : "#F1B453",
+    textColor: "#2F1A04",
+  };
+  const dangerBadge = {
+    backgroundColor: theme.mode === "dark" ? "#C45D5D" : "#C95858",
+    textColor: "#FFFFFF",
+  };
+  const stockStatus = isOutOfStock
+    ? {
+        backgroundColor: dangerBadge.backgroundColor,
+        label: t("productCard.status.outOfStock"),
+        textColor: dangerBadge.textColor,
+      }
+    : isLowStock
+      ? {
+          backgroundColor: warningBadge.backgroundColor,
+          label: t("productCard.status.lowStock"),
+          textColor: warningBadge.textColor,
+        }
+      : null;
 
   useEffect(() => {
     setImageFailed(false);
@@ -136,7 +141,7 @@ export function ProductCard({
 
   const cardShellStyle = {
     backgroundColor: theme.colors.card,
-    borderColor: isLowStock ? theme.colors.warning : theme.colors.border,
+    borderColor: theme.colors.border,
     borderRadius: theme.radius.md,
     borderWidth: 1,
     flexBasis: "47%" as const,
@@ -158,16 +163,31 @@ export function ProductCard({
   });
 
   const detailRows = [
-    { label: "Category", value: category || "General", tone: theme.colors.text },
-    { label: "Price", value: priceLabel ?? formatCurrencyFromCents(priceCents), tone: theme.colors.text },
+    { label: t("productCard.detail.category"), value: resolvedCategory, tone: theme.colors.text },
+    { label: t("productCard.detail.price"), value: resolvedPriceLabel, tone: priceTone },
     ...(showStockAndMargin
-      ? [{ label: "Stock", value: stockLabel ?? `${stock} left`, tone: isLowStock ? theme.colors.warning : theme.colors.text }]
+      ? [
+          {
+            label: t("productCard.detail.stock"),
+            tone: isLowStock ? warningBadge.backgroundColor : isOutOfStock ? theme.colors.textSoft : theme.colors.text,
+            value: resolvedStockLabel,
+          },
+        ]
       : []),
-    { label: "Min stock", value: minStockLabel ?? `${minStock} target`, tone: theme.colors.textMuted },
-    ...(isWeightBased ? [{ label: "Pricing", value: "Sold by weight", tone: theme.colors.primary }] : []),
-    ...(showStockAndMargin ? [{ label: "Margin", value: marginPercent, tone: theme.colors.success }] : []),
-    { label: "Barcode", value: barcode || "No barcode", tone: barcode ? theme.colors.text : theme.colors.textSoft },
+    { label: t("productCard.detail.minStock"), value: resolvedMinStockLabel, tone: theme.colors.textMuted },
+    ...(isWeightBased
+      ? [{ label: t("productCard.detail.pricing"), value: t("productCard.value.soldByWeight"), tone: theme.colors.primary }]
+      : []),
+    ...(showStockAndMargin
+      ? [{ label: t("productCard.detail.margin"), value: marginPercent, tone: isOutOfStock ? theme.colors.textSoft : theme.colors.success }]
+      : []),
+    {
+      label: t("productCard.detail.barcode"),
+      value: barcode || t("productCard.value.noBarcode"),
+      tone: barcode ? theme.colors.text : theme.colors.textSoft,
+    },
   ];
+
   const handleToggleDetails = (event: GestureResponderEvent) => {
     event.stopPropagation();
     setShowDetails((current) => !current);
@@ -182,6 +202,36 @@ export function ProductCard({
 
     resolvedActionPress();
   };
+
+  const renderInfoButton = (absolute = false) => (
+    <Pressable
+      accessibilityLabel={
+        showDetails ? t("productCard.accessibility.hideDetails") : t("productCard.accessibility.showDetails")
+      }
+      hitSlop={10}
+      onPress={handleToggleDetails}
+      style={({ pressed }) => ({
+        alignItems: "center",
+        backgroundColor: theme.colors.surface,
+        borderColor: theme.colors.border,
+        borderRadius: theme.radius.pill,
+        borderWidth: 1,
+        height: infoButtonSize,
+        justifyContent: "center",
+        opacity: pressed ? 0.88 : 1,
+        ...(absolute
+          ? {
+              position: "absolute" as const,
+              right: facePadding,
+              top: facePadding,
+            }
+          : {}),
+        width: infoButtonSize,
+      })}
+    >
+      <Feather color={theme.colors.primary} name="info" size={compact ? 15 : 16} />
+    </Pressable>
+  );
 
   const renderActionButton = () => {
     return (
@@ -217,53 +267,123 @@ export function ProductCard({
             textAlign: "center",
           }}
         >
-          {disabled ? "Out of stock" : resolvedActionLabel}
+          {disabled ? t("productCard.action.outOfStock") : resolvedActionLabel}
         </Text>
       </Pressable>
     );
   };
 
-  const renderFrontContent = () => (
-    <>
+  const renderImageBlock = () => (
+    <View
+      style={{
+        borderRadius: theme.radius.sm,
+        overflow: "hidden",
+        position: "relative",
+      }}
+    >
       {hasImage ? (
+        <Image
+          onError={() => setImageFailed(true)}
+          resizeMode="cover"
+          source={{ uri: imageUri ?? undefined }}
+          style={{
+            backgroundColor: theme.colors.card,
+            height: frontImageHeight,
+            opacity: imageOpacity,
+            width: "100%",
+          }}
+        />
+      ) : (
         <View
           style={{
-            borderRadius: theme.radius.sm,
-            overflow: "hidden",
+            alignItems: "center",
+            backgroundColor: theme.colors.surfaceMuted,
+            height: frontImageHeight,
+            justifyContent: "center",
+            opacity: imageOpacity,
+            width: "100%",
           }}
         >
-          <Image
-            onError={() => setImageFailed(true)}
-            resizeMode="cover"
-            source={{ uri: imageUri ?? undefined }}
+          <Feather color={theme.colors.textSoft} name="package" size={compact ? 18 : 22} />
+        </View>
+      )}
+      {stockStatus ? (
+        <View
+          style={{
+            alignItems: "center",
+            alignSelf: "flex-start",
+            backgroundColor: stockStatus.backgroundColor,
+            borderRadius: 10,
+            left: compact ? 8 : 10,
+            paddingHorizontal: compact ? 8 : 10,
+            paddingVertical: compact ? 5 : 6,
+            position: "absolute",
+            top: compact ? 8 : 10,
+          }}
+        >
+          <Text
+            numberOfLines={1}
             style={{
-              backgroundColor: theme.colors.card,
-              height: frontImageHeight,
-              width: "100%",
+              color: stockStatus.textColor,
+              fontFamily: theme.typography.body,
+              fontSize: usesRegularTextSizing ? 12 : 11,
+              fontWeight: "700",
             }}
-          />
+          >
+            {stockStatus.label}
+          </Text>
+        </View>
+      ) : null}
+    </View>
+  );
+
+  const renderFrontContent = () => (
+    <View style={{ flex: 1 }}>
+      {showInfoFlip ? (
+        <View style={{ alignItems: "flex-end", marginBottom: faceGap, minHeight: infoButtonSize }}>
+          {renderInfoButton()}
         </View>
       ) : null}
 
-      <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+      <View style={{ flex: 1, gap: faceGap }}>
+        {renderImageBlock()}
+
         <View
           style={{
-            flex: 1,
+            flexDirection: "row",
+            flexWrap: "wrap",
             gap: theme.spacing.xs,
-            paddingRight: showInfoFlip ? (compact ? 38 : 42) : 0,
+            minHeight: compact ? 30 : 32,
           }}
         >
           <View
             style={{
-              alignItems: "flex-start",
-              flexDirection: "row",
-              flexWrap: "wrap",
-              gap: theme.spacing.xs,
+              alignItems: "center",
+              alignSelf: "flex-start",
+              backgroundColor: theme.colors.surfaceMuted,
+              borderRadius: theme.radius.pill,
+              paddingHorizontal: compact ? 8 : 10,
+              paddingVertical: compact ? 5 : 6,
             }}
           >
+            <Text
+              numberOfLines={1}
+              style={{
+                color: theme.colors.textMuted,
+                fontFamily: theme.typography.body,
+                fontSize: usesRegularTextSizing ? 12 : 11,
+                fontWeight: "700",
+              }}
+            >
+              {resolvedCategory}
+            </Text>
+          </View>
+          {isWeightBased ? (
             <View
               style={{
-                backgroundColor: theme.colors.primaryMuted,
+                alignItems: "center",
+                alignSelf: "flex-start",
+                backgroundColor: theme.colors.accentMuted,
                 borderRadius: theme.radius.pill,
                 paddingHorizontal: compact ? 8 : 10,
                 paddingVertical: compact ? 5 : 6,
@@ -272,149 +392,100 @@ export function ProductCard({
               <Text
                 numberOfLines={1}
                 style={{
-                  color: theme.colors.primary,
+                  color: theme.colors.accent,
                   fontFamily: theme.typography.body,
                   fontSize: usesRegularTextSizing ? 12 : 11,
                   fontWeight: "700",
                 }}
               >
-                {category || "General"}
+                {t("productCard.value.byWeight")}
               </Text>
             </View>
-            {isWeightBased ? (
-              <View
-                style={{
-                  backgroundColor: theme.colors.accentMuted,
-                  borderRadius: theme.radius.pill,
-                  paddingHorizontal: compact ? 8 : 10,
-                  paddingVertical: compact ? 5 : 6,
-                }}
-              >
-                <Text
-                  numberOfLines={1}
-                  style={{
-                    color: theme.colors.accent,
-                    fontFamily: theme.typography.body,
-                    fontSize: usesRegularTextSizing ? 12 : 11,
-                    fontWeight: "700",
-                  }}
-                >
-                  By kg
-                </Text>
-              </View>
-            ) : null}
-            {stockStatus ? (
-              <View
-                style={{
-                  alignItems: "center",
-                  alignSelf: "flex-start",
-                  backgroundColor:
-                    stockStatus.tone === "danger" ? theme.colors.dangerMuted : theme.colors.warningMuted,
-                  borderRadius: theme.radius.pill,
-                  maxWidth: "100%",
-                  paddingHorizontal: compact ? 8 : 10,
-                  paddingVertical: compact ? 5 : 6,
-                }}
-              >
-                <Text
-                  style={{
-                    color: stockStatus.tone === "danger" ? theme.colors.danger : theme.colors.warning,
-                    flexShrink: 1,
-                    fontFamily: theme.typography.body,
-                    fontSize: usesRegularTextSizing ? 12 : 11,
-                    fontWeight: "700",
-                  }}
-                >
-                  {stockStatus.label}
-                </Text>
-              </View>
-            ) : null}
-          </View>
+          ) : null}
         </View>
-        {!stockStatus && !showInfoFlip ? (
-          <Feather color={theme.colors.textSoft} name="plus-circle" size={compact ? 16 : 18} />
+
+        <View style={{ gap: compact ? 6 : 8 }}>
+          <Text
+            ellipsizeMode="tail"
+            numberOfLines={2}
+            style={{
+              color: theme.colors.text,
+              fontFamily: theme.typography.display,
+              fontSize: usesRegularTextSizing ? 20 : 18,
+              fontWeight: "700",
+              lineHeight: usesRegularTextSizing ? 24 : 22,
+            }}
+          >
+            {name}
+          </Text>
+          <Text
+            style={{
+              color: priceTone,
+              fontFamily: showInfoFlip ? theme.typography.display : theme.typography.body,
+              fontSize: showInfoFlip
+                ? usesRegularTextSizing
+                  ? 24
+                  : 22
+                : usesRegularTextSizing
+                  ? 14
+                  : 13,
+              fontWeight: "700",
+            }}
+          >
+            {resolvedPriceLabel}
+          </Text>
+        </View>
+
+        {!showInfoFlip && showStockAndMargin ? (
+          <View style={{ gap: compact ? 8 : 10 }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+              <Text
+                style={{
+                  color: theme.colors.textMuted,
+                  fontFamily: theme.typography.body,
+                  fontSize: 12,
+                }}
+              >
+                {t("productCard.detail.stock")}
+              </Text>
+              <Text
+                style={{
+                  color: isLowStock ? warningBadge.backgroundColor : isOutOfStock ? theme.colors.textSoft : theme.colors.text,
+                  fontFamily: theme.typography.body,
+                  fontSize: 12,
+                  fontWeight: "700",
+                }}
+              >
+                {resolvedStockLabel}
+              </Text>
+            </View>
+            <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+              <Text
+                style={{
+                  color: theme.colors.textMuted,
+                  fontFamily: theme.typography.body,
+                  fontSize: 12,
+                }}
+              >
+                {t("productCard.detail.margin")}
+              </Text>
+              <Text
+                style={{
+                  color: isOutOfStock ? theme.colors.textSoft : theme.colors.success,
+                  fontFamily: theme.typography.body,
+                  fontSize: 12,
+                  fontWeight: "700",
+                }}
+              >
+                {marginPercent}
+              </Text>
+            </View>
+          </View>
         ) : null}
+
+        {shouldRenderFrontAction ? <View style={{ marginTop: "auto", paddingTop: faceGap }}>{renderActionButton()}</View> : null}
       </View>
-
-      <View style={{ gap: compact ? 6 : 8 }}>
-        <Text
-          numberOfLines={2}
-          style={{
-            color: theme.colors.text,
-            fontFamily: theme.typography.display,
-            fontSize: usesRegularTextSizing ? 20 : 18,
-            fontWeight: "700",
-          }}
-        >
-          {name}
-        </Text>
-        <Text
-          style={{
-            color: showInfoFlip ? theme.colors.primary : theme.colors.textMuted,
-            fontFamily: showInfoFlip ? theme.typography.display : theme.typography.body,
-            fontSize: showInfoFlip
-              ? usesRegularTextSizing
-                ? 24
-                : 22
-              : usesRegularTextSizing
-                ? 14
-                : 13,
-            fontWeight: "700",
-          }}
-        >
-          {priceLabel ?? formatCurrencyFromCents(priceCents)}
-        </Text>
-      </View>
-
-      {!showInfoFlip && showStockAndMargin ? (
-        <View style={{ gap: compact ? 8 : 10 }}>
-          <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-            <Text
-              style={{
-                color: theme.colors.textMuted,
-                fontFamily: theme.typography.body,
-                fontSize: 12,
-              }}
-            >
-              Stock
-            </Text>
-            <Text
-              style={{
-                color: isLowStock ? theme.colors.warning : theme.colors.text,
-                fontFamily: theme.typography.body,
-                fontSize: 12,
-                fontWeight: "700",
-              }}
-            >
-              {stockLabel ?? `${stock} left`}
-            </Text>
-          </View>
-          <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-            <Text
-              style={{
-                color: theme.colors.textMuted,
-                fontFamily: theme.typography.body,
-                fontSize: 12,
-              }}
-            >
-              Margin
-            </Text>
-            <Text
-              style={{
-                color: theme.colors.success,
-                fontFamily: theme.typography.body,
-                fontSize: 12,
-                fontWeight: "700",
-              }}
-            >
-              {marginPercent}
-            </Text>
-          </View>
-        </View>
-      ) : null}
-
-      {shouldRenderFrontAction ? renderActionButton() : null}
-    </>
+    </View>
   );
 
   if (!showInfoFlip) {
@@ -423,8 +494,7 @@ export function ProductCard({
         <View
           style={{
             ...cardShellStyle,
-            gap: faceGap,
-            opacity: disabled ? 0.55 : 1,
+            minHeight: fallbackCardHeight,
             padding: facePadding,
           }}
         >
@@ -439,8 +509,8 @@ export function ProductCard({
         onPress={onPress}
         style={({ pressed }) => ({
           ...cardShellStyle,
-          gap: faceGap,
-          opacity: disabled ? 0.55 : pressed ? 0.92 : 1,
+          minHeight: fallbackCardHeight,
+          opacity: pressed ? 0.92 : 1,
           padding: facePadding,
         })}
       >
@@ -454,7 +524,6 @@ export function ProductCard({
       style={{
         ...cardShellStyle,
         minHeight: fallbackCardHeight,
-        opacity: disabled ? 0.55 : 1,
         position: "relative",
       }}
     >
@@ -473,7 +542,6 @@ export function ProductCard({
             onPress={onPress}
             style={({ pressed }) => ({
               flex: 1,
-              gap: faceGap,
               opacity: pressed ? 0.92 : 1,
               padding: facePadding,
             })}
@@ -484,35 +552,12 @@ export function ProductCard({
           <View
             style={{
               flex: 1,
-              gap: faceGap,
               padding: facePadding,
             }}
           >
             {renderFrontContent()}
           </View>
         )}
-
-        <Pressable
-          accessibilityLabel={showDetails ? "Hide product details" : "Show product details"}
-          hitSlop={10}
-          onPress={handleToggleDetails}
-          style={({ pressed }) => ({
-            alignItems: "center",
-            backgroundColor: theme.colors.surface,
-            borderColor: theme.colors.border,
-            borderRadius: theme.radius.pill,
-            borderWidth: 1,
-            height: compact ? 32 : 36,
-            justifyContent: "center",
-            opacity: pressed ? 0.88 : 1,
-            position: "absolute",
-            right: facePadding,
-            top: facePadding,
-            width: compact ? 32 : 36,
-          })}
-        >
-          <Feather color={theme.colors.primary} name="info" size={compact ? 15 : 16} />
-        </Pressable>
       </Animated.View>
 
       <Animated.View
@@ -526,7 +571,7 @@ export function ProductCard({
         }}
       >
         <View style={{ flex: 1, paddingTop: compact ? 6 : 10 }}>
-          <View style={{ gap: compact ? theme.spacing.sm : faceGap }}>
+          <View style={{ flex: 1, gap: compact ? theme.spacing.sm : faceGap }}>
             <View style={{ gap: theme.spacing.xs, paddingRight: compact ? 34 : 40 }}>
               <Text
                 style={{
@@ -538,9 +583,10 @@ export function ProductCard({
                   textTransform: "uppercase",
                 }}
               >
-                Product Info
+                {t("productCard.detail.productInfo")}
               </Text>
               <Text
+                numberOfLines={2}
                 style={{
                   color: theme.colors.text,
                   fontFamily: theme.typography.display,
@@ -557,7 +603,7 @@ export function ProductCard({
               {detailRows.map((detail) => (
                 <View
                   key={detail.label}
-                  style={{ flexDirection: "row", justifyContent: "space-between", gap: theme.spacing.md }}
+                  style={{ flexDirection: "row", gap: theme.spacing.md, justifyContent: "space-between" }}
                 >
                   <Text
                     style={{
@@ -585,33 +631,11 @@ export function ProductCard({
               ))}
             </View>
 
-            {resolvedActionPress ? (
-              <View style={{ marginTop: compact ? 0 : 2 }}>{renderActionButton()}</View>
-            ) : null}
+            {resolvedActionPress ? <View style={{ marginTop: "auto", paddingTop: theme.spacing.sm }}>{renderActionButton()}</View> : null}
           </View>
         </View>
 
-        <Pressable
-          accessibilityLabel={showDetails ? "Hide product details" : "Show product details"}
-          hitSlop={10}
-          onPress={handleToggleDetails}
-          style={({ pressed }) => ({
-            alignItems: "center",
-            backgroundColor: theme.colors.surface,
-            borderColor: theme.colors.border,
-            borderRadius: theme.radius.pill,
-            borderWidth: 1,
-            height: compact ? 32 : 36,
-            justifyContent: "center",
-            opacity: pressed ? 0.88 : 1,
-            position: "absolute",
-            right: facePadding,
-            top: facePadding,
-            width: compact ? 32 : 36,
-          })}
-        >
-          <Feather color={theme.colors.primary} name="info" size={compact ? 15 : 16} />
-        </Pressable>
+        {renderInfoButton(true)}
       </Animated.View>
     </View>
   );

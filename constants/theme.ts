@@ -71,7 +71,7 @@ export const darkTheme = {
     borderStrong: "#363636",
     text: "#F5F5F5",
     textMuted: "#BCBCBC",
-    textSoft: "#8A8A8A",
+    textSoft: "#A6A6A6",
     primary: "#4FC49F",
     primaryMuted: "#12362C",
     primaryText: "#081510",

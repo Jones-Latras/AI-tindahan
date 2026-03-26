@@ -28,9 +28,7 @@ import { centsToDisplayValue, parseCurrencyToCents } from "@/utils/money";
 import {
   computeProfitMargin,
   formatMarginPercent,
-  formatProductMinStockLabel,
   formatProductPriceLabel,
-  formatProductStockLabel,
   formatWeightKg,
   resolveWeightBasedPricing,
 } from "@/utils/pricing";
@@ -556,15 +554,21 @@ export default function ProduktoScreen() {
 
   const hasImage = form.imageUri.trim().length > 0;
   const imageAlreadyBackedUp = hasImage && isCloudImageUri(form.imageUri);
-  const categoryCountLabel = categories.length === 1 ? "1 saved category" : `${categories.length} saved categories`;
+  const categoryCountLabel =
+    categories.length === 1
+      ? t("produkto.savedCategory.single")
+      : t("produkto.savedCategory.plural", { count: categories.length });
+  const showingLabel = selectedCategory
+    ? t("produkto.showingCategory", { category: selectedCategory })
+    : t("produkto.showingAll", { categoryCount: categoryCountLabel });
 
   return (
     <Screen title={t("produkto.title")}>
       <SurfaceCard style={{ gap: theme.spacing.md }}>
         <InputField
-          label="Search catalog"
+          label={t("produkto.searchLabel")}
           onChangeText={setSearchTerm}
-          placeholder="Search by product or category"
+          placeholder={t("produkto.searchPlaceholder")}
           value={searchTerm}
         />
         <View style={{ gap: theme.spacing.sm }}>
@@ -585,7 +589,7 @@ export default function ProduktoScreen() {
                   fontWeight: "700",
                 }}
               >
-                Categories
+                {t("produkto.categoriesLabel")}
               </Text>
               <Text
                 style={{
@@ -599,12 +603,12 @@ export default function ProduktoScreen() {
               </Text>
               <Text
                 style={{
-                  color: theme.colors.textSoft,
+                  color: theme.colors.textMuted,
                   fontFamily: theme.typography.body,
                   fontSize: 12,
                 }}
               >
-                {selectedCategory ? `Showing ${selectedCategory}` : `Showing all products - ${categoryCountLabel}`}
+                {showingLabel}
               </Text>
             </View>
             <View style={{ alignItems: "center", flexDirection: "row", gap: theme.spacing.sm }}>
@@ -636,7 +640,7 @@ export default function ProduktoScreen() {
                     fontWeight: "700",
                   }}
                 >
-                  {categoriesExpanded ? "Hide" : "Show"}
+                  {categoriesExpanded ? t("produkto.toggleCategories.hide") : t("produkto.toggleCategories.show")}
                 </Text>
               </Pressable>
               <Pressable
@@ -663,7 +667,7 @@ export default function ProduktoScreen() {
                     fontWeight: "700",
                   }}
                 >
-                  New Category
+                  {t("produkto.newCategoryButton")}
                 </Text>
               </Pressable>
             </View>
@@ -672,7 +676,7 @@ export default function ProduktoScreen() {
           {categoriesExpanded ? (
             <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
               {[
-                { label: "All", value: null as string | null },
+                { label: t("produkto.categoryAll"), value: null as string | null },
                 ...categories.map((category) => ({ label: category, value: category })),
               ].map((option) => {
                 const active = selectedCategory === option.value;
@@ -709,7 +713,7 @@ export default function ProduktoScreen() {
         </View>
         <ActionButton
           icon={<Feather color={theme.colors.primaryText} name="plus" size={16} />}
-          label="Magdagdag ng Produkto"
+          label={t("produkto.addProductButton")}
           onPress={openCreateModal}
         />
       </SurfaceCard>
@@ -724,7 +728,7 @@ export default function ProduktoScreen() {
                 fontSize: 14,
               }}
             >
-              Loading product list...
+              {t("produkto.loadingCatalog")}
             </Text>
           </SurfaceCard>
         ) : products.length > 0 ? (
@@ -735,7 +739,7 @@ export default function ProduktoScreen() {
               return (
                 <ProductCard
                   actionIconName="edit-2"
-                  actionLabel="Edit"
+                  actionLabel={t("produkto.cardAction.edit")}
                   cardPressEnabled={false}
                   category={product.category}
                   imageUri={product.imageUri}
@@ -743,14 +747,12 @@ export default function ProduktoScreen() {
                   key={product.id}
                   marginPercent={formatMarginPercent(computeProfitMargin(product.costPriceCents, product.priceCents))}
                   minStock={product.minStock}
-                  minStockLabel={formatProductMinStockLabel(product)}
                   name={product.name}
                   onActionPress={() => openEditModal(product)}
                   priceCents={product.priceCents}
                   priceLabel={formatProductPriceLabel(product)}
                   showInfoFlip
                   stock={availableStock}
-                  stockLabel={formatProductStockLabel(product)}
                 />
               );
             })
@@ -763,7 +765,7 @@ export default function ProduktoScreen() {
                   fontSize: 14,
                 }}
               >
-                No products match this search or category yet.
+                {t("produkto.noMatches")}
               </Text>
             </SurfaceCard>
           )
@@ -771,7 +773,7 @@ export default function ProduktoScreen() {
           <View style={{ width: "100%" }}>
               <EmptyState
                 icon="package"
-                message="Create your first item here. Once products exist, the Benta screen can sell them instantly."
+                message={t("produkto.emptyMessage")}
                 title={t("produkto.emptyTitle")}
               />
           </View>
