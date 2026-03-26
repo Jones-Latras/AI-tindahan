@@ -74,6 +74,10 @@ type ProductFormState = {
   linkedUnitsPerSale: string;
   linkedDisplayUnitLabel: string;
   isPrimaryRestockProduct: boolean;
+  hasContainerReturn: boolean;
+  containerLabel: string;
+  containerDeposit: string;
+  defaultContainerQuantityPerSale: string;
 };
 
 type ProductFormPreview =
@@ -129,6 +133,10 @@ const emptyForm: ProductFormState = {
   linkedUnitsPerSale: "",
   linkedDisplayUnitLabel: "piece",
   isPrimaryRestockProduct: false,
+  hasContainerReturn: false,
+  containerLabel: "",
+  containerDeposit: "",
+  defaultContainerQuantityPerSale: "1",
 };
 
 const PRODUCT_IMAGE_QUALITY = 0.72;
@@ -446,6 +454,10 @@ export default function ProduktoScreen() {
       linkedUnitsPerSale: product.linkedUnitsPerSale !== null ? formatWeightKg(product.linkedUnitsPerSale) : "",
       linkedDisplayUnitLabel: product.linkedDisplayUnitLabel ?? (product.isWeightBased ? "kg" : "piece"),
       isPrimaryRestockProduct: product.isPrimaryRestockProduct,
+      hasContainerReturn: product.hasContainerReturn,
+      containerLabel: product.containerLabel ?? "",
+      containerDeposit: product.containerDepositCents > 0 ? centsToDisplayValue(product.containerDepositCents) : "",
+      defaultContainerQuantityPerSale: String(product.defaultContainerQuantityPerSale),
     });
     setPhotoSheetVisible(false);
     setCategoryModalVisible(false);
@@ -643,6 +655,10 @@ export default function ProduktoScreen() {
             linkedUnitsPerSale: form.inventoryMode === "linked" ? parseDecimalInput(form.linkedUnitsPerSale) : null,
             linkedDisplayUnitLabel: form.linkedDisplayUnitLabel,
             isPrimaryRestockProduct: form.isPrimaryRestockProduct,
+            hasContainerReturn: form.hasContainerReturn,
+            containerLabel: form.containerLabel,
+            containerDepositCents: parseCurrencyToCents(form.containerDeposit) || 0,
+            defaultContainerQuantityPerSale: Math.max(1, Number.parseInt(form.defaultContainerQuantityPerSale, 10) || 1),
           }
         : {
             name: form.name,
@@ -665,6 +681,10 @@ export default function ProduktoScreen() {
             linkedUnitsPerSale: form.inventoryMode === "linked" ? parseDecimalInput(form.linkedUnitsPerSale) : null,
             linkedDisplayUnitLabel: form.linkedDisplayUnitLabel,
             isPrimaryRestockProduct: form.isPrimaryRestockProduct,
+            hasContainerReturn: form.hasContainerReturn,
+            containerLabel: form.containerLabel,
+            containerDepositCents: parseCurrencyToCents(form.containerDeposit) || 0,
+            defaultContainerQuantityPerSale: Math.max(1, Number.parseInt(form.defaultContainerQuantityPerSale, 10) || 1),
           };
 
     setSaving(true);
@@ -1936,6 +1956,99 @@ export default function ProduktoScreen() {
             </View>
           </SurfaceCard>
         ) : null}
+
+        <SurfaceCard style={{ gap: theme.spacing.sm }}>
+          <Text
+            style={{
+              color: theme.colors.text,
+              fontFamily: theme.typography.body,
+              fontSize: 14,
+              fontWeight: "700",
+            }}
+          >
+            Bottle return tracking
+          </Text>
+
+          <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
+            {[
+              { label: "No empties", value: false },
+              { label: "Track empties", value: true },
+            ].map((option) => {
+              const active = form.hasContainerReturn === option.value;
+
+              return (
+                <Pressable
+                  key={option.label}
+                  onPress={() =>
+                    setForm((current) => ({
+                      ...current,
+                      hasContainerReturn: option.value,
+                      containerLabel: option.value ? current.containerLabel : "",
+                      containerDeposit: option.value ? current.containerDeposit : "",
+                      defaultContainerQuantityPerSale: option.value ? current.defaultContainerQuantityPerSale : "1",
+                    }))
+                  }
+                  style={({ pressed }) => ({
+                    backgroundColor: active ? theme.colors.primary : theme.colors.surface,
+                    borderColor: active ? theme.colors.primary : theme.colors.border,
+                    borderRadius: theme.radius.pill,
+                    borderWidth: 1,
+                    flex: 1,
+                    opacity: pressed ? 0.9 : 1,
+                    paddingHorizontal: theme.spacing.md,
+                    paddingVertical: 12,
+                  })}
+                >
+                  <Text
+                    style={{
+                      color: active ? theme.colors.primaryText : theme.colors.text,
+                      fontFamily: theme.typography.body,
+                      fontSize: 13,
+                      fontWeight: "700",
+                      textAlign: "center",
+                    }}
+                  >
+                    {option.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          {form.hasContainerReturn ? (
+            <>
+              <View style={{ flexDirection: "row", gap: theme.spacing.md }}>
+                <View style={{ flex: 1 }}>
+                  <InputField
+                    label="Empty bottle label"
+                    onChangeText={(value) => setForm((current) => ({ ...current, containerLabel: value }))}
+                    placeholder="Example: Coke Empty"
+                    value={form.containerLabel}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <InputField
+                    keyboardType="number-pad"
+                    label="Bottles per sale"
+                    onChangeText={(value) =>
+                      setForm((current) => ({ ...current, defaultContainerQuantityPerSale: value }))
+                    }
+                    placeholder="1"
+                    value={form.defaultContainerQuantityPerSale}
+                  />
+                </View>
+              </View>
+
+              <InputField
+                keyboardType="decimal-pad"
+                label="Deposit amount (optional)"
+                onChangeText={(value) => setForm((current) => ({ ...current, containerDeposit: value }))}
+                placeholder="0.00"
+                value={form.containerDeposit}
+              />
+            </>
+          ) : null}
+        </SurfaceCard>
         <View style={{ gap: theme.spacing.sm }}>
           <Text
             style={{

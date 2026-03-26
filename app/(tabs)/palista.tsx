@@ -25,13 +25,15 @@ import { useAppLanguage } from "@/contexts/LanguageContext";
 import { useAppTheme } from "@/contexts/ThemeContext";
 import {
   addUtangEntry,
+  applyContainerReturn,
   applyUtangPayment,
   listCustomerLedger,
+  listOpenContainerReturnsByCustomer,
   listCustomersWithBalances,
   saveCustomer,
 } from "@/db/repositories";
 import { refreshAllCustomerTrustScores, refreshCustomerTrustScore } from "@/services/ai";
-import type { CustomerSummary, UtangLedgerEntry } from "@/types/models";
+import type { ContainerReturnEvent, CustomerSummary, UtangLedgerEntry } from "@/types/models";
 import { formatDateLabel, formatDateTimeLabel, getDaysBetween } from "@/utils/date";
 import { formatCurrencyFromCents, parseCurrencyToCents } from "@/utils/money";
 
@@ -89,6 +91,7 @@ export default function PalistaScreen() {
   const { language, t } = useAppLanguage();
   const [customers, setCustomers] = useState<CustomerSummary[]>([]);
   const [ledgerEntries, setLedgerEntries] = useState<UtangLedgerEntry[]>([]);
+  const [containerReturns, setContainerReturns] = useState<ContainerReturnEvent[]>([]);
   const [customerModalVisible, setCustomerModalVisible] = useState(false);
   const [detailVisible, setDetailVisible] = useState(false);
   const [utangModalVisible, setUtangModalVisible] = useState(false);
@@ -101,6 +104,7 @@ export default function PalistaScreen() {
   const [paymentAmount, setPaymentAmount] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [returningContainerId, setReturningContainerId] = useState<number | null>(null);
   const [refreshingScores, setRefreshingScores] = useState(false);
   const [refreshingList, setRefreshingList] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
@@ -174,6 +178,22 @@ export default function PalistaScreen() {
     [db],
   );
 
+  const refreshContainerReturns = useCallback(
+    async (customerId: number) => {
+      const nextReturns = await listOpenContainerReturnsByCustomer(db, customerId);
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      setContainerReturns(nextReturns);
+    },
+    [db],
+  );
+
+  const refreshCustomerDetail = useCallback(
+    async (customerId: number) => {
+      await Promise.all([refreshLedger(customerId), refreshContainerReturns(customerId)]);
+    },
+    [refreshContainerReturns, refreshLedger],
+  );
+
   useFocusEffect(
     useCallback(() => {
       void refreshCustomers(hasLoadedCustomersRef.current ? "background" : "foreground");
@@ -184,6 +204,14 @@ export default function PalistaScreen() {
     () =>
       ledgerEntries.reduce((total, entry) => total + Math.max(0, entry.amountCents - entry.amountPaidCents), 0),
     [ledgerEntries],
+  );
+  const outstandingBottleCount = useMemo(
+    () =>
+      containerReturns.reduce(
+        (total, event) => total + Math.max(0, event.quantityOut - event.quantityReturned),
+        0,
+      ),
+    [containerReturns],
   );
   const dateLocale = language === "english" ? "en-PH" : "fil-PH";
   const selectedEntryOutstanding = selectedEntry
@@ -289,9 +317,9 @@ export default function PalistaScreen() {
     async (customer: CustomerSummary) => {
       setSelectedCustomer(customer);
       setDetailVisible(true);
-      await refreshLedger(customer.id);
+      await refreshCustomerDetail(customer.id);
     },
-    [refreshLedger],
+    [refreshCustomerDetail],
   );
 
   const handleSaveCustomer = useCallback(async () => {
@@ -353,14 +381,14 @@ export default function PalistaScreen() {
       setUtangModalVisible(false);
       setUtangForm(emptyUtangForm);
       await refreshSingleTrustScore(selectedCustomer.id);
-      await refreshLedger(selectedCustomer.id);
+      await refreshCustomerDetail(selectedCustomer.id);
     } catch (error) {
       const message = error instanceof Error ? error.message : t("palista.alert.saveFailedUtang");
       Alert.alert(t("palista.alert.saveFailedTitle"), message);
     } finally {
       setSaving(false);
     }
-  }, [db, refreshLedger, refreshSingleTrustScore, selectedCustomer, t, utangForm.amount, utangForm.description]);
+  }, [db, refreshCustomerDetail, refreshSingleTrustScore, selectedCustomer, t, utangForm.amount, utangForm.description]);
 
   const handlePayment = useCallback(async () => {
     if (!selectedEntry || !selectedCustomer) {
@@ -382,14 +410,37 @@ export default function PalistaScreen() {
       setSelectedEntry(null);
       setPaymentAmount("");
       await refreshSingleTrustScore(selectedCustomer.id);
-      await refreshLedger(selectedCustomer.id);
+      await refreshCustomerDetail(selectedCustomer.id);
     } catch (error) {
       const message = error instanceof Error ? error.message : t("palista.alert.paymentFailed");
       Alert.alert(t("palista.alert.paymentFailedTitle"), message);
     } finally {
       setSaving(false);
     }
-  }, [db, paymentAmount, refreshLedger, refreshSingleTrustScore, selectedCustomer, selectedEntry, t]);
+  }, [db, paymentAmount, refreshCustomerDetail, refreshSingleTrustScore, selectedCustomer, selectedEntry, t]);
+
+  const handleContainerReturn = useCallback(
+    async (event: ContainerReturnEvent, quantityToReturn: number) => {
+      if (!selectedCustomer) {
+        return;
+      }
+
+      setReturningContainerId(event.id);
+
+      try {
+        await applyContainerReturn(db, event.id, quantityToReturn);
+        await refreshCustomerDetail(selectedCustomer.id);
+      } catch (error) {
+        Alert.alert(
+          "Bottle return failed",
+          error instanceof Error ? error.message : "The bottle return could not be recorded.",
+        );
+      } finally {
+        setReturningContainerId(null);
+      }
+    },
+    [db, refreshCustomerDetail, selectedCustomer],
+  );
 
   const handleRefreshAllScores = useCallback(async () => {
     setRefreshingScores(true);
@@ -806,6 +857,125 @@ export default function PalistaScreen() {
                 </View>
                 <StatusBadge label={getTrustLabel(selectedCustomer.trustScore)} tone={getTrustTone(selectedCustomer.trustScore)} />
               </View>
+            </SurfaceCard>
+
+            <SurfaceCard style={{ gap: theme.spacing.sm }}>
+              <View style={{ alignItems: "center", flexDirection: "row", justifyContent: "space-between", gap: theme.spacing.md }}>
+                <View style={{ gap: 4 }}>
+                  <Text
+                    style={{
+                      color: theme.colors.textMuted,
+                      fontFamily: theme.typography.body,
+                      fontSize: 12,
+                      fontWeight: "700",
+                    }}
+                  >
+                    Empty bottles
+                  </Text>
+                  <Text
+                    style={{
+                      color: theme.colors.text,
+                      fontFamily: theme.typography.body,
+                      fontSize: 16,
+                      fontWeight: "700",
+                    }}
+                  >
+                    {outstandingBottleCount > 0 ? `${outstandingBottleCount} outstanding` : "No outstanding empties"}
+                  </Text>
+                </View>
+                <StatusBadge
+                  label={outstandingBottleCount > 0 ? "Return Needed" : "All Clear"}
+                  tone={outstandingBottleCount > 0 ? "warning" : "success"}
+                />
+              </View>
+
+              {containerReturns.length > 0 ? (
+                containerReturns.map((event) => {
+                  const outstandingQuantity = Math.max(0, event.quantityOut - event.quantityReturned);
+
+                  return (
+                    <View
+                      key={event.id}
+                      style={{
+                        borderTopColor: theme.colors.border,
+                        borderTopWidth: 1,
+                        gap: theme.spacing.sm,
+                        paddingTop: theme.spacing.sm,
+                      }}
+                    >
+                      <View style={{ alignItems: "center", flexDirection: "row", justifyContent: "space-between", gap: theme.spacing.md }}>
+                        <View style={{ flex: 1, gap: 4 }}>
+                          <Text
+                            style={{
+                              color: theme.colors.text,
+                              fontFamily: theme.typography.body,
+                              fontSize: 14,
+                              fontWeight: "700",
+                            }}
+                          >
+                            {event.containerLabelSnapshot}
+                          </Text>
+                          <Text
+                            style={{
+                              color: theme.colors.textMuted,
+                              fontFamily: theme.typography.body,
+                              fontSize: 12,
+                            }}
+                          >
+                            {event.productNameSnapshot} • {formatDateLabel(event.createdAt)}
+                          </Text>
+                        </View>
+                        <StatusBadge
+                          label={`${outstandingQuantity} left`}
+                          tone={outstandingQuantity > 0 ? "warning" : "success"}
+                        />
+                      </View>
+
+                      <Text
+                        style={{
+                          color: theme.colors.textSoft,
+                          fontFamily: theme.typography.body,
+                          fontSize: 12,
+                        }}
+                      >
+                        {event.quantityReturned > 0
+                          ? `${event.quantityReturned} of ${event.quantityOut} returned`
+                          : `${event.quantityOut} to return`}
+                      </Text>
+
+                      <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
+                        {outstandingQuantity > 1 ? (
+                          <ActionButton
+                            disabled={returningContainerId === event.id}
+                            label={returningContainerId === event.id ? "Saving..." : "Return 1"}
+                            onPress={() => void handleContainerReturn(event, 1)}
+                            style={{ flex: 1 }}
+                            variant="secondary"
+                          />
+                        ) : null}
+                        <ActionButton
+                          disabled={returningContainerId === event.id}
+                          label={returningContainerId === event.id ? "Saving..." : outstandingQuantity === 1 ? "Mark Returned" : "Return All"}
+                          onPress={() => void handleContainerReturn(event, outstandingQuantity)}
+                          style={{ flex: 1 }}
+                          variant="ghost"
+                        />
+                      </View>
+                    </View>
+                  );
+                })
+              ) : (
+                <Text
+                  style={{
+                    color: theme.colors.textSoft,
+                    fontFamily: theme.typography.body,
+                    fontSize: 12,
+                    lineHeight: 18,
+                  }}
+                >
+                  No outstanding bottle-return records for this customer.
+                </Text>
+              )}
             </SurfaceCard>
 
             {ledgerEntries.length > 0 ? (

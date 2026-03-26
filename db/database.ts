@@ -1,7 +1,7 @@
 import type { SQLiteDatabase } from "expo-sqlite";
 
 export const DATABASE_NAME = "tindahan-ai.db";
-export const DATABASE_VERSION = 12;
+export const DATABASE_VERSION = 13;
 
 export async function migrateDbIfNeeded(db: SQLiteDatabase) {
   await db.execAsync("PRAGMA journal_mode = WAL;");
@@ -38,6 +38,10 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
         selling_price_per_kg_cents INTEGER,
         target_margin_percent REAL,
         computed_price_per_kg_cents INTEGER,
+        has_container_return INTEGER NOT NULL DEFAULT 0 CHECK(has_container_return IN (0, 1)),
+        container_label TEXT,
+        container_deposit_cents INTEGER NOT NULL DEFAULT 0 CHECK(container_deposit_cents >= 0),
+        default_container_quantity_per_sale INTEGER NOT NULL DEFAULT 1 CHECK(default_container_quantity_per_sale > 0),
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         synced INTEGER NOT NULL DEFAULT 0
       );
@@ -171,6 +175,21 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
         synced INTEGER NOT NULL DEFAULT 0
       );
 
+      CREATE TABLE IF NOT EXISTS container_return_events (
+        id INTEGER PRIMARY KEY NOT NULL,
+        sale_id INTEGER NOT NULL REFERENCES sales(id) ON DELETE CASCADE,
+        customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL,
+        product_id INTEGER REFERENCES products(id) ON DELETE SET NULL,
+        product_name_snapshot TEXT NOT NULL,
+        container_label_snapshot TEXT NOT NULL,
+        quantity_out INTEGER NOT NULL CHECK(quantity_out > 0),
+        quantity_returned INTEGER NOT NULL DEFAULT 0 CHECK(quantity_returned >= 0),
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        last_returned_at TEXT,
+        status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open', 'partial', 'returned')),
+        synced INTEGER NOT NULL DEFAULT 0
+      );
+
       CREATE TABLE IF NOT EXISTS app_settings (
         key TEXT PRIMARY KEY NOT NULL,
         value TEXT NOT NULL,
@@ -196,10 +215,12 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
       CREATE INDEX IF NOT EXISTS idx_repack_sessions_pool ON repack_sessions(inventory_pool_id, created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_repack_sessions_source ON repack_sessions(source_product_id, created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_repack_sessions_output ON repack_sessions(output_product_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_container_return_events_sale ON container_return_events(sale_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_container_return_events_customer ON container_return_events(customer_id, status, created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_app_settings_updated_at ON app_settings(updated_at DESC);
     `);
 
-    currentVersion = 12;
+    currentVersion = 13;
   }
 
   if (currentVersion === 1) {
@@ -495,6 +516,35 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
     `);
 
     currentVersion = 12;
+  }
+
+  if (currentVersion < 13) {
+    await db.execAsync(`
+      ALTER TABLE products ADD COLUMN has_container_return INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE products ADD COLUMN container_label TEXT;
+      ALTER TABLE products ADD COLUMN container_deposit_cents INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE products ADD COLUMN default_container_quantity_per_sale INTEGER NOT NULL DEFAULT 1;
+
+      CREATE TABLE IF NOT EXISTS container_return_events (
+        id INTEGER PRIMARY KEY NOT NULL,
+        sale_id INTEGER NOT NULL REFERENCES sales(id) ON DELETE CASCADE,
+        customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL,
+        product_id INTEGER REFERENCES products(id) ON DELETE SET NULL,
+        product_name_snapshot TEXT NOT NULL,
+        container_label_snapshot TEXT NOT NULL,
+        quantity_out INTEGER NOT NULL CHECK(quantity_out > 0),
+        quantity_returned INTEGER NOT NULL DEFAULT 0 CHECK(quantity_returned >= 0),
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        last_returned_at TEXT,
+        status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open', 'partial', 'returned')),
+        synced INTEGER NOT NULL DEFAULT 0
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_container_return_events_sale ON container_return_events(sale_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_container_return_events_customer ON container_return_events(customer_id, status, created_at DESC);
+    `);
+
+    currentVersion = 13;
   }
 
   await db.execAsync(`PRAGMA user_version = ${currentVersion};`);

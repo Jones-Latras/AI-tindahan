@@ -16,6 +16,12 @@ type Props = {
   storeName: string;
   saleId: number;
   items: ReceiptItem[];
+  containerReturns?: Array<{
+    containerLabelSnapshot: string;
+    quantityOut: number;
+    quantityReturned: number;
+    status: "open" | "partial" | "returned";
+  }>;
   subtotalCents: number;
   discountCents: number;
   totalCents: number;
@@ -45,6 +51,7 @@ export function ReceiptView({
   storeName,
   saleId,
   items,
+  containerReturns = [],
   subtotalCents,
   discountCents,
   totalCents,
@@ -270,6 +277,71 @@ export function ReceiptView({
             );
           })}
         </View>
+
+        {containerReturns.length > 0 ? (
+          <View
+            style={{
+              backgroundColor: "#FFF7ED",
+              borderColor: "#FED7AA",
+              borderRadius: 18,
+              borderWidth: 1,
+              gap: 10,
+              padding: 14,
+            }}
+          >
+            <Text
+              style={{
+                color: "#9A3412",
+                fontFamily: theme.typography.body,
+                fontSize: 11,
+                fontWeight: "700",
+                textTransform: "uppercase",
+              }}
+            >
+              Bottle Return Tracking
+            </Text>
+
+            {containerReturns.map((containerReturn, index) => {
+              const outstanding = Math.max(0, containerReturn.quantityOut - containerReturn.quantityReturned);
+              const statusLabel =
+                containerReturn.status === "returned"
+                  ? "Returned"
+                  : outstanding === containerReturn.quantityOut
+                    ? `${outstanding} outstanding`
+                    : `${outstanding} left to return`;
+
+              return (
+                <View
+                  key={`${containerReturn.containerLabelSnapshot}-${index}`}
+                  style={{ flexDirection: "row", justifyContent: "space-between", gap: 12 }}
+                >
+                  <Text
+                    style={{
+                      color: "#7C2D12",
+                      flex: 1,
+                      fontFamily: theme.typography.body,
+                      fontSize: 13,
+                      fontWeight: "700",
+                    }}
+                  >
+                    {containerReturn.quantityOut} {containerReturn.containerLabelSnapshot}
+                  </Text>
+                  <Text
+                    style={{
+                      color: outstanding > 0 ? "#C2410C" : theme.colors.success,
+                      fontFamily: theme.typography.body,
+                      fontSize: 12,
+                      fontWeight: "700",
+                      textAlign: "right",
+                    }}
+                  >
+                    {statusLabel}
+                  </Text>
+                </View>
+              );
+            })}
+          </View>
+        ) : null}
 
         <View
           style={{

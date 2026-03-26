@@ -125,6 +125,10 @@ export async function syncToCloud(db: SQLiteDatabase): Promise<string> {
       selling_price_per_kg_cents,
       target_margin_percent,
       computed_price_per_kg_cents,
+      has_container_return,
+      container_label,
+      container_deposit_cents,
+      default_container_quantity_per_sale,
       created_at
     FROM products
     WHERE synced = 0`,
@@ -171,6 +175,29 @@ export async function syncToCloud(db: SQLiteDatabase): Promise<string> {
     await supabaseUpsert("product_inventory_links", productInventoryLinks);
     await db.runAsync("UPDATE product_inventory_links SET synced = 1 WHERE synced = 0");
     pushed += productInventoryLinks.length;
+  }
+
+  // Sync container_return_events
+  const containerReturnEvents = await db.getAllAsync<Record<string, unknown>>(
+    `SELECT
+      id,
+      sale_id,
+      customer_id,
+      product_id,
+      product_name_snapshot,
+      container_label_snapshot,
+      quantity_out,
+      quantity_returned,
+      created_at,
+      last_returned_at,
+      status
+    FROM container_return_events
+    WHERE synced = 0`,
+  );
+  if (containerReturnEvents.length > 0) {
+    await supabaseUpsert("container_return_events", containerReturnEvents);
+    await db.runAsync("UPDATE container_return_events SET synced = 1 WHERE synced = 0");
+    pushed += containerReturnEvents.length;
   }
 
   // Sync customers
@@ -399,10 +426,14 @@ export async function restoreFromCloud(db: SQLiteDatabase): Promise<string> {
           selling_price_per_kg_cents,
           target_margin_percent,
           computed_price_per_kg_cents,
+          has_container_return,
+          container_label,
+          container_deposit_cents,
+          default_container_quantity_per_sale,
           created_at,
           synced
         )
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
         row.id as number,
         row.name as string,
         row.price_cents as number,
@@ -422,6 +453,10 @@ export async function restoreFromCloud(db: SQLiteDatabase): Promise<string> {
         row.selling_price_per_kg_cents as number | null,
         row.target_margin_percent as number | null,
         row.computed_price_per_kg_cents as number | null,
+        row.has_container_return as number,
+        (row.container_label as string | null) ?? null,
+        row.container_deposit_cents as number,
+        row.default_container_quantity_per_sale as number,
         row.created_at as string,
       );
       restored++;
@@ -644,6 +679,41 @@ export async function restoreFromCloud(db: SQLiteDatabase): Promise<string> {
         row.weight_kg as number | null,
         row.line_total_cents as number,
         row.line_cost_total_cents as number,
+      );
+      restored++;
+    }
+
+    // Restore container return events after sales, customers, and products exist
+    const containerReturnEvents = await supabaseSelectAll("container_return_events");
+    for (const event of containerReturnEvents) {
+      const row = event as Record<string, unknown>;
+      await db.runAsync(
+        `INSERT OR REPLACE INTO container_return_events (
+          id,
+          sale_id,
+          customer_id,
+          product_id,
+          product_name_snapshot,
+          container_label_snapshot,
+          quantity_out,
+          quantity_returned,
+          created_at,
+          last_returned_at,
+          status,
+          synced
+        )
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+        row.id as number,
+        row.sale_id as number,
+        (row.customer_id as number | null) ?? null,
+        (row.product_id as number | null) ?? null,
+        row.product_name_snapshot as string,
+        row.container_label_snapshot as string,
+        row.quantity_out as number,
+        row.quantity_returned as number,
+        row.created_at as string,
+        (row.last_returned_at as string | null) ?? null,
+        row.status as string,
       );
       restored++;
     }

@@ -9,6 +9,8 @@ import {
 } from "@/utils/pricing";
 import { sanitizeOptionalText, sanitizePhone, sanitizeText } from "@/utils/validation";
 import type {
+  ContainerReturnEvent,
+  ContainerReturnStatus,
   CustomerRiskProfile,
   CustomerSummary,
   Expense,
@@ -70,6 +72,10 @@ type ProductRow = {
   linked_units_per_sale: number | null;
   linked_display_unit_label: string | null;
   is_primary_restock_product: number | null;
+  has_container_return: number;
+  container_label: string | null;
+  container_deposit_cents: number;
+  default_container_quantity_per_sale: number;
 };
 
 type CategoryRow = {
@@ -129,6 +135,20 @@ type SaleItemContextRow = {
   weight_kg: number | null;
   line_total_cents: number;
   line_cost_total_cents: number;
+};
+
+type ContainerReturnEventRow = {
+  id: number;
+  sale_id: number;
+  customer_id: number | null;
+  product_id: number | null;
+  product_name_snapshot: string;
+  container_label_snapshot: string;
+  quantity_out: number;
+  quantity_returned: number;
+  created_at: string;
+  last_returned_at: string | null;
+  status: ContainerReturnStatus;
 };
 
 type PaymentBreakdownRow = {
@@ -319,6 +339,26 @@ function mapProduct(row: ProductRow): Product {
     linkedUnitsPerSale: row.linked_units_per_sale,
     linkedDisplayUnitLabel: row.linked_display_unit_label,
     isPrimaryRestockProduct: Boolean(row.is_primary_restock_product),
+    hasContainerReturn: Boolean(row.has_container_return),
+    containerLabel: row.container_label,
+    containerDepositCents: row.container_deposit_cents ?? 0,
+    defaultContainerQuantityPerSale: row.default_container_quantity_per_sale ?? 1,
+  };
+}
+
+function mapContainerReturnEvent(row: ContainerReturnEventRow): ContainerReturnEvent {
+  return {
+    id: row.id,
+    saleId: row.sale_id,
+    customerId: row.customer_id,
+    productId: row.product_id,
+    productNameSnapshot: row.product_name_snapshot,
+    containerLabelSnapshot: row.container_label_snapshot,
+    quantityOut: row.quantity_out,
+    quantityReturned: row.quantity_returned,
+    createdAt: row.created_at,
+    lastReturnedAt: row.last_returned_at,
+    status: row.status,
   };
 }
 
@@ -428,8 +468,25 @@ function buildSaleItemsBySale(saleItemRows: SaleItemContextRow[]) {
   return itemsBySale;
 }
 
-function mapSalesHistory(salesRows: SaleContextRow[], saleItemRows: SaleItemContextRow[]): StoreAiSale[] {
+function buildContainerReturnsBySale(containerRows: ContainerReturnEventRow[]) {
+  const returnsBySale = new Map<number, ContainerReturnEvent[]>();
+
+  for (const row of containerRows) {
+    const events = returnsBySale.get(row.sale_id) ?? [];
+    events.push(mapContainerReturnEvent(row));
+    returnsBySale.set(row.sale_id, events);
+  }
+
+  return returnsBySale;
+}
+
+function mapSalesHistory(
+  salesRows: SaleContextRow[],
+  saleItemRows: SaleItemContextRow[],
+  containerRows: ContainerReturnEventRow[] = [],
+): StoreAiSale[] {
   const itemsBySale = buildSaleItemsBySale(saleItemRows);
+  const containerReturnsBySale = buildContainerReturnsBySale(containerRows);
 
   return salesRows.map((sale) => ({
     id: sale.id,
@@ -442,6 +499,7 @@ function mapSalesHistory(salesRows: SaleContextRow[], saleItemRows: SaleItemCont
     customerName: sale.customer_name,
     createdAt: sale.created_at,
     items: itemsBySale.get(sale.id) ?? [],
+    containerReturns: containerReturnsBySale.get(sale.id) ?? [],
   }));
 }
 
@@ -544,6 +602,10 @@ export type ProductInput = {
   linkedUnitsPerSale?: number | null;
   linkedDisplayUnitLabel?: string;
   isPrimaryRestockProduct?: boolean;
+  hasContainerReturn?: boolean;
+  containerLabel?: string;
+  containerDepositCents?: number;
+  defaultContainerQuantityPerSale?: number;
 };
 
 export type CustomerInput = {
@@ -574,6 +636,12 @@ export type RepackSessionInput = {
   note?: string;
 };
 
+export type ContainerReturnInput = {
+  productId: number;
+  containerLabel: string;
+  quantityOut: number;
+};
+
 export type CheckoutInput = {
   items: SaleItemInput[];
   totalCents: number;
@@ -582,6 +650,12 @@ export type CheckoutInput = {
   paymentMethod: PaymentMethod;
   customerId?: number | null;
   utangDescription?: string;
+  containerReturns?: ContainerReturnInput[];
+};
+
+export type CheckoutResult = {
+  saleId: number;
+  containerReturns: ContainerReturnEvent[];
 };
 
 export const STORE_NAME_SETTING_KEY = "store_name";
@@ -608,6 +682,10 @@ function buildProductSelectQuery(whereClause = "", orderByClause = "ORDER BY p.n
       p.selling_price_per_kg_cents,
       p.target_margin_percent,
       p.computed_price_per_kg_cents,
+      p.has_container_return,
+      p.container_label,
+      p.container_deposit_cents,
+      p.default_container_quantity_per_sale,
       p.created_at,
       pil.inventory_pool_id,
       ip.name AS inventory_pool_name,
@@ -733,12 +811,27 @@ export async function saveProduct(db: SQLiteDatabase, input: ProductInput, produ
   const barcode = sanitizeOptionalText(input.barcode, 48);
   const imageUri = sanitizeOptionalText(input.imageUri ?? "", 2048);
   const isWeightBased = Boolean(input.isWeightBased);
+  const hasContainerReturn = Boolean(input.hasContainerReturn);
   const inventoryMode = sanitizeInventoryMode(input.inventoryMode);
   const pricingMode: ProductPricingMode = isWeightBased ? input.pricingMode ?? "direct" : "direct";
   const pricingStrategy: ProductPricingStrategy = isWeightBased ? input.pricingStrategy ?? "manual" : "manual";
+  const containerLabel = hasContainerReturn ? sanitizeText(input.containerLabel ?? "", 60) : null;
+  const containerDepositCents = hasContainerReturn ? input.containerDepositCents ?? 0 : 0;
+  const defaultContainerQuantityPerSale = hasContainerReturn ? input.defaultContainerQuantityPerSale ?? 1 : 1;
 
   if (name.length < 2) {
     throw new Error("Product name must be at least 2 characters.");
+  }
+
+  assertMoney(containerDepositCents, "Container deposit");
+  assertWholeNumber(defaultContainerQuantityPerSale, "Bottle quantity per sale");
+
+  if (hasContainerReturn && (!containerLabel || containerLabel.length < 2)) {
+    throw new Error("Container label must be at least 2 characters.");
+  }
+
+  if (hasContainerReturn && defaultContainerQuantityPerSale <= 0) {
+    throw new Error("Bottle quantity per sale must be greater than zero.");
   }
 
   const inventoryPoolIdInput = inventoryMode === "linked" ? input.inventoryPoolId ?? null : null;
@@ -1008,6 +1101,10 @@ export async function saveProduct(db: SQLiteDatabase, input: ProductInput, produ
             selling_price_per_kg_cents = ?,
             target_margin_percent = ?,
             computed_price_per_kg_cents = ?,
+            has_container_return = ?,
+            container_label = ?,
+            container_deposit_cents = ?,
+            default_container_quantity_per_sale = ?,
             synced = 0
           WHERE id = ?
         `,
@@ -1029,6 +1126,10 @@ export async function saveProduct(db: SQLiteDatabase, input: ProductInput, produ
         sellingPricePerKgCents,
         targetMarginPercent,
         computedPricePerKgCents,
+        hasContainerReturn ? 1 : 0,
+        containerLabel,
+        containerDepositCents,
+        defaultContainerQuantityPerSale,
         productId,
       );
       nextProductId = productId;
@@ -1053,9 +1154,13 @@ export async function saveProduct(db: SQLiteDatabase, input: ProductInput, produ
             cost_price_per_kg_cents,
             selling_price_per_kg_cents,
             target_margin_percent,
-            computed_price_per_kg_cents
+            computed_price_per_kg_cents,
+            has_container_return,
+            container_label,
+            container_deposit_cents,
+            default_container_quantity_per_sale
           )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         name,
         priceCents,
@@ -1075,6 +1180,10 @@ export async function saveProduct(db: SQLiteDatabase, input: ProductInput, produ
         sellingPricePerKgCents,
         targetMarginPercent,
         computedPricePerKgCents,
+        hasContainerReturn ? 1 : 0,
+        containerLabel,
+        containerDepositCents,
+        defaultContainerQuantityPerSale,
       );
 
       nextProductId = Number(result.lastInsertRowId);
@@ -2110,6 +2219,7 @@ export async function getStoreAiContext(db: SQLiteDatabase): Promise<StoreAiCont
     ledgerRows,
     salesRows,
     saleItemRows,
+    containerReturnRows,
     storeName,
   ] = await Promise.all([
     getHomeMetrics(db),
@@ -2183,6 +2293,24 @@ export async function getStoreAiContext(db: SQLiteDatabase): Promise<StoreAiCont
         ORDER BY sale_id DESC, id ASC
       `,
     ),
+    db.getAllAsync<ContainerReturnEventRow>(
+      `
+        SELECT
+          id,
+          sale_id,
+          customer_id,
+          product_id,
+          product_name_snapshot,
+          container_label_snapshot,
+          quantity_out,
+          quantity_returned,
+          created_at,
+          last_returned_at,
+          status
+        FROM container_return_events
+        ORDER BY sale_id DESC, created_at ASC, id ASC
+      `,
+    ),
     getStoreName(db),
   ]);
 
@@ -2212,7 +2340,7 @@ export async function getStoreAiContext(db: SQLiteDatabase): Promise<StoreAiCont
     ledgerByCustomer.set(row.customer_id, entries);
   }
 
-  const sales = mapSalesHistory(salesRows, saleItemRows);
+  const sales = mapSalesHistory(salesRows, saleItemRows, containerReturnRows);
 
   return {
     storeName,
@@ -2256,6 +2384,10 @@ export async function getStoreAiContext(db: SQLiteDatabase): Promise<StoreAiCont
       linkedUnitsPerSale: product.linkedUnitsPerSale,
       linkedDisplayUnitLabel: product.linkedDisplayUnitLabel,
       isPrimaryRestockProduct: product.isPrimaryRestockProduct,
+      hasContainerReturn: product.hasContainerReturn,
+      containerLabel: product.containerLabel,
+      containerDepositCents: product.containerDepositCents,
+      defaultContainerQuantityPerSale: product.defaultContainerQuantityPerSale,
     })),
     customers: customers.map((customer) => ({
       id: customer.id,
@@ -2273,7 +2405,7 @@ export async function getStoreAiContext(db: SQLiteDatabase): Promise<StoreAiCont
 }
 
 export async function listSalesHistory(db: SQLiteDatabase): Promise<StoreAiSale[]> {
-  const [salesRows, saleItemRows] = await Promise.all([
+  const [salesRows, saleItemRows, containerReturnRows] = await Promise.all([
     db.getAllAsync<SaleContextRow>(
       `
         SELECT
@@ -2309,9 +2441,27 @@ export async function listSalesHistory(db: SQLiteDatabase): Promise<StoreAiSale[
         ORDER BY sale_id DESC, id ASC
       `,
     ),
+    db.getAllAsync<ContainerReturnEventRow>(
+      `
+        SELECT
+          id,
+          sale_id,
+          customer_id,
+          product_id,
+          product_name_snapshot,
+          container_label_snapshot,
+          quantity_out,
+          quantity_returned,
+          created_at,
+          last_returned_at,
+          status
+        FROM container_return_events
+        ORDER BY sale_id DESC, created_at ASC, id ASC
+      `,
+    ),
   ]);
 
-  return mapSalesHistory(salesRows, saleItemRows);
+  return mapSalesHistory(salesRows, saleItemRows, containerReturnRows);
 }
 
 export async function listCustomersWithBalances(db: SQLiteDatabase): Promise<CustomerSummary[]> {
@@ -2518,6 +2668,94 @@ export async function listCustomerLedger(db: SQLiteDatabase, customerId: number)
   }));
 }
 
+export async function listOpenContainerReturnsByCustomer(
+  db: SQLiteDatabase,
+  customerId: number,
+): Promise<ContainerReturnEvent[]> {
+  const rows = await db.getAllAsync<ContainerReturnEventRow>(
+    `
+      SELECT
+        id,
+        sale_id,
+        customer_id,
+        product_id,
+        product_name_snapshot,
+        container_label_snapshot,
+        quantity_out,
+        quantity_returned,
+        created_at,
+        last_returned_at,
+        status
+      FROM container_return_events
+      WHERE customer_id = ?
+        AND status <> 'returned'
+      ORDER BY created_at DESC, id DESC
+    `,
+    customerId,
+  );
+
+  return rows.map(mapContainerReturnEvent);
+}
+
+export async function applyContainerReturn(db: SQLiteDatabase, eventId: number, quantityToReturn: number) {
+  assertWholeNumber(quantityToReturn, "Returned bottle count");
+
+  if (quantityToReturn <= 0) {
+    throw new Error("Returned bottle count must be greater than zero.");
+  }
+
+  const event = await db.getFirstAsync<ContainerReturnEventRow>(
+    `
+      SELECT
+        id,
+        sale_id,
+        customer_id,
+        product_id,
+        product_name_snapshot,
+        container_label_snapshot,
+        quantity_out,
+        quantity_returned,
+        created_at,
+        last_returned_at,
+        status
+      FROM container_return_events
+      WHERE id = ?
+      LIMIT 1
+    `,
+    eventId,
+  );
+
+  if (!event) {
+    throw new Error("Bottle return record not found.");
+  }
+
+  const outstanding = Math.max(0, event.quantity_out - event.quantity_returned);
+
+  if (outstanding <= 0) {
+    throw new Error("This bottle return record is already cleared.");
+  }
+
+  const appliedQuantity = Math.min(quantityToReturn, outstanding);
+  const nextReturned = event.quantity_returned + appliedQuantity;
+  const nextStatus: ContainerReturnStatus =
+    nextReturned >= event.quantity_out ? "returned" : nextReturned > 0 ? "partial" : "open";
+
+  await db.runAsync(
+    `
+      UPDATE container_return_events
+      SET
+        quantity_returned = ?,
+        last_returned_at = CURRENT_TIMESTAMP,
+        status = ?,
+        synced = 0
+      WHERE id = ?
+    `,
+    nextReturned,
+    nextStatus,
+    eventId,
+  );
+}
+
 export async function applyUtangPayment(db: SQLiteDatabase, utangId: number, paymentCents: number) {
   assertMoney(paymentCents, "Payment amount");
 
@@ -2587,7 +2825,7 @@ export async function applyUtangPayment(db: SQLiteDatabase, utangId: number, pay
   });
 }
 
-export async function checkoutSale(db: SQLiteDatabase, input: CheckoutInput) {
+export async function checkoutSale(db: SQLiteDatabase, input: CheckoutInput): Promise<CheckoutResult> {
   assertMoney(input.totalCents, "Sale total");
   assertMoney(input.discountCents, "Discount");
   assertMoney(input.cashPaidCents, "Cash paid");
@@ -2660,8 +2898,29 @@ export async function checkoutSale(db: SQLiteDatabase, input: CheckoutInput) {
   const changeGivenCents = input.paymentMethod === "cash" ? input.cashPaidCents - input.totalCents : 0;
   const utangDescription = sanitizeOptionalText(input.utangDescription ?? "", 140);
   const fallbackUtangDescription = sanitizeOptionalText(buildUtangSaleDescription(safeItems), 140);
+  const safeContainerReturns = (input.containerReturns ?? []).map((containerReturn) => {
+    const containerLabel = sanitizeText(containerReturn.containerLabel, 60);
+    const quantityOut = containerReturn.quantityOut;
+
+    if (containerLabel.length < 2) {
+      throw new Error("Container label must be at least 2 characters.");
+    }
+
+    assertWholeNumber(quantityOut, "Container quantity");
+
+    if (quantityOut <= 0) {
+      throw new Error("Container quantity must be greater than zero.");
+    }
+
+    return {
+      productId: containerReturn.productId,
+      containerLabel,
+      quantityOut,
+    };
+  });
 
   let saleId = 0;
+  const createdContainerReturns: ContainerReturnEvent[] = [];
 
   await db.withExclusiveTransactionAsync(async (txn) => {
     for (const item of safeItems) {
@@ -2810,6 +3069,49 @@ export async function checkoutSale(db: SQLiteDatabase, input: CheckoutInput) {
           item.id,
         );
       }
+
+      const containerReturn = safeContainerReturns.find((entry) => entry.productId === item.id);
+
+      if (containerReturn) {
+        const result = await txn.runAsync(
+          `
+            INSERT INTO container_return_events (
+              sale_id,
+              customer_id,
+              product_id,
+              product_name_snapshot,
+              container_label_snapshot,
+              quantity_out,
+              quantity_returned,
+              created_at,
+              last_returned_at,
+              status,
+              synced
+            )
+            VALUES (?, ?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP, NULL, 'open', 0)
+          `,
+          saleId,
+          input.customerId ?? null,
+          item.id,
+          item.name,
+          containerReturn.containerLabel,
+          containerReturn.quantityOut,
+        );
+
+        createdContainerReturns.push({
+          id: Number(result.lastInsertRowId),
+          saleId,
+          customerId: input.customerId ?? null,
+          productId: item.id,
+          productNameSnapshot: item.name,
+          containerLabelSnapshot: containerReturn.containerLabel,
+          quantityOut: containerReturn.quantityOut,
+          quantityReturned: 0,
+          createdAt: new Date().toISOString(),
+          lastReturnedAt: null,
+          status: "open",
+        });
+      }
     }
 
     if (input.paymentMethod === "utang" && input.customerId) {
@@ -2825,7 +3127,10 @@ export async function checkoutSale(db: SQLiteDatabase, input: CheckoutInput) {
     }
   });
 
-  return saleId;
+  return {
+    saleId,
+    containerReturns: createdContainerReturns,
+  };
 }
 
 type WeeklyBreakdownRow = {

@@ -1577,6 +1577,12 @@ export default function HomeScreen() {
               <ReceiptView
                 cashPaidCents={receiptSale.cashPaidCents}
                 changeCents={receiptSale.changeGivenCents}
+                containerReturns={receiptSale.containerReturns.map((event) => ({
+                  containerLabelSnapshot: event.containerLabelSnapshot,
+                  quantityOut: event.quantityOut,
+                  quantityReturned: event.quantityReturned,
+                  status: event.status,
+                }))}
                 date={new Date(receiptSale.createdAt).toLocaleString(language === "english" ? "en-PH" : "fil-PH", {
                   dateStyle: "medium",
                   timeStyle: "short",

@@ -9,6 +9,7 @@ export type PaymentMethod = "cash" | "gcash" | "maya" | "utang";
 export type ProductPricingMode = "derived" | "direct";
 export type ProductPricingStrategy = "manual" | "margin_based";
 export type ProductInventoryMode = "standalone" | "linked";
+export type ContainerReturnStatus = "open" | "partial" | "returned";
 
 export interface Product {
   id: number;
@@ -40,6 +41,10 @@ export interface Product {
   linkedUnitsPerSale: number | null;
   linkedDisplayUnitLabel: string | null;
   isPrimaryRestockProduct: boolean;
+  hasContainerReturn: boolean;
+  containerLabel: string | null;
+  containerDepositCents: number;
+  defaultContainerQuantityPerSale: number;
 }
 
 export interface Customer {
@@ -152,6 +157,20 @@ export interface ExpenseSummary {
   monthExpenseCents: number;
   topCategories: ExpenseCategorySummary[];
   recentCategories: string[];
+}
+
+export interface ContainerReturnEvent {
+  id: number;
+  saleId: number;
+  customerId: number | null;
+  productId: number | null;
+  productNameSnapshot: string;
+  containerLabelSnapshot: string;
+  quantityOut: number;
+  quantityReturned: number;
+  createdAt: string;
+  lastReturnedAt: string | null;
+  status: ContainerReturnStatus;
 }
 
 export interface InventoryPool {
@@ -270,6 +289,10 @@ export interface StoreAiProduct {
   linkedUnitsPerSale: number | null;
   linkedDisplayUnitLabel: string | null;
   isPrimaryRestockProduct: boolean;
+  hasContainerReturn: boolean;
+  containerLabel: string | null;
+  containerDepositCents: number;
+  defaultContainerQuantityPerSale: number;
 }
 
 export interface StoreAiCustomerLedgerEntry {
@@ -317,6 +340,7 @@ export interface StoreAiSale {
   customerName: string | null;
   createdAt: string;
   items: StoreAiSaleItem[];
+  containerReturns: ContainerReturnEvent[];
 }
 
 export interface StoreAiContext {

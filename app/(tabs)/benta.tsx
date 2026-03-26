@@ -69,6 +69,14 @@ function normalizeCategoryName(value: string) {
   return value.trim().replace(/\s+/g, " ");
 }
 
+type ContainerDecision = {
+  productId: number;
+  productName: string;
+  containerLabel: string;
+  quantityOut: number;
+  takeOut: boolean;
+};
+
 export default function BentaScreen() {
   const db = useSQLiteContext();
   const { theme } = useAppTheme();
@@ -101,6 +109,8 @@ export default function BentaScreen() {
   const [quickEditProduct, setQuickEditProduct] = useState<Product | null>(null);
   const [quickEditValue, setQuickEditValue] = useState("");
   const [savingQuickEdit, setSavingQuickEdit] = useState(false);
+  const [containerDecisionVisible, setContainerDecisionVisible] = useState(false);
+  const [containerDecisions, setContainerDecisions] = useState<ContainerDecision[]>([]);
   const [receiptVisible, setReceiptVisible] = useState(false);
   const [sharingReceipt, setSharingReceipt] = useState(false);
   const [lastReceipt, setLastReceipt] = useState<{
@@ -120,6 +130,12 @@ export default function BentaScreen() {
     changeCents: number;
     paymentMethod: string;
     date: string;
+    containerReturns: Array<{
+      containerLabelSnapshot: string;
+      quantityOut: number;
+      quantityReturned: number;
+      status: "open" | "partial" | "returned";
+    }>;
   } | null>(null);
   const [storeName, setStoreName] = useState("");
   const receiptCaptureRef = useRef<View>(null);
@@ -288,6 +304,30 @@ export default function BentaScreen() {
     (runningTotal, item) => runningTotal + (item.isWeightBased ? 1 : Math.max(1, Math.trunc(item.quantity))),
     0,
   );
+  const trackedContainerItems = useMemo(
+    () =>
+      cartItems.flatMap((item) => {
+        const product = productById.get(item.id);
+
+        if (!product?.hasContainerReturn || !product.containerLabel) {
+          return [];
+        }
+
+        const quantityMultiplier = item.isWeightBased ? 1 : Math.max(1, Math.trunc(item.quantity));
+        const quantityOut = Math.max(1, quantityMultiplier * product.defaultContainerQuantityPerSale);
+
+        return [
+          {
+            productId: item.id,
+            productName: product.name,
+            containerLabel: product.containerLabel,
+            quantityOut,
+          },
+        ];
+      }),
+    [cartItems, productById],
+  );
+  const hasTrackedContainers = trackedContainerItems.length > 0;
   const hasActiveCart = cartItems.length > 0;
 
   const changeCents = paymentMethod === "cash" && hasValidCash ? cashPaidCents - finalTotalCents : 0;
@@ -297,6 +337,7 @@ export default function BentaScreen() {
   const selectedCustomerBalanceText = selectedCustomer ? formatCurrencyFromCents(selectedCustomer.balanceCents) : "";
   const isEnoughCash = paymentMethod === "cash" ? hasValidCash && cashPaidCents >= finalTotalCents : true;
   const requiresCustomer = paymentMethod === "utang";
+  const shouldOfferCustomerSelection = requiresCustomer || hasTrackedContainers;
   const isCheckoutReady =
     cartItems.length > 0 && isEnoughCash && (!requiresCustomer || Boolean(selectedCustomer));
   const floatingCartBottomOffset = theme.spacing.xl + theme.spacing.xs;
@@ -489,6 +530,10 @@ export default function BentaScreen() {
           linkedUnitsPerSale: quickEditProduct.linkedUnitsPerSale,
           linkedDisplayUnitLabel: quickEditProduct.linkedDisplayUnitLabel ?? "kg",
           isPrimaryRestockProduct: quickEditProduct.isPrimaryRestockProduct,
+          hasContainerReturn: quickEditProduct.hasContainerReturn,
+          containerLabel: quickEditProduct.containerLabel ?? "",
+          containerDepositCents: quickEditProduct.containerDepositCents,
+          defaultContainerQuantityPerSale: quickEditProduct.defaultContainerQuantityPerSale,
         },
         quickEditProduct.id,
       );
@@ -508,10 +553,10 @@ export default function BentaScreen() {
     setPaymentMethod(method);
     setPaymentMethodExpanded(false);
 
-    if (method !== "utang") {
+    if (method !== "utang" && !hasTrackedContainers) {
       setSelectedCustomer(null);
     }
-  }, []);
+  }, [hasTrackedContainers]);
 
   const handleShareReceipt = useCallback(async () => {
     if (!lastReceipt || !receiptCaptureRef.current) {
@@ -586,23 +631,8 @@ export default function BentaScreen() {
     [db, handleAddToCart, scannerBusy],
   );
 
-  const handleCheckout = useCallback(async () => {
-    if (cartItems.length === 0) {
-      Alert.alert("Cart is empty", "Add products before checking out.");
-      return;
-    }
-
-    if (paymentMethod === "cash" && (!hasValidCash || !isEnoughCash)) {
-      Alert.alert("Cash not enough", "Enter a valid amount that covers the full total.");
-      return;
-    }
-
-    if (paymentMethod === "utang" && !selectedCustomer) {
-      Alert.alert("Customer required", "Select a customer before saving this utang transaction.");
-      return;
-    }
-
-    const payloadItems = cartItems.map((item) => {
+  const buildPayloadItems = useCallback(() => {
+    return cartItems.map((item) => {
       const product = productById.get(item.id);
 
       if (!product) {
@@ -624,91 +654,157 @@ export default function BentaScreen() {
         lineCostTotalCents,
       };
     });
+  }, [cartItems, productById]);
 
-    setProcessingCheckout(true);
+  const performCheckout = useCallback(
+    async (containerSelections: ContainerDecision[] = []) => {
+      const takeOutSelections = containerSelections.filter((selection) => selection.takeOut);
 
-    try {
-      const saleId = await checkoutSale(db, {
-        items: payloadItems,
-        totalCents: finalTotalCents,
-        discountCents,
-        cashPaidCents: paymentMethod === "cash" && hasValidCash ? cashPaidCents : 0,
-        paymentMethod,
-        customerId: selectedCustomer?.id ?? null,
-      });
-
-      const receiptData = {
-        saleId,
-        items: payloadItems.map((item) => ({
-          name: item.name,
-          quantity: item.quantity,
-          weightKg: item.weightKg,
-          priceCents: item.priceCents,
-          lineTotalCents: item.lineTotalCents,
-          isWeightBased: item.isWeightBased,
-        })),
-        subtotalCents: totalCents,
-        discountCents,
-        totalCents: finalTotalCents,
-        cashPaidCents: paymentMethod === "cash" && hasValidCash ? cashPaidCents : 0,
-        changeCents: paymentMethod === "cash" ? changeCents : 0,
-        paymentMethod,
-        date: new Date().toLocaleString("en-PH", { dateStyle: "medium", timeStyle: "short" }),
-      };
-      setLastReceipt(receiptData);
-      setReceiptVisible(true);
-
-      clearCart();
-      setCartSheetVisible(false);
-      setCashInput("");
-      setPaymentMethod("cash");
-      setPaymentMethodExpanded(false);
-      setSelectedCustomer(null);
-      setTawadActive(false);
-      setTawadInput("");
-      setTawadType("fixed");
-      await loadScreenData("background");
-
-      // Check for daily sales milestones
-      const MILESTONES = [500000, 200000, 100000, 50000];
-      const todayKey = new Date().toISOString().slice(0, 10);
-      const triggeredRaw = await Storage.getItem(`tindahan.milestones.${todayKey}`);
-      const triggered = new Set<number>(triggeredRaw ? JSON.parse(triggeredRaw) as number[] : []);
-
-      const homeMetrics = await getHomeMetrics(db);
-      const dailyTotal = homeMetrics.todaySalesCents;
-
-      for (const milestone of MILESTONES) {
-        if (dailyTotal >= milestone && !triggered.has(milestone)) {
-          triggered.add(milestone);
-          await Storage.setItem(
-            `tindahan.milestones.${todayKey}`,
-            JSON.stringify([...triggered]),
-          );
-          setMilestoneAmount(milestone);
-          setMilestoneVisible(true);
-          break;
-        }
+      if (takeOutSelections.length > 0 && !selectedCustomer) {
+        setContainerDecisionVisible(false);
+        Alert.alert(
+          "Customer needed",
+          "Select a customer first so the empty bottle obligations can be tracked and cleared later.",
+        );
+        setCustomerPickerVisible(true);
+        return;
       }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Checkout failed. Please try again.";
-      Alert.alert("Checkout failed", message);
-    } finally {
-      setProcessingCheckout(false);
+
+      const payloadItems = buildPayloadItems();
+
+      setProcessingCheckout(true);
+
+      try {
+        const checkoutResult = await checkoutSale(db, {
+          items: payloadItems,
+          totalCents: finalTotalCents,
+          discountCents,
+          cashPaidCents: paymentMethod === "cash" && hasValidCash ? cashPaidCents : 0,
+          paymentMethod,
+          customerId: selectedCustomer?.id ?? null,
+          containerReturns: takeOutSelections.map((selection) => ({
+            productId: selection.productId,
+            containerLabel: selection.containerLabel,
+            quantityOut: selection.quantityOut,
+          })),
+        });
+
+        const receiptData = {
+          saleId: checkoutResult.saleId,
+          items: payloadItems.map((item) => ({
+            name: item.name,
+            quantity: item.quantity,
+            weightKg: item.weightKg,
+            priceCents: item.priceCents,
+            lineTotalCents: item.lineTotalCents,
+            isWeightBased: item.isWeightBased,
+          })),
+          subtotalCents: totalCents,
+          discountCents,
+          totalCents: finalTotalCents,
+          cashPaidCents: paymentMethod === "cash" && hasValidCash ? cashPaidCents : 0,
+          changeCents: paymentMethod === "cash" ? changeCents : 0,
+          paymentMethod,
+          date: new Date().toLocaleString("en-PH", { dateStyle: "medium", timeStyle: "short" }),
+          containerReturns: checkoutResult.containerReturns.map((event) => ({
+            containerLabelSnapshot: event.containerLabelSnapshot,
+            quantityOut: event.quantityOut,
+            quantityReturned: event.quantityReturned,
+            status: event.status,
+          })),
+        };
+        setLastReceipt(receiptData);
+        setReceiptVisible(true);
+
+        clearCart();
+        setCartSheetVisible(false);
+        setCashInput("");
+        setPaymentMethod("cash");
+        setPaymentMethodExpanded(false);
+        setSelectedCustomer(null);
+        setContainerDecisions([]);
+        setContainerDecisionVisible(false);
+        setTawadActive(false);
+        setTawadInput("");
+        setTawadType("fixed");
+        await loadScreenData("background");
+
+        const MILESTONES = [500000, 200000, 100000, 50000];
+        const todayKey = new Date().toISOString().slice(0, 10);
+        const triggeredRaw = await Storage.getItem(`tindahan.milestones.${todayKey}`);
+        const triggered = new Set<number>(triggeredRaw ? (JSON.parse(triggeredRaw) as number[]) : []);
+
+        const homeMetrics = await getHomeMetrics(db);
+        const dailyTotal = homeMetrics.todaySalesCents;
+
+        for (const milestone of MILESTONES) {
+          if (dailyTotal >= milestone && !triggered.has(milestone)) {
+            triggered.add(milestone);
+            await Storage.setItem(`tindahan.milestones.${todayKey}`, JSON.stringify([...triggered]));
+            setMilestoneAmount(milestone);
+            setMilestoneVisible(true);
+            break;
+          }
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Checkout failed. Please try again.";
+        Alert.alert("Checkout failed", message);
+      } finally {
+        setProcessingCheckout(false);
+      }
+    },
+    [
+      buildPayloadItems,
+      cashPaidCents,
+      changeCents,
+      clearCart,
+      db,
+      discountCents,
+      finalTotalCents,
+      hasValidCash,
+      loadScreenData,
+      paymentMethod,
+      selectedCustomer,
+      totalCents,
+    ],
+  );
+
+  const handleCheckout = useCallback(async () => {
+    if (cartItems.length === 0) {
+      Alert.alert("Cart is empty", "Add products before checking out.");
+      return;
     }
+
+    if (paymentMethod === "cash" && (!hasValidCash || !isEnoughCash)) {
+      Alert.alert("Cash not enough", "Enter a valid amount that covers the full total.");
+      return;
+    }
+
+    if (paymentMethod === "utang" && !selectedCustomer) {
+      Alert.alert("Customer required", "Select a customer before saving this utang transaction.");
+      return;
+    }
+
+    if (trackedContainerItems.length > 0) {
+      setContainerDecisions(
+        trackedContainerItems.map((item) => ({
+          ...item,
+          takeOut: true,
+        })),
+      );
+      setContainerDecisionVisible(true);
+      return;
+    }
+
+    await performCheckout([]);
   }, [
-    cartItems,
-    cashPaidCents,
-    changeCents,
-    clearCart,
-    db,
+    cartItems.length,
     hasValidCash,
     isEnoughCash,
-    loadScreenData,
     paymentMethod,
-    productById,
+    performCheckout,
     selectedCustomer,
-    totalCents,
+    trackedContainerItems,
   ]);
 
   return (
@@ -1302,11 +1398,11 @@ export default function BentaScreen() {
                 placeholder="0.00"
                 value={cashInput}
               />
-            ) : paymentMethod === "utang" ? (
+            ) : shouldOfferCustomerSelection ? (
               <View style={{ gap: theme.spacing.sm }}>
                 {selectedCustomer ? (
                   <SurfaceCard style={{ gap: theme.spacing.sm, padding: theme.spacing.md }}>
-                    <StatusBadge label="Linked Customer" tone="warning" />
+                    <StatusBadge label={paymentMethod === "utang" ? "Linked Customer" : "Bottle Tracker"} tone="warning" />
                     <Text
                       style={{
                         color: theme.colors.text,
@@ -1324,7 +1420,9 @@ export default function BentaScreen() {
                         fontSize: 13,
                       }}
                     >
-                      Current balance: {selectedCustomerBalanceText}
+                      {paymentMethod === "utang"
+                        ? `Current balance: ${selectedCustomerBalanceText}`
+                        : "Empty-bottle returns can be cleared later from this customer profile."}
                     </Text>
                   </SurfaceCard>
                 ) : null}
@@ -1342,7 +1440,7 @@ export default function BentaScreen() {
                       fontSize: 13,
                     }}
                   >
-                    Add a customer in Palista first before saving an utang sale.
+                    Add a customer in Palista first before tracking empty bottles or saving an utang sale.
                   </Text>
                 ) : null}
               </View>
@@ -1369,12 +1467,12 @@ export default function BentaScreen() {
 
             <View
               style={{
-                backgroundColor:
-                  paymentMethod === "cash"
-                    ? isEnoughCash
-                      ? theme.colors.successMuted
-                      : theme.colors.dangerMuted
-                    : paymentMethod === "utang" && !selectedCustomer
+                  backgroundColor:
+                    paymentMethod === "cash"
+                      ? isEnoughCash
+                        ? theme.colors.successMuted
+                        : theme.colors.dangerMuted
+                    : shouldOfferCustomerSelection && !selectedCustomer
                       ? theme.colors.warningMuted
                       : theme.colors.successMuted,
                 borderRadius: theme.radius.sm,
@@ -1408,12 +1506,12 @@ export default function BentaScreen() {
               ) : (
                 <Text
                   style={{
-                    color:
-                      paymentMethod === "cash"
-                        ? theme.colors.danger
-                        : paymentMethod === "utang" && !selectedCustomer
-                          ? theme.colors.warning
-                          : theme.colors.success,
+                      color:
+                        paymentMethod === "cash"
+                          ? theme.colors.danger
+                        : shouldOfferCustomerSelection && !selectedCustomer
+                            ? theme.colors.warning
+                            : theme.colors.success,
                     fontFamily: theme.typography.body,
                     fontSize: 14,
                     fontWeight: "700",
@@ -1425,6 +1523,10 @@ export default function BentaScreen() {
                       ? selectedCustomer
                         ? "This sale will be added to the selected customer's utang ledger."
                         : "Pick a customer before saving this utang sale."
+                      : hasTrackedContainers
+                        ? selectedCustomer
+                          ? "Bottle-tracked items will ask in-store or take-out before checkout."
+                          : "Select a customer now if any bottled items will be taken out."
                       : `Digital payment ready via ${paymentMethod.toUpperCase()}.`}
                 </Text>
               )}
@@ -1695,11 +1797,11 @@ export default function BentaScreen() {
                   placeholder="0.00"
                   value={cashInput}
                 />
-              ) : paymentMethod === "utang" ? (
+              ) : shouldOfferCustomerSelection ? (
                 <View style={{ gap: theme.spacing.sm }}>
                   {selectedCustomer ? (
                     <SurfaceCard style={{ gap: theme.spacing.sm, padding: theme.spacing.md }}>
-                      <StatusBadge label="Linked Customer" tone="warning" />
+                      <StatusBadge label={paymentMethod === "utang" ? "Linked Customer" : "Bottle Tracker"} tone="warning" />
                       <Text
                         style={{
                           color: theme.colors.text,
@@ -1717,7 +1819,9 @@ export default function BentaScreen() {
                           fontSize: 13,
                         }}
                       >
-                        Current balance: {formatCurrencyFromCents(selectedCustomer.balanceCents)}
+                        {paymentMethod === "utang"
+                          ? `Current balance: ${formatCurrencyFromCents(selectedCustomer.balanceCents)}`
+                          : "Empty-bottle returns can be cleared later from this customer profile."}
                       </Text>
                     </SurfaceCard>
                   ) : null}
@@ -1735,7 +1839,7 @@ export default function BentaScreen() {
                         fontSize: 13,
                       }}
                     >
-                      Add a customer in Palista first before saving an utang sale.
+                      Add a customer in Palista first before tracking empty bottles or saving an utang sale.
                     </Text>
                   ) : null}
                 </View>
@@ -1762,12 +1866,12 @@ export default function BentaScreen() {
 
               <View
                 style={{
-                  backgroundColor:
-                    paymentMethod === "cash"
-                      ? isEnoughCash
-                        ? theme.colors.successMuted
-                        : theme.colors.dangerMuted
-                      : paymentMethod === "utang" && !selectedCustomer
+                    backgroundColor:
+                      paymentMethod === "cash"
+                        ? isEnoughCash
+                          ? theme.colors.successMuted
+                          : theme.colors.dangerMuted
+                      : shouldOfferCustomerSelection && !selectedCustomer
                         ? theme.colors.warningMuted
                         : theme.colors.successMuted,
                   borderRadius: theme.radius.sm,
@@ -1801,12 +1905,12 @@ export default function BentaScreen() {
                 ) : (
                   <Text
                     style={{
-                      color:
-                        paymentMethod === "cash"
-                          ? theme.colors.danger
-                          : paymentMethod === "utang" && !selectedCustomer
-                            ? theme.colors.warning
-                            : theme.colors.success,
+                        color:
+                          paymentMethod === "cash"
+                            ? theme.colors.danger
+                            : shouldOfferCustomerSelection && !selectedCustomer
+                              ? theme.colors.warning
+                              : theme.colors.success,
                       fontFamily: theme.typography.body,
                       fontSize: 14,
                       fontWeight: "700",
@@ -1818,6 +1922,10 @@ export default function BentaScreen() {
                         ? selectedCustomer
                           ? "This sale will be added to the selected customer's utang ledger."
                           : "Pick a customer before saving this utang sale."
+                        : hasTrackedContainers
+                          ? selectedCustomer
+                            ? "Bottle-tracked items will ask in-store or take-out before checkout."
+                            : "Select a customer now if any bottled items will be taken out."
                         : `Digital payment ready via ${paymentMethod.toUpperCase()}.`}
                   </Text>
                 )}
@@ -1955,6 +2063,153 @@ export default function BentaScreen() {
       </ModalSheet>
 
       <ModalSheet
+        footer={
+          <View style={{ gap: theme.spacing.sm }}>
+            <ActionButton
+              disabled={containerDecisions.length === 0}
+              label="Continue Checkout"
+              onPress={() => void performCheckout(containerDecisions)}
+            />
+            <ActionButton
+              label="Back"
+              onPress={() => setContainerDecisionVisible(false)}
+              variant="ghost"
+            />
+          </View>
+        }
+        onClose={() => setContainerDecisionVisible(false)}
+        subtitle="Choose which bottled items are taken out so the empty bottles can be tracked."
+        title="Bottle Return Check"
+        visible={containerDecisionVisible}
+      >
+        <View style={{ gap: theme.spacing.sm }}>
+          {containerDecisions.map((decision) => (
+            <SurfaceCard key={decision.productId} style={{ gap: theme.spacing.sm, padding: theme.spacing.md }}>
+              <View style={{ alignItems: "center", flexDirection: "row", justifyContent: "space-between", gap: theme.spacing.md }}>
+                <View style={{ flex: 1, gap: 4 }}>
+                  <Text
+                    style={{
+                      color: theme.colors.text,
+                      fontFamily: theme.typography.body,
+                      fontSize: 15,
+                      fontWeight: "700",
+                    }}
+                  >
+                    {decision.productName}
+                  </Text>
+                  <Text
+                    style={{
+                      color: theme.colors.textMuted,
+                      fontFamily: theme.typography.body,
+                      fontSize: 13,
+                    }}
+                  >
+                    {decision.quantityOut} {decision.containerLabel}
+                  </Text>
+                </View>
+                <StatusBadge
+                  label={decision.takeOut ? "Take out" : "In-store"}
+                  tone={decision.takeOut ? "warning" : "success"}
+                />
+              </View>
+
+              <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
+                {[
+                  { label: "In-store", value: false },
+                  { label: "Take out", value: true },
+                ].map((option) => {
+                  const active = decision.takeOut === option.value;
+
+                  return (
+                    <Pressable
+                      key={`${decision.productId}-${option.label}`}
+                      onPress={() =>
+                        setContainerDecisions((current) =>
+                          current.map((entry) =>
+                            entry.productId === decision.productId ? { ...entry, takeOut: option.value } : entry,
+                          ),
+                        )
+                      }
+                      style={({ pressed }) => ({
+                        backgroundColor: active ? theme.colors.primary : theme.colors.surface,
+                        borderColor: active ? theme.colors.primary : theme.colors.border,
+                        borderRadius: theme.radius.pill,
+                        borderWidth: 1,
+                        flex: 1,
+                        opacity: pressed ? 0.9 : 1,
+                        paddingHorizontal: theme.spacing.md,
+                        paddingVertical: 12,
+                      })}
+                    >
+                      <Text
+                        style={{
+                          color: active ? theme.colors.primaryText : theme.colors.text,
+                          fontFamily: theme.typography.body,
+                          fontSize: 13,
+                          fontWeight: "700",
+                          textAlign: "center",
+                        }}
+                      >
+                        {option.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </SurfaceCard>
+          ))}
+
+          {containerDecisions.some((decision) => decision.takeOut) ? (
+            selectedCustomer ? (
+              <SurfaceCard style={{ gap: theme.spacing.sm, padding: theme.spacing.md }}>
+                <StatusBadge label="Linked Customer" tone="warning" />
+                <Text
+                  style={{
+                    color: theme.colors.text,
+                    fontFamily: theme.typography.body,
+                    fontSize: 15,
+                    fontWeight: "700",
+                  }}
+                >
+                  {selectedCustomer.name}
+                </Text>
+                <Text
+                  style={{
+                    color: theme.colors.textMuted,
+                    fontFamily: theme.typography.body,
+                    fontSize: 13,
+                  }}
+                >
+                  Take-out bottles will be cleared later from this customer's profile.
+                </Text>
+              </SurfaceCard>
+            ) : (
+              <SurfaceCard style={{ gap: theme.spacing.sm, padding: theme.spacing.md }}>
+                <Text
+                  style={{
+                    color: theme.colors.warning,
+                    fontFamily: theme.typography.body,
+                    fontSize: 13,
+                    fontWeight: "700",
+                  }}
+                >
+                  Select a customer before saving take-out bottles.
+                </Text>
+                <ActionButton
+                  label="Select Customer"
+                  onPress={() => {
+                    setContainerDecisionVisible(false);
+                    setCustomerPickerVisible(true);
+                  }}
+                  variant="secondary"
+                />
+              </SurfaceCard>
+            )
+          ) : null}
+        </View>
+      </ModalSheet>
+
+      <ModalSheet
         footer={<ActionButton label="Close" onPress={() => setCustomerPickerVisible(false)} variant="ghost" />}
         onClose={() => setCustomerPickerVisible(false)}
         subtitle={t("benta.customerPickerSubtitle")}
@@ -2012,7 +2267,7 @@ export default function BentaScreen() {
         ) : (
           <EmptyState
             icon="users"
-            message="Create a customer in Palista first, then return here to save utang-based checkout."
+            message="Create a customer in Palista first, then return here to link utang sales or empty-bottle tracking."
             title={t("benta.noCustomersTitle")}
           />
         )}
@@ -2107,6 +2362,7 @@ export default function BentaScreen() {
             <ReceiptView
               cashPaidCents={lastReceipt.cashPaidCents}
               changeCents={lastReceipt.changeCents}
+              containerReturns={lastReceipt.containerReturns}
               date={lastReceipt.date}
               discountCents={lastReceipt.discountCents}
               items={lastReceipt.items}

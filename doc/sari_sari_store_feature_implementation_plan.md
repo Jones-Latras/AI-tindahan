@@ -28,7 +28,7 @@ The goal is not just to add UI. The goal is to make these features reliable acro
 - [x] Phase 2: Expenses tab and true net profit
 - [x] Phase 3: Restock shopping list
 - [x] Phase 4: Tingi / linked inventory
-- [ ] Phase 5: Bottle deposit tracker
+- [x] Phase 5: Bottle deposit tracker
 - [ ] Phase 6: AI, sync, analytics, receipts, and rollout hardening
 
 ---
@@ -192,7 +192,7 @@ Recommended slices:
 3. [x] Restock list
 4. [x] Tingi count-based linking
 5. [x] Tingi repack sessions
-6. [ ] Bottle deposit tracker
+6. [x] Bottle deposit tracker
 7. [ ] AI + sync + analytics polish
 
 ---
@@ -952,6 +952,16 @@ Add:
 
 ## Phase 5: Bottle Deposit / Empty Bottle Tracker
 
+Current implementation progress:
+
+- [x] Added product-level bottle-return settings
+- [x] Added `container_return_events` local schema and migration
+- [x] Added checkout support for bottle-return obligations tied to a sale
+- [x] Added Sales checkout decision flow for in-store vs take-out bottles
+- [x] Added customer-linked bottle obligation list with partial return actions
+- [x] Added receipt / sales-history visibility for bottle-return obligations
+- [x] Added sync / restore and Supabase schema support for bottle-return data
+
 ### Problem
 
 Glass bottle sales have two separate things:
@@ -971,13 +981,13 @@ Treat bottle-return tracking as an obligation system, not just a product note.
 
 Add new product fields or a separate settings table:
 
-- `has_container_return`
+- [x] `has_container_return`
 - `container_label`
   Examples:
   - `Coke Empty`
   - `Beer Bottle`
-- `container_deposit_cents`
-- `default_container_quantity_per_sale`
+- [x] `container_deposit_cents`
+- [x] `default_container_quantity_per_sale`
 
 For simplicity, these can be added to the `products` table in v1.
 
@@ -985,21 +995,21 @@ For simplicity, these can be added to the `products` table in v1.
 
 Columns:
 
-- `id`
-- `sale_id`
-- `customer_id` nullable
-- `product_id`
-- `container_label_snapshot`
-- `quantity_out`
-- `quantity_returned`
-- `created_at`
-- `last_returned_at`
-- `status`
+- [x] `id`
+- [x] `sale_id`
+- [x] `customer_id` nullable
+- [x] `product_id`
+- [x] `container_label_snapshot`
+- [x] `quantity_out`
+- [x] `quantity_returned`
+- [x] `created_at`
+- [x] `last_returned_at`
+- [x] `status`
   Suggested:
-  - `open`
-  - `returned`
-  - `partial`
-- `synced`
+  - [x] `open`
+  - [x] `returned`
+  - [x] `partial`
+- [x] `synced`
 
 ### Scope recommendation
 
@@ -1007,8 +1017,8 @@ Columns:
 
 Track bottle obligations for:
 
-- utang sales
-- named customer sales
+- [x] utang sales
+- [x] named customer sales
 
 Why:
 
@@ -1028,12 +1038,18 @@ In `app/(tabs)/benta.tsx`:
 
 When the cart contains a bottle-tracked item:
 
-1. ask whether the container is consumed in-store or taken out
+1. [x] ask whether the container is consumed in-store or taken out
 2. if taken out:
-   - create a `container_return_events` record
-   - if customer is selected, attach to that customer
+   - [x] create a `container_return_events` record
+   - [x] if customer is selected, attach to that customer
 3. optionally add deposit amount to the sale total
    - this should be a business-rule toggle
+
+Status:
+
+- [x] Bottle-tracked items open a dedicated decision sheet before checkout
+- [x] Cash / digital sales can link a customer when bottle tracking is needed
+- [ ] Deposit amount is stored on the product but not yet added automatically to the sale total
 
 ### Customer screen changes
 
@@ -1041,33 +1057,33 @@ In `app/(tabs)/palista.tsx`:
 
 Add a visible bottle obligations block inside customer detail:
 
-- `1 Coke Empty`
-- `2 SMB Bottles`
+- [x] `1 Coke Empty`
+- [x] `2 SMB Bottles`
 
 Each entry should support:
 
-- `Mark Returned`
-- optional partial return counts
+- [x] `Mark Returned`
+- [x] optional partial return counts
 
 ### Receipt / sales history impact
 
 The sale detail view should show:
 
-- whether bottle return was expected
-- whether it is still outstanding
+- [x] whether bottle return was expected
+- [x] whether it is still outstanding
 
 ### Sync impact
 
 Add:
 
-- new bottle-related fields on `products`
-- `container_return_events`
+- [x] new bottle-related fields on `products`
+- [x] `container_return_events`
 
 ### Definition of done
 
-- Bottle-tracked products can create customer-linked container obligations.
-- The owner can clear returned empties.
-- Outstanding container obligations are easy to see in the customer profile.
+- [x] Bottle-tracked products can create customer-linked container obligations.
+- [x] The owner can clear returned empties.
+- [x] Outstanding container obligations are easy to see in the customer profile.
 
 ---
 

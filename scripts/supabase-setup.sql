@@ -21,6 +21,10 @@ CREATE TABLE IF NOT EXISTS products (
   selling_price_per_kg_cents INTEGER,
   target_margin_percent NUMERIC(10,4),
   computed_price_per_kg_cents INTEGER,
+  has_container_return BOOLEAN NOT NULL DEFAULT false,
+  container_label TEXT,
+  container_deposit_cents INTEGER NOT NULL DEFAULT 0,
+  default_container_quantity_per_sale INTEGER NOT NULL DEFAULT 1,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -36,6 +40,10 @@ ALTER TABLE products ADD COLUMN IF NOT EXISTS cost_price_per_kg_cents INTEGER;
 ALTER TABLE products ADD COLUMN IF NOT EXISTS selling_price_per_kg_cents INTEGER;
 ALTER TABLE products ADD COLUMN IF NOT EXISTS target_margin_percent NUMERIC(10,4);
 ALTER TABLE products ADD COLUMN IF NOT EXISTS computed_price_per_kg_cents INTEGER;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS has_container_return BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS container_label TEXT;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS container_deposit_cents INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS default_container_quantity_per_sale INTEGER NOT NULL DEFAULT 1;
 ALTER TABLE products ALTER COLUMN min_stock TYPE NUMERIC(10,4);
 
 CREATE TABLE IF NOT EXISTS inventory_pools (
@@ -68,6 +76,20 @@ CREATE TABLE IF NOT EXISTS repack_sessions (
   wastage_units NUMERIC(10,4) NOT NULL DEFAULT 0,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   note TEXT
+);
+
+CREATE TABLE IF NOT EXISTS container_return_events (
+  id BIGINT PRIMARY KEY,
+  sale_id BIGINT NOT NULL REFERENCES sales(id) ON DELETE CASCADE,
+  customer_id BIGINT REFERENCES customers(id) ON DELETE SET NULL,
+  product_id BIGINT REFERENCES products(id) ON DELETE SET NULL,
+  product_name_snapshot TEXT NOT NULL,
+  container_label_snapshot TEXT NOT NULL,
+  quantity_out INTEGER NOT NULL,
+  quantity_returned INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_returned_at TIMESTAMPTZ,
+  status TEXT NOT NULL DEFAULT 'open'
 );
 
 CREATE TABLE IF NOT EXISTS customers (
@@ -173,6 +195,7 @@ ALTER TABLE products ENABLE ROW LEVEL SECURITY;
 ALTER TABLE inventory_pools ENABLE ROW LEVEL SECURITY;
 ALTER TABLE product_inventory_links ENABLE ROW LEVEL SECURITY;
 ALTER TABLE repack_sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE container_return_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE customers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sales ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sale_items ENABLE ROW LEVEL SECURITY;
@@ -187,6 +210,7 @@ DROP POLICY IF EXISTS "Allow all" ON products;
 DROP POLICY IF EXISTS "Allow all" ON inventory_pools;
 DROP POLICY IF EXISTS "Allow all" ON product_inventory_links;
 DROP POLICY IF EXISTS "Allow all" ON repack_sessions;
+DROP POLICY IF EXISTS "Allow all" ON container_return_events;
 DROP POLICY IF EXISTS "Allow all" ON customers;
 DROP POLICY IF EXISTS "Allow all" ON sales;
 DROP POLICY IF EXISTS "Allow all" ON sale_items;
@@ -201,6 +225,7 @@ CREATE POLICY "Allow all" ON products FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all" ON inventory_pools FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all" ON product_inventory_links FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all" ON repack_sessions FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all" ON container_return_events FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all" ON customers FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all" ON sales FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all" ON sale_items FOR ALL USING (true) WITH CHECK (true);
