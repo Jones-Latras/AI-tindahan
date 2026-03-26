@@ -132,6 +132,12 @@ Do last after the feature-specific flows are stable.
 
 ## Phase 0: Foundation Decisions and Shared Architecture
 
+Current implementation progress:
+
+- [x] Step 0.1 navigation strategy has been decided and implemented
+- [x] Step 0.2 migration / sync planning has been applied for the shipped Phase 1 and Phase 2 slices
+- [x] Step 0.3 slice-based rollout is active, with slices 1 and 2 completed
+
 ### Step 0.1: Decide the navigation strategy for Expenses
 
 Current issue:
@@ -141,11 +147,11 @@ Current issue:
 
 Recommended approach:
 
-1. Replace the current `Settings` bottom tab with a new `Expenses` tab.
-2. Move `Settings` into one of these locations:
-   - Home screen overflow / utility shortcut
-   - a header gear button from Home
-   - a nested route outside the bottom tab bar
+1. [x] Replace the current `Settings` bottom tab with a new `Expenses` tab.
+2. [x] Move `Settings` into one of these locations:
+   - [x] a header gear button from Home
+   - [ ] Home screen overflow / utility shortcut
+   - [ ] a nested route outside the bottom tab bar
 
 Why this is recommended:
 
@@ -163,11 +169,11 @@ Files affected:
 
 Before adding UI, define:
 
-- every new table
-- every new column
-- default values
-- migration behavior for existing users
-- sync / restore behavior
+- [x] every new table for the shipped slices
+- [x] every new column / metric field for the shipped slices
+- [x] default values
+- [x] migration behavior for existing users
+- [x] sync / restore behavior
 
 This must happen in:
 
@@ -181,13 +187,13 @@ Do not implement all five features in one giant branch.
 
 Recommended slices:
 
-1. Payment-event tracking for utang
-2. Expenses tab + net profit math
-3. Restock list
-4. Tingi count-based linking
-5. Tingi repack sessions
-6. Bottle deposit tracker
-7. AI + sync + analytics polish
+1. [x] Payment-event tracking for utang
+2. [x] Expenses tab + net profit math
+3. [ ] Restock list
+4. [ ] Tingi count-based linking
+5. [ ] Tingi repack sessions
+6. [ ] Bottle deposit tracker
+7. [ ] AI + sync + analytics polish
 
 ---
 
@@ -211,16 +217,13 @@ That means the owner cannot reliably prove:
 
 ### Current status
 
-Already implemented:
-
-- `applyUtangPayment()` in `db/repositories.ts`
-- payment modal in `app/(tabs)/palista.tsx`
-
-Still missing:
-
-- payment-event audit trail
-- more visible "Log Payment" button in customer detail
-- clearer timeline that mixes credit entries and payment events
+- [x] `applyUtangPayment()` in `db/repositories.ts`
+- [x] payment modal in `app/(tabs)/palista.tsx`
+- [x] payment-event audit trail
+- [x] clearer timeline that mixes credit entries and payment events
+- [x] more visible `Log Payment` action on unpaid ledger entries
+- [ ] top action row `Log Payment` entry point in the customer detail sheet
+- [ ] receipt-like confirmation summary after saving a payment
 
 ### Recommended data model
 
@@ -258,13 +261,13 @@ Existing paid amounts need special handling.
 
 Recommended migration rule:
 
-1. Add the new `utang_payments` table.
-2. For every `utang` row where `amount_paid_cents > 0`:
-   - create one synthetic `utang_payments` row
-   - amount = current `amount_paid_cents`
-   - created_at = `paid_at` if available, otherwise `created_at`
-   - source = `migration`
-3. Keep `amount_paid_cents` on the parent `utang` row for fast calculations.
+1. [x] Add the new `utang_payments` table.
+2. [x] For every `utang` row where `amount_paid_cents > 0`:
+   - [x] create one synthetic `utang_payments` row
+   - [x] amount = current `amount_paid_cents`
+   - [x] created_at = `paid_at` if available, otherwise `created_at`
+   - [x] source = `migration`
+3. [x] Keep `amount_paid_cents` on the parent `utang` row for fast calculations.
 
 This does not recreate the true historical splits, but it preserves the already-recorded amount instead of losing it.
 
@@ -272,68 +275,69 @@ This does not recreate the true historical splits, but it preserves the already-
 
 Update `db/repositories.ts`:
 
-1. Add migration / table creation for `utang_payments`.
-2. Update `applyUtangPayment()` to:
-   - insert a new payment-event row
-   - then update the parent `utang.amount_paid_cents`
-   - set `paid_at` only when the balance reaches zero
-3. Add repository helpers:
-   - `listUtangPayments(utangId)`
-   - `listCustomerPaymentHistory(customerId)`
-   - `getCustomerLastPayment(customerId)`
-4. Extend ledger queries to optionally join payment-event info.
+1. [x] Add migration / table creation for `utang_payments`.
+2. [x] Update `applyUtangPayment()` to:
+   - [x] insert a new payment-event row
+   - [x] then update the parent `utang.amount_paid_cents`
+   - [x] set `paid_at` only when the balance reaches zero
+3. [ ] Add repository helpers:
+   - [ ] `listUtangPayments(utangId)`
+   - [ ] `listCustomerPaymentHistory(customerId)`
+   - [ ] `getCustomerLastPayment(customerId)`
+4. [x] Extend ledger queries to optionally join payment-event info.
 
 ### UI changes
 
 Update `app/(tabs)/palista.tsx`:
 
-1. Make `Log Payment` more visible.
+1. [x] Make `Log Payment` more visible.
    Recommended placements:
-   - top action row in the customer detail sheet
-   - on every unpaid ledger card
-   - optional floating primary action inside the detail sheet
+   - [ ] top action row in the customer detail sheet
+   - [x] on every unpaid ledger card
+   - [ ] optional floating primary action inside the detail sheet
 
-2. Add a payment history timeline below each utang entry.
+2. [x] Add a payment history timeline below each utang entry.
    Example:
    - Credit logged: Mar 10, 8:13 PM, ₱820
    - Payment received: Mar 15, 7:02 PM, ₱300
    - Payment received: Mar 22, 6:11 PM, ₱100
    - Remaining: ₱420
 
-3. Add quick amount chips inside the payment modal.
+3. [x] Add quick amount chips inside the payment modal.
    Suggested chips:
+   - [x] implemented in the current UI, including a `Full` shortcut
    - `₱50`
    - `₱100`
    - `₱200`
-   - `Full`
+   - [x] `Full`
 
-4. Add a receipt-like confirmation summary after saving.
+4. [ ] Add a receipt-like confirmation summary after saving.
    Recommended:
-   - applied amount
-   - remaining balance
-   - exact timestamp
+   - [ ] applied amount
+   - [ ] remaining balance
+   - [ ] exact timestamp
 
 ### Analytics impact
 
 Use the new payment-event table to improve:
 
-- customer activity labels
-- risk scoring inputs
-- weekly collection tracking
-- future "who pays regularly" insights
+- [ ] customer activity labels
+- [ ] risk scoring inputs
+- [ ] weekly collection tracking
+- [ ] future "who pays regularly" insights
 
 ### Sync impact
 
 Update `utils/sync.ts` and Supabase schema to include:
 
-- `utang_payments`
+- [x] `utang_payments`
 
 ### Definition of done
 
-- A partial payment creates a separate payment-event row.
-- The customer detail screen shows payment history clearly.
-- The running balance remains correct.
-- Sync / restore preserves payment events.
+- [x] A partial payment creates a separate payment-event row.
+- [x] The customer detail screen shows payment history clearly.
+- [x] The running balance remains correct.
+- [x] Sync / restore preserves payment events.
 
 ---
 
@@ -372,16 +376,21 @@ So the current "profit" is incomplete.
 
 Add a dedicated `Expenses` tab, but keep navigation usable by moving `Settings` out of the bottom tab bar.
 
+Implementation status:
+
+- [x] Added a dedicated `Expenses` tab
+- [x] Moved `Settings` out of the bottom tab bar
+
 ### Recommended route / naming
 
 Because the app uses Taglish route names, the recommended file is:
 
-- `app/(tabs)/gastos.tsx`
+- [x] `app/(tabs)/gastos.tsx`
 
 Suggested tab label:
 
-- English: `Expenses`
-- Taglish: `Gastos`
+- [x] English: `Expenses`
+- [x] Taglish: `Gastos`
 
 ### Recommended data model
 
@@ -389,14 +398,14 @@ Suggested tab label:
 
 Columns:
 
-- `id`
-- `category`
-- `amount_cents`
-- `description`
-- `expense_date`
-- `created_at`
-- `updated_at`
-- `synced`
+- [x] `id`
+- [x] `category`
+- [x] `amount_cents`
+- [x] `description`
+- [x] `expense_date`
+- [x] `created_at`
+- [x] `updated_at`
+- [x] `synced`
 
 Suggested starter categories:
 
@@ -415,17 +424,19 @@ Optional Phase 2.1 table:
 
 Only add this if custom categories are needed soon. For v1, a fixed list plus "Other" is enough.
 
+- [ ] `expense_categories`
+
 ### Repository changes
 
 Update `db/repositories.ts` with:
 
-- `addExpense()`
-- `updateExpense()`
-- `deleteExpense()`
-- `listExpenses()`
-- `getExpenseSummary()`
-- `getTodayExpenseTotal()`
-- `getExpenseBreakdownByCategory()`
+- [x] `addExpense()`
+- [x] `updateExpense()`
+- [x] `deleteExpense()`
+- [x] `listExpenses()`
+- [x] `getExpenseSummary()`
+- [x] `getTodayExpenseTotal()`
+- [x] `getExpenseBreakdownByCategory()`
 
 ### Metrics changes
 
@@ -433,26 +444,26 @@ Current `todayProfitCents` is gross item-margin profit.
 
 Recommended new metrics:
 
-- `todayGrossProfitCents`
-- `todayExpenseCents`
-- `todayNetProfitCents`
+- [x] `todayGrossProfitCents`
+- [x] `todayExpenseCents`
+- [x] `todayNetProfitCents`
 
 Do not silently reuse `todayProfitCents` without a plan, because current screens may be assuming that it means gross profit.
 
 Recommended migration path:
 
-1. Add new fields first.
-2. Update Home UI labels explicitly.
-3. Later decide whether `todayProfitCents` should be retired or aliased.
+1. [x] Add new fields first.
+2. [x] Update Home UI labels explicitly.
+3. [ ] Later decide whether `todayProfitCents` should be retired or aliased.
 
 ### Type changes
 
 Update `types/models.ts`:
 
-- add `Expense`
-- add expense-related summary types
-- extend `HomeMetrics`
-- extend `StoreAiContext`
+- [x] add `Expense`
+- [x] add expense-related summary types
+- [x] extend `HomeMetrics`
+- [x] extend `StoreAiContext`
 
 ### UI plan for the Expenses tab
 
@@ -462,63 +473,63 @@ New screen: `app/(tabs)/gastos.tsx`
 
 Recommended layout:
 
-1. Search / filter bar
-2. Category chips
-3. Today / This Week / This Month summary cards
-4. Expense list
-5. Primary add-expense button
+1. [x] Search / filter bar
+2. [x] Category chips
+3. [x] Today / This Week / This Month summary cards
+4. [x] Expense list
+5. [x] Primary add-expense button
 
 #### Add expense modal
 
 Fields:
 
-- amount
-- category
-- description
-- date/time
+- [x] amount
+- [x] category
+- [x] description
+- [ ] editable date/time
 
 Speed features:
 
-- quick amount chips
-- recent categories
-- default date = now
+- [x] quick amount chips
+- [x] recent categories
+- [x] default date = now
 
 ### Home / analytics updates
 
 Update `app/(tabs)/index.tsx`:
 
-1. Change profit cards to clearly distinguish:
-   - Gross Profit
-   - Expenses
-   - Net Profit
+1. [x] Change profit cards to clearly distinguish:
+   - [x] Gross Profit
+   - [x] Expenses
+   - [x] Net Profit
 
-2. Update the analytics detail panel to include:
-   - today expenses
-   - weekly expenses
-   - top expense categories
+2. [x] Update the analytics detail panel to include:
+   - [x] today expenses
+   - [x] weekly expenses
+   - [x] top expense categories
 
-3. Update charts if needed:
-   - revenue vs expenses vs net
+3. [ ] Update charts if needed:
+   - [ ] revenue vs expenses vs net
 
 ### AI daily brief updates
 
 Update `services/ai.ts`:
 
-1. Add expenses into `StoreAiContext`.
-2. Update `buildStoreAiPromptContext()` so Aling AI can reason about:
-   - today expenses
-   - net profit
-   - biggest expense categories
-3. Update fallback brief logic to mention:
-   - "Net profit is lower today because..."
-   - "Pamasahe and plastic bag costs are eating into margin..."
+1. [x] Add expenses into `StoreAiContext`.
+2. [x] Update `buildStoreAiPromptContext()` so Aling AI can reason about:
+   - [x] today expenses
+   - [x] net profit
+   - [x] biggest expense categories
+3. [x] Update fallback brief logic to mention:
+   - [x] "Net profit is lower today because..."
+   - [x] "Pamasahe and plastic bag costs are eating into margin..."
 
 ### Sync impact
 
 Add sync + restore support for:
 
-- `expenses`
-- optional `expense_categories` if created
+- [x] `expenses`
+- [ ] optional `expense_categories` if created
 
 ### Definition of done
 
