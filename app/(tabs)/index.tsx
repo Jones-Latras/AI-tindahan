@@ -1432,15 +1432,6 @@ export default function HomeScreen() {
                 >
                   {t("home.brief.title")}
                 </Text>
-                <Text
-                  style={{
-                    color: theme.colors.textMuted,
-                    fontFamily: theme.typography.body,
-                    fontSize: 13,
-                  }}
-                >
-                  {t("home.brief.subtitle")}
-                </Text>
               </View>
               <StatusBadge
                 label={brief.source === "ai" ? t("home.brief.live") : geminiReady ? t("home.brief.fallback") : t("home.brief.aiOff")}
@@ -1448,16 +1439,22 @@ export default function HomeScreen() {
               />
             </View>
 
-            <Text
+            <View
               style={{
-                color: theme.colors.text,
-                fontFamily: theme.typography.body,
-                fontSize: 14,
-                lineHeight: 22,
+                backgroundColor: theme.colors.surfaceMuted,
+                borderColor: theme.colors.border,
+                borderRadius: theme.radius.md,
+                borderWidth: 1,
+                padding: theme.spacing.md,
               }}
             >
-              {brief.insight}
-            </Text>
+              <ChatRichText
+                color={theme.colors.text}
+                fontSize={15}
+                lineHeight={24}
+                text={brief.insight}
+              />
+            </View>
 
             <View style={{ gap: theme.spacing.xs }}>
               <Text

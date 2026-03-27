@@ -5,6 +5,9 @@ import { useAppTheme } from "@/contexts/ThemeContext";
 type ChatRichTextProps = {
   text: string;
   color: string;
+  fontSize?: number;
+  gap?: number;
+  lineHeight?: number;
 };
 
 type InlineSegment = {
@@ -55,10 +58,20 @@ function parseInlineSegments(input: string) {
   return segments;
 }
 
-export function ChatRichText({ text, color }: ChatRichTextProps) {
+export function ChatRichText({
+  text,
+  color,
+  fontSize = 14,
+  gap,
+  lineHeight = 22,
+}: ChatRichTextProps) {
   const { theme } = useAppTheme();
   const lines = text.replace(/\r\n/g, "\n").split("\n");
   const markerColor = color;
+  const headingLargeFontSize = fontSize + 4;
+  const headingLargeLineHeight = lineHeight + 2;
+  const headingSmallFontSize = fontSize + 2;
+  const headingSmallLineHeight = lineHeight;
 
   const renderInlineContent = (line: string, keyPrefix: string) =>
     parseInlineSegments(line).map((segment, index) => (
@@ -74,7 +87,7 @@ export function ChatRichText({ text, color }: ChatRichTextProps) {
     ));
 
   return (
-    <View style={{ gap: theme.spacing.xs }}>
+    <View style={{ gap: gap ?? theme.spacing.xs }}>
       {lines.map((line, index) => {
         const trimmed = line.trim();
 
@@ -90,9 +103,9 @@ export function ChatRichText({ text, color }: ChatRichTextProps) {
               style={{
                 color,
                 fontFamily: theme.typography.display,
-                fontSize: headingMatch[1].length === 1 ? 18 : 16,
+                fontSize: headingMatch[1].length === 1 ? headingLargeFontSize : headingSmallFontSize,
                 fontWeight: "700",
-                lineHeight: headingMatch[1].length === 1 ? 24 : 22,
+                lineHeight: headingMatch[1].length === 1 ? headingLargeLineHeight : headingSmallLineHeight,
               }}
             >
               {renderInlineContent(headingMatch[2], `heading-inline-${index}`)}
@@ -114,9 +127,9 @@ export function ChatRichText({ text, color }: ChatRichTextProps) {
                 style={{
                   color: markerColor,
                   fontFamily: theme.typography.body,
-                  fontSize: 14,
+                  fontSize,
                   fontWeight: "700",
-                  lineHeight: 22,
+                  lineHeight,
                 }}
               >
                 {numberedMatch[1]}.
@@ -126,8 +139,8 @@ export function ChatRichText({ text, color }: ChatRichTextProps) {
                   color,
                   flex: 1,
                   fontFamily: theme.typography.body,
-                  fontSize: 14,
-                  lineHeight: 22,
+                  fontSize,
+                  lineHeight,
                 }}
               >
                 {renderInlineContent(numberedMatch[2], `numbered-inline-${index}`)}
@@ -150,20 +163,20 @@ export function ChatRichText({ text, color }: ChatRichTextProps) {
                 style={{
                   color: markerColor,
                   fontFamily: theme.typography.body,
-                  fontSize: 14,
+                  fontSize,
                   fontWeight: "700",
-                  lineHeight: 22,
+                  lineHeight,
                 }}
               >
-                •
+                -
               </Text>
               <Text
                 style={{
                   color,
                   flex: 1,
                   fontFamily: theme.typography.body,
-                  fontSize: 14,
-                  lineHeight: 22,
+                  fontSize,
+                  lineHeight,
                 }}
               >
                 {renderInlineContent(bulletMatch[1], `bullet-inline-${index}`)}
@@ -178,8 +191,8 @@ export function ChatRichText({ text, color }: ChatRichTextProps) {
             style={{
               color,
               fontFamily: theme.typography.body,
-              fontSize: 14,
-              lineHeight: 22,
+              fontSize,
+              lineHeight,
             }}
           >
             {renderInlineContent(trimmed, `paragraph-inline-${index}`)}

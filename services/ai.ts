@@ -31,7 +31,7 @@ const GEMINI_MODELS = [
 ] as const;
 const GEMINI_PROXY_FUNCTION = "gemini-proxy";
 const REQUEST_TIMEOUT_MS = 18_000;
-const HOME_AI_BRIEF_KEY_PREFIX = "ai.home-brief.v3";
+const HOME_AI_BRIEF_KEY_PREFIX = "ai.home-brief.v5";
 
 type GeminiContent = {
   role?: "user" | "model";
@@ -86,6 +86,83 @@ function getGeminiErrorMessage(error: unknown) {
   }
 
   return typeof error === "string" ? error : "";
+}
+
+function formatHomeBriefInsightLegacy(input: string) {
+  const normalized = input.replace(/\s+/g, " ").trim();
+
+  if (!normalized) {
+    return "";
+  }
+
+  const withBoldAmounts = normalized.replace(
+    /(?:\*\*)?(₱\d[\d,]*(?:\.\d{1,2})?)(?:\*\*)?/g,
+    (_match, amount: string) => `**${amount}**`,
+  );
+  const phrasesToEmphasize = [
+    "out of stock",
+    "low stock",
+    "restock",
+    "restocking",
+    "utang",
+    "bottle returns",
+    "empty bottles",
+    "follow up",
+    "highest expense",
+    "top-selling",
+  ];
+
+  return phrasesToEmphasize.reduce((text, phrase) => {
+    const escapedPhrase = phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return text.replace(
+      new RegExp(`(?:\\*\\*)?(${escapedPhrase})(?:\\*\\*)?`, "gi"),
+      (_match, value: string) => `**${value}**`,
+    );
+  }, withBoldAmounts);
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function formatHomeBriefInsight(input: string, productNames: string[] = []) {
+  const normalized = input
+    .replace(/\r\n/g, "\n")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+  if (!normalized) {
+    return "";
+  }
+
+  const withBoldAmounts = normalized.replace(/(?:\*\*)?(\u20B1\d[\d,]*(?:\.\d{1,2})?)(?:\*\*)?/g, (_match, amount: string) => `**${amount}**`);
+  const phrasesToEmphasize = [
+    "out of stock",
+    "low stock",
+    "restock",
+    "restocking",
+    "utang",
+    "bottle returns",
+    "empty bottles",
+    "follow up",
+    "highest expense",
+    "top-selling",
+  ];
+  const termsToEmphasize = [
+    ...phrasesToEmphasize,
+    ...productNames.map((name) => name.trim()).filter(Boolean),
+  ]
+    .filter((term, index, collection) => collection.findIndex((value) => value.toLowerCase() === term.toLowerCase()) === index)
+    .sort((left, right) => right.length - left.length);
+
+  return termsToEmphasize.reduce((text, phrase) => {
+    const escapedPhrase = escapeRegExp(phrase);
+    return text.replace(
+      new RegExp(`(?:\\*\\*)?(${escapedPhrase})(?:\\*\\*)?`, "gi"),
+      (_match, value: string) => `**${value}**`,
+    );
+  }, withBoldAmounts);
 }
 
 function parseGeminiFailure(error: unknown): GeminiFailure {
@@ -258,7 +335,7 @@ function validateHomeAiBrief(value: unknown): HomeAiBrief {
   }
 
   return {
-    insight: record.insight.trim(),
+    insight: formatHomeBriefInsight(record.insight),
     restockSuggestions: record.restockSuggestions.map((item) => item.trim()).filter(Boolean).slice(0, 5),
     generatedOn: new Date().toISOString(),
     source: "ai",
@@ -460,6 +537,7 @@ function buildFallbackHomeAiBrief(
   restockSuggestions: string[] = [],
   error?: unknown,
   options?: {
+    productNamesToEmphasize?: string[];
     todayExpenseCents?: number;
     todayNetProfitCents?: number;
     topExpenseCategory?: string;
@@ -510,7 +588,7 @@ function buildFallbackHomeAiBrief(
   );
 
   return {
-    insight: [insight, expenseInsight, operationsInsight].filter(Boolean).join(" "),
+    insight: formatHomeBriefInsight([insight, expenseInsight, operationsInsight].filter(Boolean).join(" "), options?.productNamesToEmphasize),
     restockSuggestions,
     generatedOn: new Date().toISOString(),
     source: "fallback",
@@ -609,9 +687,19 @@ export async function getOrCreateHomeAiBrief(db: SQLiteDatabase, language: AppLa
     atRiskProducts,
     homeMetrics.lowStockProducts,
   );
+  const productNamesToEmphasize = [
+    ...salesContext.topProducts.map((product) => product.name),
+    ...atRiskProducts.map((product) => product.name),
+    ...homeMetrics.lowStockProducts.map((product) => product.name),
+  ]
+    .map((name) => name.trim())
+    .filter(Boolean)
+    .filter((name, index, collection) => collection.findIndex((value) => value.toLowerCase() === name.toLowerCase()) === index)
+    .sort((left, right) => right.length - left.length);
 
   if (!geminiReady) {
     const fallback = buildFallbackHomeAiBrief(language, heuristicRestockSuggestions, undefined, {
+      productNamesToEmphasize,
       todayExpenseCents: homeMetrics.todayExpenseCents,
       todayNetProfitCents: homeMetrics.todayNetProfitCents,
       topExpenseCategory: humanizeExpenseCategory(expenseSummary.topCategories[0]?.category),
@@ -633,7 +721,11 @@ export async function getOrCreateHomeAiBrief(db: SQLiteDatabase, language: AppLa
           "If products are low stock, out of stock, or at risk of running out soon, include concrete restock suggestions.",
           "When linked inventory exists, reason about the shared stock pool and prefer the primary restock product over the child tingi item when recommending restocks.",
           "Treat utang payments and open bottle-return obligations as operational signals worth mentioning when relevant.",
-          "Stay concise and never invent store data that was not provided.",
+          "Stay concise, mobile-friendly, and never invent store data that was not provided.",
+          "Use 2 short sentences by default, and use a 3rd sentence only when it prevents the brief from feeling cut off or incomplete.",
+          "Do not drop the main action item or exact product name just to make the brief shorter.",
+          "If you mention money, products, or urgent alerts, wrap only those exact parts in **double asterisks**.",
+          "Do not use bullets, headings, or emojis.",
         ].join(" "),
       contents: [
         {
@@ -681,6 +773,8 @@ export async function getOrCreateHomeAiBrief(db: SQLiteDatabase, language: AppLa
                         .join("; ")
                     : "None"
                 }`,
+                "Keep the insight easy to scan on a phone screen.",
+                "Do not make the brief feel abruptly cut off.",
                 "Return JSON only.",
               ].join("\n"),
             },
@@ -695,8 +789,8 @@ export async function getOrCreateHomeAiBrief(db: SQLiteDatabase, language: AppLa
             type: "string",
             description:
               language === "english"
-                ? "A friendly English insight in 2 or 3 short sentences."
-                : "A friendly Taglish insight in 2 or 3 short sentences.",
+                ? "A friendly English insight in 2 short sentences, or 3 short sentences if needed for clarity. You may use **bold** markdown for important amounts, exact product names, or urgent alert phrases."
+                : "A friendly Taglish insight in 2 short sentences, o 3 short sentences kung kailangan para malinaw. Puwedeng gumamit ng **bold** markdown para sa importanteng amounts, exact product names, o urgent alert phrases.",
           },
           restockSuggestions: {
             type: "array",
@@ -717,6 +811,7 @@ export async function getOrCreateHomeAiBrief(db: SQLiteDatabase, language: AppLa
     });
     const finalizedBrief = {
       ...brief,
+      insight: formatHomeBriefInsight(brief.insight, productNamesToEmphasize),
       restockSuggestions:
         brief.restockSuggestions.length > 0 ? brief.restockSuggestions : heuristicRestockSuggestions,
     };
@@ -726,6 +821,7 @@ export async function getOrCreateHomeAiBrief(db: SQLiteDatabase, language: AppLa
   } catch (error) {
     console.warn("Gemini home brief failed:", getGeminiErrorMessage(error));
     const fallback = buildFallbackHomeAiBrief(language, heuristicRestockSuggestions, error, {
+      productNamesToEmphasize,
       todayExpenseCents: homeMetrics.todayExpenseCents,
       todayNetProfitCents: homeMetrics.todayNetProfitCents,
       topExpenseCategory: humanizeExpenseCategory(expenseSummary.topCategories[0]?.category),
