@@ -38,7 +38,7 @@ export const lightTheme = {
     success: "#2A8B66",
     successMuted: "#DDF4EA",
     overlay: "rgba(18, 24, 21, 0.38)",
-    shadow: "rgba(19, 24, 22, 0.08)"
+    shadow: "rgba(19, 24, 22, 0.12)"
   },
   typography: {
     display: displayFontFamily,
@@ -84,7 +84,7 @@ export const darkTheme = {
     success: "#65D3A5",
     successMuted: "#112F24",
     overlay: "rgba(0, 0, 0, 0.76)",
-    shadow: "rgba(0, 0, 0, 0.4)"
+    shadow: "rgba(0, 0, 0, 0.55)"
   },
   typography: {
     display: displayFontFamily,

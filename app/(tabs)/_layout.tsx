@@ -1,6 +1,7 @@
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
 import { Text, View } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 
 import { useAppLanguage } from "@/contexts/LanguageContext";
 import { useAppTheme } from "@/contexts/ThemeContext";
@@ -56,10 +57,12 @@ export default function TabLayout() {
         options={{
           title: t("tabs.benta"),
           tabBarIcon: () => (
-            <View
+            <LinearGradient
+              colors={[theme.colors.primary, theme.colors.success]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
               style={{
                 alignItems: "center",
-                backgroundColor: theme.colors.primary,
                 borderRadius: theme.radius.pill,
                 elevation: 8,
                 height: 62,
@@ -73,7 +76,7 @@ export default function TabLayout() {
               }}
             >
               <MaterialCommunityIcons color={theme.colors.primaryText} name="cash-register" size={28} />
-            </View>
+            </LinearGradient>
           ),
           tabBarLabel: ({ focused }) => (
             <Text

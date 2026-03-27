@@ -163,7 +163,8 @@ function HomeShortcutCard({ icon, label, onPress }: HomeShortcutCardProps) {
         flexBasis: "23%",
         gap: theme.spacing.sm,
         maxWidth: "23.5%",
-        opacity: pressed ? 0.82 : 1,
+        opacity: pressed ? 0.9 : 1,
+        transform: [{ scale: pressed ? 0.94 : 1 }],
         paddingVertical: theme.spacing.xs,
       })}
     >

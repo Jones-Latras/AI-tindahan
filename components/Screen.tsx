@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "expo-router";
 import { PanResponder, ScrollView, Text, View, type StyleProp, type ViewStyle } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { LinearGradient } from "expo-linear-gradient";
 
 import { useAppLanguage } from "@/contexts/LanguageContext";
 import { useAppTheme } from "@/contexts/ThemeContext";
@@ -145,13 +146,18 @@ export function Screen({
 
   return (
     <SafeAreaView style={{ backgroundColor: theme.colors.background, flex: 1 }} {...swipeResponder.panHandlers}>
+      <LinearGradient
+        colors={[theme.colors.primaryMuted, theme.colors.background]}
+        locations={[0, 0.25]}
+        style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 400 }}
+      />
       <ScrollView
         contentContainerStyle={[
           {
             gap: theme.spacing.lg,
             paddingBottom: theme.spacing.xxl,
-            paddingHorizontal: theme.spacing.lg,
-            paddingTop: theme.spacing.lg,
+            paddingHorizontal: 22,
+            paddingTop: 24,
           },
           contentContainerStyle,
         ]}
