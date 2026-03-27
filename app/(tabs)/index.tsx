@@ -1351,41 +1351,6 @@ export default function HomeScreen() {
           paddingBottom: 120,
           paddingTop: theme.spacing.md,
         }}
-        overlay={
-          <Pressable
-            onPress={() => setChatVisible(true)}
-            style={({ pressed }) => ({
-              alignItems: "center",
-              backgroundColor: theme.colors.primary,
-              borderRadius: theme.radius.pill,
-              bottom: 30,
-              elevation: 4,
-              flexDirection: "row",
-              gap: theme.spacing.sm,
-              opacity: pressed ? 0.92 : 1,
-              paddingHorizontal: theme.spacing.lg,
-              paddingVertical: 14,
-              position: "absolute",
-              right: theme.spacing.lg,
-              shadowColor: theme.colors.shadow,
-              shadowOffset: { width: 0, height: 10 },
-              shadowOpacity: 1,
-              shadowRadius: 20,
-            })}
-          >
-            <Feather color={theme.colors.primaryText} name="message-circle" size={18} />
-            <Text
-              style={{
-                color: theme.colors.primaryText,
-                fontFamily: theme.typography.body,
-                fontSize: 14,
-                fontWeight: "700",
-              }}
-            >
-              {t("home.aiButton")}
-            </Text>
-          </Pressable>
-        }
         rightSlot={
           <Pressable
             accessibilityLabel={t("home.openSettings")}
@@ -1519,6 +1484,14 @@ export default function HomeScreen() {
                 </Text>
               )}
             </View>
+
+            <ActionButton
+              icon={<Feather color={theme.colors.primary} name="message-circle" size={18} />}
+              label={t("home.chat.ask")}
+              onPress={() => setChatVisible(true)}
+              variant="outline"
+              style={{ marginTop: theme.spacing.xs }}
+            />
           </SurfaceCard>
         ) : null}
 
@@ -1606,13 +1579,13 @@ export default function HomeScreen() {
         subtitle={
           receiptSale
             ? t("home.history.receiptSubtitle", {
-                date:
-                  new Date(receiptSale.createdAt).toLocaleString(language === "english" ? "en-PH" : "fil-PH", {
-                    dateStyle: "medium",
-                    timeStyle: "short",
-                  }),
-                id: receiptSale.id,
-              })
+              date:
+                new Date(receiptSale.createdAt).toLocaleString(language === "english" ? "en-PH" : "fil-PH", {
+                  dateStyle: "medium",
+                  timeStyle: "short",
+                }),
+              id: receiptSale.id,
+            })
             : ""
         }
         title={t("home.history.receiptDetailsTitle")}

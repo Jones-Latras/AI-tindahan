@@ -6,7 +6,7 @@ type ActionButtonProps = {
   label: string;
   onPress: () => void;
   icon?: React.ReactNode;
-  variant?: "primary" | "secondary" | "ghost" | "danger";
+  variant?: "primary" | "secondary" | "ghost" | "danger" | "outline";
   disabled?: boolean;
   style?: StyleProp<ViewStyle>;
 };
@@ -40,11 +40,17 @@ export function ActionButton({
               borderColor: theme.colors.dangerMuted,
               textColor: theme.colors.danger,
             }
-          : {
-              backgroundColor: "transparent",
-              borderColor: theme.colors.border,
-              textColor: theme.colors.text,
-            };
+          : variant === "outline"
+            ? {
+                backgroundColor: "transparent",
+                borderColor: theme.colors.primary,
+                textColor: theme.colors.primary,
+              }
+            : {
+                backgroundColor: "transparent",
+                borderColor: theme.colors.border,
+                textColor: theme.colors.text,
+              };
 
   return (
     <Pressable

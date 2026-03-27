@@ -15,8 +15,8 @@ function FloatingTabBar({ state, descriptors, navigation }: any) {
 
   const bentaRouteIndex = state.routes.findIndex((route: any) => route.name === "benta");
   const bentaRoute = state.routes[bentaRouteIndex];
-  
-  const pillRoutes = state.routes.filter((route: any) => 
+
+  const pillRoutes = state.routes.filter((route: any) =>
     ["index", "produkto", "palista", "gastos"].includes(route.name)
   );
 
@@ -75,7 +75,7 @@ function FloatingTabBar({ state, descriptors, navigation }: any) {
             overflow: "hidden",
           }}
         >
-          <View 
+          <View
             onLayout={(e) => setTabWidth(e.nativeEvent.layout.width / 4)}
             style={{ flex: 1, flexDirection: "row", position: "relative", alignItems: "center", justifyContent: "space-between" }}
           >
@@ -105,7 +105,7 @@ function FloatingTabBar({ state, descriptors, navigation }: any) {
               const { options } = descriptors[route.key];
               const isFocused = state.index === state.routes.findIndex((r: any) => r.key === route.key);
               const iconColor = isFocused ? theme.colors.primary : theme.colors.textSoft;
-              
+
               let iconName: keyof typeof Feather.glyphMap = "home";
               if (route.name === "produkto") iconName = "package";
               if (route.name === "palista") iconName = "users";
