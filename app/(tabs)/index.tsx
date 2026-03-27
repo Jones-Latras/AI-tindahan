@@ -171,7 +171,9 @@ function HomeShortcutCard({ icon, label, onPress }: HomeShortcutCardProps) {
       <View
         style={{
           alignItems: "center",
-          backgroundColor: theme.colors.primaryMuted,
+          backgroundColor: theme.colors.surface,
+          borderColor: theme.colors.borderStrong,
+          borderWidth: 1,
           borderRadius: theme.radius.pill,
           height: 52,
           justifyContent: "center",
@@ -186,7 +188,7 @@ function HomeShortcutCard({ icon, label, onPress }: HomeShortcutCardProps) {
           color: theme.colors.text,
           fontFamily: theme.typography.body,
           fontSize: 12,
-          fontWeight: "700",
+          fontWeight: "500",
           lineHeight: 16,
           textAlign: "center",
         }}
@@ -1371,6 +1373,12 @@ export default function HomeScreen() {
             <Feather color={theme.colors.text} name="settings" size={16} />
           </Pressable>
         }
+        titleStyle={{
+          fontFamily: theme.typography.body,
+          fontSize: 26,
+          fontWeight: "700",
+          letterSpacing: 0.1,
+        }}
         title={storeName || "TindaHan AI"}
       >
         {aiLoading ? (
@@ -1450,8 +1458,8 @@ export default function HomeScreen() {
             >
               <ChatRichText
                 color={theme.colors.text}
-                fontSize={15}
-                lineHeight={24}
+                fontSize={14}
+                lineHeight={22}
                 text={brief.insight}
               />
             </View>

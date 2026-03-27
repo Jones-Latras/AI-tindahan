@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "expo-router";
-import { PanResponder, ScrollView, Text, View, type StyleProp, type ViewStyle } from "react-native";
+import { PanResponder, ScrollView, Text, View, type StyleProp, type TextStyle, type ViewStyle } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 
@@ -14,6 +14,7 @@ type ScreenProps = {
   overlay?: React.ReactNode;
   children: React.ReactNode;
   contentContainerStyle?: StyleProp<ViewStyle>;
+  titleStyle?: StyleProp<TextStyle>;
 };
 
 const TAB_ROUTES = ["/", "/produkto", "/benta", "/palista", "/gastos"] as const;
@@ -95,6 +96,7 @@ export function Screen({
   overlay,
   children,
   contentContainerStyle,
+  titleStyle,
 }: ScreenProps) {
   const { theme } = useAppTheme();
   const router = useRouter();
@@ -174,13 +176,16 @@ export function Screen({
         >
           <View style={{ flex: 1, gap: theme.spacing.xs, minWidth: 0 }}>
             <Text
-              style={{
-                color: theme.colors.text,
-                fontFamily: theme.typography.display,
-                fontSize: 30,
-                fontWeight: "700",
-                letterSpacing: 0.3,
-              }}
+              style={[
+                {
+                  color: theme.colors.text,
+                  fontFamily: theme.typography.display,
+                  fontSize: 30,
+                  fontWeight: "700",
+                  letterSpacing: 0.3,
+                },
+                titleStyle,
+              ]}
             >
               {title}
             </Text>

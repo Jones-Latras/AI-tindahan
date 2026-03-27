@@ -1,108 +1,180 @@
-import { useEffect, useRef, useState } from "react";
-import { ScrollView, Text, View } from "react-native";
+import { Feather } from "@expo/vector-icons";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  Pressable,
+  ScrollView,
+  Text,
+  View,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
+} from "react-native";
 
+import { useAppLanguage } from "@/contexts/LanguageContext";
 import { useAppTheme } from "@/contexts/ThemeContext";
 
 type AutoSwipeSuggestionCarouselProps = {
   suggestions: string[];
 };
 
+type SuggestionSlide = {
+  id: string;
+  text: string;
+};
+
 const AUTO_ADVANCE_MS = 3200;
-const RESET_DELAY_MS = 360;
 
 export function AutoSwipeSuggestionCarousel({ suggestions }: AutoSwipeSuggestionCarouselProps) {
   const { theme } = useAppTheme();
+  const { t } = useAppLanguage();
   const scrollRef = useRef<ScrollView>(null);
-  const resetTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const indexRef = useRef(0);
   const [activeIndex, setActiveIndex] = useState(0);
   const [carouselWidth, setCarouselWidth] = useState(0);
+  const [dismissedIds, setDismissedIds] = useState<string[]>([]);
 
-  if (suggestions.length === 0) {
-    return null;
-  }
-
-  const slides = suggestions.length > 1 ? [...suggestions, suggestions[0]] : suggestions;
+  const visibleSuggestions = useMemo<SuggestionSlide[]>(
+    () =>
+      suggestions
+        .map((text, index) => ({ id: `${index}-${text}`, text }))
+        .filter((suggestion) => !dismissedIds.includes(suggestion.id)),
+    [dismissedIds, suggestions],
+  );
 
   useEffect(() => {
-    if (!carouselWidth || suggestions.length <= 1) {
-      return;
-    }
-
-    const interval = setInterval(() => {
-      const nextIndex = indexRef.current + 1;
-      const displayIndex = nextIndex === suggestions.length ? 0 : nextIndex;
-
-      indexRef.current = nextIndex;
-      setActiveIndex(displayIndex);
-      scrollRef.current?.scrollTo({
-        animated: true,
-        x: carouselWidth * nextIndex,
-        y: 0,
-      });
-
-      if (nextIndex === suggestions.length) {
-        if (resetTimeoutRef.current) {
-          clearTimeout(resetTimeoutRef.current);
-        }
-
-        resetTimeoutRef.current = setTimeout(() => {
-          indexRef.current = 0;
-          scrollRef.current?.scrollTo({ animated: false, x: 0, y: 0 });
-        }, RESET_DELAY_MS);
-      }
-    }, AUTO_ADVANCE_MS);
-
-    return () => {
-      clearInterval(interval);
-      if (resetTimeoutRef.current) {
-        clearTimeout(resetTimeoutRef.current);
-        resetTimeoutRef.current = null;
-      }
-    };
-  }, [carouselWidth, suggestions.length]);
+    setDismissedIds([]);
+  }, [suggestions]);
 
   useEffect(() => {
     indexRef.current = 0;
     setActiveIndex(0);
 
-    if (resetTimeoutRef.current) {
-      clearTimeout(resetTimeoutRef.current);
-      resetTimeoutRef.current = null;
-    }
-
     if (carouselWidth > 0) {
       scrollRef.current?.scrollTo({ animated: false, x: 0, y: 0 });
     }
-  }, [carouselWidth, suggestions]);
+  }, [carouselWidth, visibleSuggestions]);
 
-  const card = (
+  useEffect(() => {
+    if (!carouselWidth || visibleSuggestions.length <= 1) {
+      return;
+    }
+
+    const interval = setInterval(() => {
+      const nextIndex = indexRef.current >= visibleSuggestions.length - 1 ? 0 : indexRef.current + 1;
+
+      indexRef.current = nextIndex;
+      setActiveIndex(nextIndex);
+      scrollRef.current?.scrollTo({
+        animated: nextIndex !== 0,
+        x: carouselWidth * nextIndex,
+        y: 0,
+      });
+    }, AUTO_ADVANCE_MS);
+
+    return () => clearInterval(interval);
+  }, [carouselWidth, visibleSuggestions.length]);
+
+  if (suggestions.length === 0) {
+    return null;
+  }
+
+  if (visibleSuggestions.length === 0) {
+    return (
+      <View
+        style={{
+          backgroundColor: theme.colors.surfaceMuted,
+          borderColor: theme.colors.border,
+          borderRadius: theme.radius.sm,
+          borderWidth: 1,
+          paddingHorizontal: theme.spacing.md,
+          paddingVertical: theme.spacing.sm,
+        }}
+      >
+        <Text
+          style={{
+            color: theme.colors.textMuted,
+            fontFamily: theme.typography.body,
+            fontSize: 13,
+            lineHeight: 18,
+          }}
+        >
+          {t("home.brief.restockCleared")}
+        </Text>
+      </View>
+    );
+  }
+
+  const handleDismiss = (suggestionId: string) => {
+    setDismissedIds((current) => [...current, suggestionId]);
+  };
+
+  const handleMomentumScrollEnd = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    if (!carouselWidth) {
+      return;
+    }
+
+    const nextIndex = Math.max(0, Math.min(visibleSuggestions.length - 1, Math.round(event.nativeEvent.contentOffset.x / carouselWidth)));
+    indexRef.current = nextIndex;
+    setActiveIndex(nextIndex);
+  };
+
+  const renderSuggestionCard = (suggestion: SuggestionSlide) => (
     <View
       style={{
-        backgroundColor: theme.colors.primaryMuted,
-        borderColor: theme.colors.border,
+        backgroundColor: theme.colors.surface,
+        borderColor: theme.colors.borderStrong,
         borderRadius: theme.radius.sm,
         borderWidth: 1,
-        minHeight: 76,
-        justifyContent: "center",
+        gap: theme.spacing.md,
+        minHeight: 92,
         paddingHorizontal: theme.spacing.md,
-        paddingVertical: theme.spacing.sm,
+        paddingVertical: theme.spacing.md,
       }}
     >
       <Text
-        numberOfLines={2}
         style={{
-          color: theme.colors.primary,
+          color: theme.colors.text,
           fontFamily: theme.typography.body,
           fontSize: 14,
-          fontWeight: "700",
           lineHeight: 20,
         }}
       >
-        {suggestions[0]}
+        {suggestion.text}
       </Text>
+
+      <View style={{ alignItems: "flex-end" }}>
+        <Pressable
+          accessibilityLabel={`${t("home.brief.restockDone")}: ${suggestion.text}`}
+          onPress={() => handleDismiss(suggestion.id)}
+          style={({ pressed }) => ({
+            alignItems: "center",
+            backgroundColor: theme.colors.primaryMuted,
+            borderColor: theme.colors.border,
+            borderRadius: theme.radius.pill,
+            borderWidth: 1,
+            flexDirection: "row",
+            gap: 6,
+            opacity: pressed ? 0.88 : 1,
+            paddingHorizontal: theme.spacing.sm,
+            paddingVertical: 6,
+          })}
+        >
+          <Feather color={theme.colors.primary} name="check" size={14} />
+          <Text
+            style={{
+              color: theme.colors.primary,
+              fontFamily: theme.typography.body,
+              fontSize: 12,
+              fontWeight: "600",
+            }}
+          >
+            {t("home.brief.restockDone")}
+          </Text>
+        </Pressable>
+      </View>
     </View>
   );
+
+  const fallbackCard = renderSuggestionCard(visibleSuggestions[0]);
 
   return (
     <View style={{ gap: theme.spacing.sm }}>
@@ -119,50 +191,27 @@ export function AutoSwipeSuggestionCarousel({ suggestions }: AutoSwipeSuggestion
             ref={scrollRef}
             bounces={false}
             horizontal
+            onMomentumScrollEnd={handleMomentumScrollEnd}
             pagingEnabled
-            scrollEnabled={false}
+            scrollEnabled={visibleSuggestions.length > 1}
             showsHorizontalScrollIndicator={false}
           >
-            {slides.map((suggestion, index) => (
-              <View key={`${suggestion}-${index}`} style={{ width: carouselWidth }}>
-                <View
-                  style={{
-                    backgroundColor: theme.colors.primaryMuted,
-                    borderColor: theme.colors.border,
-                    borderRadius: theme.radius.sm,
-                    borderWidth: 1,
-                    minHeight: 76,
-                    justifyContent: "center",
-                    paddingHorizontal: theme.spacing.md,
-                    paddingVertical: theme.spacing.sm,
-                  }}
-                >
-                  <Text
-                    numberOfLines={2}
-                    style={{
-                      color: theme.colors.primary,
-                      fontFamily: theme.typography.body,
-                      fontSize: 14,
-                      fontWeight: "700",
-                      lineHeight: 20,
-                    }}
-                  >
-                    {suggestion}
-                  </Text>
-                </View>
+            {visibleSuggestions.map((suggestion) => (
+              <View key={suggestion.id} style={{ width: carouselWidth }}>
+                {renderSuggestionCard(suggestion)}
               </View>
             ))}
           </ScrollView>
         ) : (
-          card
+          fallbackCard
         )}
       </View>
 
-      {suggestions.length > 1 ? (
+      {visibleSuggestions.length > 1 ? (
         <View style={{ alignItems: "center", flexDirection: "row", gap: 6 }}>
-          {suggestions.map((suggestion, index) => (
+          {visibleSuggestions.map((suggestion, index) => (
             <View
-              key={`${suggestion}-dot`}
+              key={suggestion.id}
               style={{
                 backgroundColor: index === activeIndex ? theme.colors.primary : theme.colors.border,
                 borderRadius: theme.radius.pill,

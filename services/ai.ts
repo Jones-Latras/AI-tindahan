@@ -137,6 +137,10 @@ function formatHomeBriefInsight(input: string, productNames: string[] = []) {
   }
 
   const withBoldAmounts = normalized.replace(/(?:\*\*)?(\u20B1\d[\d,]*(?:\.\d{1,2})?)(?:\*\*)?/g, (_match, amount: string) => `**${amount}**`);
+  const withBoldQuantities = withBoldAmounts.replace(
+    /(?:\*\*)?(\d+(?:\.\d+)?\s?(?:g|kg|mg|ml|l|pcs|pc|packs?|bottles?|items?|units?))(?:\*\*)?/gi,
+    (_match, quantity: string) => `**${quantity}**`,
+  );
   const phrasesToEmphasize = [
     "out of stock",
     "low stock",
@@ -162,7 +166,7 @@ function formatHomeBriefInsight(input: string, productNames: string[] = []) {
       new RegExp(`(?:\\*\\*)?(${escapedPhrase})(?:\\*\\*)?`, "gi"),
       (_match, value: string) => `**${value}**`,
     );
-  }, withBoldAmounts);
+  }, withBoldQuantities);
 }
 
 function parseGeminiFailure(error: unknown): GeminiFailure {
@@ -724,7 +728,7 @@ export async function getOrCreateHomeAiBrief(db: SQLiteDatabase, language: AppLa
           "Stay concise, mobile-friendly, and never invent store data that was not provided.",
           "Use 2 short sentences by default, and use a 3rd sentence only when it prevents the brief from feeling cut off or incomplete.",
           "Do not drop the main action item or exact product name just to make the brief shorter.",
-          "If you mention money, products, or urgent alerts, wrap only those exact parts in **double asterisks**.",
+          "If you mention money, quantities, products, or urgent alerts, wrap only those exact parts in **double asterisks**.",
           "Do not use bullets, headings, or emojis.",
         ].join(" "),
       contents: [
@@ -789,8 +793,8 @@ export async function getOrCreateHomeAiBrief(db: SQLiteDatabase, language: AppLa
             type: "string",
             description:
               language === "english"
-                ? "A friendly English insight in 2 short sentences, or 3 short sentences if needed for clarity. You may use **bold** markdown for important amounts, exact product names, or urgent alert phrases."
-                : "A friendly Taglish insight in 2 short sentences, o 3 short sentences kung kailangan para malinaw. Puwedeng gumamit ng **bold** markdown para sa importanteng amounts, exact product names, o urgent alert phrases.",
+                ? "A friendly English insight in 2 short sentences, or 3 short sentences if needed for clarity. You may use **bold** markdown for important amounts, quantities, exact product names, or urgent alert phrases."
+                : "A friendly Taglish insight in 2 short sentences, o 3 short sentences kung kailangan para malinaw. Puwedeng gumamit ng **bold** markdown para sa importanteng amounts, quantities, exact product names, o urgent alert phrases.",
           },
           restockSuggestions: {
             type: "array",
