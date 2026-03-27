@@ -125,6 +125,13 @@ function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+function applyOutsideBold(text: string, transform: (segment: string) => string) {
+  return text
+    .split(/(\*\*.*?\*\*)/g)
+    .map((segment) => (segment.startsWith("**") && segment.endsWith("**") ? segment : transform(segment)))
+    .join("");
+}
+
 function formatHomeBriefInsight(input: string, productNames: string[] = []) {
   const normalized = input
     .replace(/\r\n/g, "\n")
@@ -136,11 +143,6 @@ function formatHomeBriefInsight(input: string, productNames: string[] = []) {
     return "";
   }
 
-  const withBoldAmounts = normalized.replace(/(?:\*\*)?(\u20B1\d[\d,]*(?:\.\d{1,2})?)(?:\*\*)?/g, (_match, amount: string) => `**${amount}**`);
-  const withBoldQuantities = withBoldAmounts.replace(
-    /(?:\*\*)?(\d+(?:\.\d+)?\s?(?:g|kg|mg|ml|l|pcs|pc|packs?|bottles?|items?|units?))(?:\*\*)?/gi,
-    (_match, quantity: string) => `**${quantity}**`,
-  );
   const phrasesToEmphasize = [
     "out of stock",
     "low stock",
@@ -160,13 +162,26 @@ function formatHomeBriefInsight(input: string, productNames: string[] = []) {
     .filter((term, index, collection) => collection.findIndex((value) => value.toLowerCase() === term.toLowerCase()) === index)
     .sort((left, right) => right.length - left.length);
 
-  return termsToEmphasize.reduce((text, phrase) => {
+  const withBoldTerms = termsToEmphasize.reduce((text, phrase) => {
     const escapedPhrase = escapeRegExp(phrase);
-    return text.replace(
-      new RegExp(`(?:\\*\\*)?(${escapedPhrase})(?:\\*\\*)?`, "gi"),
-      (_match, value: string) => `**${value}**`,
+    return applyOutsideBold(text, (segment) =>
+      segment.replace(
+        new RegExp(`(?:\\*\\*)?(${escapedPhrase})(?:\\*\\*)?`, "gi"),
+        (_match, value: string) => `**${value}**`,
+      ),
     );
-  }, withBoldQuantities);
+  }, normalized);
+
+  const withBoldAmounts = applyOutsideBold(withBoldTerms, (segment) =>
+    segment.replace(/(?:\*\*)?(\u20B1\d[\d,]*(?:\.\d{1,2})?)(?:\*\*)?/g, (_match, amount: string) => `**${amount}**`),
+  );
+
+  return applyOutsideBold(withBoldAmounts, (segment) =>
+    segment.replace(
+      /(?:\*\*)?(\d+(?:\.\d+)?\s?(?:g|kg|mg|ml|l|pcs|pc|packs?|bottles?|items?|units?))(?:\*\*)?/gi,
+      (_match, quantity: string) => `**${quantity}**`,
+    ),
+  );
 }
 
 function parseGeminiFailure(error: unknown): GeminiFailure {
