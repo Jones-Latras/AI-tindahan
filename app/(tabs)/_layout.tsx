@@ -1,6 +1,7 @@
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
-import { Platform, Pressable, Text, View } from "react-native";
+import { Animated, Platform, Pressable, Text, View } from "react-native";
+import { useEffect, useRef, useState } from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 
@@ -10,15 +11,33 @@ import { useAppTheme } from "@/contexts/ThemeContext";
 function FloatingTabBar({ state, descriptors, navigation }: any) {
   const { theme } = useAppTheme();
   const insets = useSafeAreaInsets();
+  const [tabWidth, setTabWidth] = useState(0);
 
-  // The primary action route we want to extract
   const bentaRouteIndex = state.routes.findIndex((route: any) => route.name === "benta");
   const bentaRoute = state.routes[bentaRouteIndex];
   
-  // The normal tab routes we want in the pill
   const pillRoutes = state.routes.filter((route: any) => 
     ["index", "produkto", "palista", "gastos"].includes(route.name)
   );
+
+  const activePillIndex = pillRoutes.findIndex((r: any) => r.key === state.routes[state.index]?.key);
+  const slideAnim = useRef(new Animated.Value(Math.max(0, activePillIndex))).current;
+
+  useEffect(() => {
+    if (activePillIndex >= 0) {
+      Animated.spring(slideAnim, {
+        toValue: activePillIndex,
+        useNativeDriver: true,
+        bounciness: 0,
+        speed: 16,
+      }).start();
+    }
+  }, [activePillIndex, slideAnim]);
+
+  const translateX = slideAnim.interpolate({
+    inputRange: [0, 1, 2, 3],
+    outputRange: [0, tabWidth, tabWidth * 2, tabWidth * 3]
+  });
 
   return (
     <View
@@ -48,89 +67,101 @@ function FloatingTabBar({ state, descriptors, navigation }: any) {
         <View
           style={{
             flex: 1,
-            flexDirection: "row",
             borderRadius: 36,
             borderWidth: 1,
             borderColor: theme.colors.border,
             paddingHorizontal: theme.spacing.sm,
             paddingVertical: 10,
-            justifyContent: "space-between",
-            alignItems: "center",
             overflow: "hidden",
           }}
         >
-        {pillRoutes.map((route: any, index: number) => {
-          const { options } = descriptors[route.key];
-          const isFocused = state.index === state.routes.findIndex((r: any) => r.key === route.key);
-          const iconColor = isFocused ? theme.colors.primary : theme.colors.textSoft;
-          
-          let iconName: keyof typeof Feather.glyphMap = "home";
-          if (route.name === "produkto") iconName = "package";
-          if (route.name === "palista") iconName = "users";
-          if (route.name === "gastos") iconName = "minus-circle";
-
-          const onPress = () => {
-            const event = navigation.emit({
-              type: "tabPress",
-              target: route.key,
-              canPreventDefault: true,
-            });
-
-            if (!isFocused && !event.defaultPrevented) {
-              navigation.navigate(route.name, route.params);
-            }
-          };
-
-          return (
-            <Pressable
-              key={route.key}
-              onPress={onPress}
-              style={({ pressed }) => ({
-                flex: 1,
+          <View 
+            onLayout={(e) => setTabWidth(e.nativeEvent.layout.width / 4)}
+            style={{ flex: 1, flexDirection: "row", position: "relative", alignItems: "center", justifyContent: "space-between" }}
+          >
+            <Animated.View
+              style={{
+                position: "absolute",
+                left: 0,
+                width: "25%",
+                height: 54,
                 alignItems: "center",
                 justifyContent: "center",
-                opacity: pressed ? 0.7 : 1,
-              })}
+                zIndex: 0,
+                transform: [{ translateX }],
+              }}
             >
               <View
                 style={{
-                  flexDirection: "column",
-                  alignItems: "center",
-                  justifyContent: "center",
                   width: 54,
                   height: 54,
+                  backgroundColor: theme.colors.primaryMuted,
                   borderRadius: 16,
-                  gap: 4,
-                  overflow: "hidden",
                 }}
-              >
-                <View
-                  style={{
-                    position: "absolute",
-                    top: 0,
-                    bottom: 0,
-                    left: 0,
-                    right: 0,
-                    backgroundColor: theme.colors.primaryMuted,
-                    opacity: isFocused ? 1 : 0,
-                  }}
-                />
-                <Feather name={iconName} size={isFocused ? 18 : 20} color={iconColor} />
-                <Text
-                  numberOfLines={1}
-                  style={{
-                    color: isFocused ? theme.colors.primary : theme.colors.textSoft,
-                    fontFamily: theme.typography.body,
-                    fontSize: 10,
-                    fontWeight: "700",
-                  }}
+              />
+            </Animated.View>
+
+            {pillRoutes.map((route: any, index: number) => {
+              const { options } = descriptors[route.key];
+              const isFocused = state.index === state.routes.findIndex((r: any) => r.key === route.key);
+              const iconColor = isFocused ? theme.colors.primary : theme.colors.textSoft;
+              
+              let iconName: keyof typeof Feather.glyphMap = "home";
+              if (route.name === "produkto") iconName = "package";
+              if (route.name === "palista") iconName = "users";
+              if (route.name === "gastos") iconName = "minus-circle";
+
+              const onPress = () => {
+                const event = navigation.emit({
+                  type: "tabPress",
+                  target: route.key,
+                  canPreventDefault: true,
+                });
+
+                if (!isFocused && !event.defaultPrevented) {
+                  navigation.navigate(route.name, route.params);
+                }
+              };
+
+              return (
+                <Pressable
+                  key={route.key}
+                  onPress={onPress}
+                  style={({ pressed }) => ({
+                    flex: 1,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    opacity: pressed ? 0.7 : 1,
+                    zIndex: 1,
+                  })}
                 >
-                  {options.title}
-                </Text>
-              </View>
-            </Pressable>
-          );
-        })}
+                  <View
+                    style={{
+                      flexDirection: "column",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      width: 54,
+                      height: 54,
+                      gap: 4,
+                    }}
+                  >
+                    <Feather name={iconName} size={isFocused ? 18 : 20} color={iconColor} />
+                    <Text
+                      numberOfLines={1}
+                      style={{
+                        color: isFocused ? theme.colors.primary : theme.colors.textSoft,
+                        fontFamily: theme.typography.body,
+                        fontSize: 10,
+                        fontWeight: "700",
+                      }}
+                    >
+                      {options.title}
+                    </Text>
+                  </View>
+                </Pressable>
+              );
+            })}
+          </View>
         </View>
       </View>
 
