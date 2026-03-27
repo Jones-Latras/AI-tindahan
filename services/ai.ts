@@ -31,7 +31,7 @@ const GEMINI_MODELS = [
 ] as const;
 const GEMINI_PROXY_FUNCTION = "gemini-proxy";
 const REQUEST_TIMEOUT_MS = 18_000;
-const HOME_AI_BRIEF_KEY_PREFIX = "ai.home-brief.v5";
+const HOME_AI_BRIEF_KEY_PREFIX = "ai.home-brief.v6";
 
 type GeminiContent = {
   role?: "user" | "model";
@@ -558,13 +558,13 @@ function buildFallbackHomeAiBrief(
     const retryHint = formatRetryHint(language, failure.retryAfterSeconds);
     insight =
       language === "english"
-        ? `Aling AI hit the current Gemini request limit. Core POS features still work, and the AI brief should recover ${retryHint}.`
-        : `Naabot ni Aling AI ang current Gemini request limit. Gumagana pa rin ang core POS features, at babalik ang AI brief ${retryHint}.`;
+        ? `IndAI hit the current Gemini request limit. Core POS features still work, and the AI brief should recover ${retryHint}.`
+        : `Naabot ni IndAI ang current Gemini request limit. Gumagana pa rin ang core POS features, at babalik ang AI brief ${retryHint}.`;
   } else if (failure?.kind === "network") {
     insight =
       language === "english"
-        ? "Aling AI can't reach Gemini right now. Core POS features still work, and the daily brief will return once the connection is back."
-        : "Hindi makakonekta si Aling AI sa Gemini ngayon. Gumagana pa rin ang core POS features, at babalik ang daily brief pag maayos na ang connection.";
+        ? "IndAI can't reach Gemini right now. Core POS features still work, and the daily brief will return once the connection is back."
+        : "Hindi makakonekta si IndAI sa Gemini ngayon. Gumagana pa rin ang core POS features, at babalik ang daily brief pag maayos na ang connection.";
   } else if (failure?.kind === "config") {
     insight =
       language === "english"
@@ -573,8 +573,8 @@ function buildFallbackHomeAiBrief(
   } else {
     insight =
       language === "english"
-        ? "Aling AI is unavailable right now. Core POS features still work, and you can try again shortly."
-        : "Unavailable si Aling AI ngayon. Gumagana pa rin ang core POS features, at puwede kang sumubok ulit mamaya.";
+        ? "IndAI is unavailable right now. Core POS features still work, and you can try again shortly."
+        : "Unavailable si IndAI ngayon. Gumagana pa rin ang core POS features, at puwede kang sumubok ulit mamaya.";
   }
 
   const expenseInsight = buildFallbackExpenseInsight(
@@ -720,7 +720,7 @@ export async function getOrCreateHomeAiBrief(db: SQLiteDatabase, language: AppLa
     const brief = await callGeminiJson<HomeAiBrief>({
       systemInstruction:
         [
-          "You are Aling AI, a practical business assistant for a sari-sari store in the Philippines.",
+          "You are IndAI, a practical business assistant for a sari-sari store in the Philippines.",
           getReplyLanguageInstruction(language),
           "If products are low stock, out of stock, or at risk of running out soon, include concrete restock suggestions.",
           "When linked inventory exists, reason about the shared stock pool and prefer the primary restock product over the child tingi item when recommending restocks.",
@@ -846,8 +846,8 @@ export async function chatWithAlingAi(
 ) {
   if (!isGeminiReady()) {
     return language === "english"
-      ? "Gemini is not connected yet. Configure Supabase and deploy the gemini-proxy edge function to unlock Aling AI."
-      : "Hindi pa naka-connect ang Gemini proxy. I-configure ang Supabase at i-deploy ang gemini-proxy edge function para ma-unlock si Aling AI.";
+      ? "Gemini is not connected yet. Configure Supabase and deploy the gemini-proxy edge function to unlock IndAI."
+      : "Hindi pa naka-connect ang Gemini proxy. I-configure ang Supabase at i-deploy ang gemini-proxy edge function para ma-unlock si IndAI.";
   }
 
   const [context, storedStoreName] = await Promise.all([
@@ -863,7 +863,7 @@ export async function chatWithAlingAi(
   try {
     return await callGeminiText({
       systemInstruction: [
-        "You are Aling AI, the smart assistant inside TindaHan AI.",
+        "You are IndAI, the smart assistant inside TindaHan AI.",
         getReplyLanguageInstruction(language),
         "Be encouraging, brief, and specific to the store data provided.",
         "The store data provided is authoritative. Use it as your source of truth for products, stock, sales, utang, customers, pricing, and payment mix.",
@@ -914,8 +914,8 @@ export async function chatWithAlingAi(
     }
 
     return language === "english"
-      ? "Aling AI is unavailable right now, but POS and credit features still work."
-      : "Unavailable si Aling AI ngayon, pero gumagana pa rin ang POS at palista features.";
+      ? "IndAI is unavailable right now, but POS and credit features still work."
+      : "Unavailable si IndAI ngayon, pero gumagana pa rin ang POS at palista features.";
   }
 }
 

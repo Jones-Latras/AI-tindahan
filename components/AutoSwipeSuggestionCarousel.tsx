@@ -85,8 +85,8 @@ export function AutoSwipeSuggestionCarousel({ suggestions }: AutoSwipeSuggestion
           borderColor: theme.colors.border,
           borderRadius: theme.radius.sm,
           borderWidth: 1,
-          paddingHorizontal: theme.spacing.md,
-          paddingVertical: theme.spacing.sm,
+          paddingHorizontal: theme.spacing.sm,
+          paddingVertical: 8,
         }}
       >
         <Text
@@ -94,7 +94,7 @@ export function AutoSwipeSuggestionCarousel({ suggestions }: AutoSwipeSuggestion
             color: theme.colors.textMuted,
             fontFamily: theme.typography.body,
             fontSize: 13,
-            lineHeight: 18,
+            lineHeight: 17,
           }}
         >
           {t("home.brief.restockCleared")}
@@ -120,64 +120,56 @@ export function AutoSwipeSuggestionCarousel({ suggestions }: AutoSwipeSuggestion
   const renderSuggestionCard = (suggestion: SuggestionSlide) => (
     <View
       style={{
+        alignItems: "flex-start",
         backgroundColor: theme.colors.surface,
         borderColor: theme.colors.borderStrong,
         borderRadius: theme.radius.sm,
         borderWidth: 1,
-        gap: theme.spacing.md,
-        minHeight: 92,
-        paddingHorizontal: theme.spacing.md,
-        paddingVertical: theme.spacing.md,
+        minHeight: 68,
+        flexDirection: "row",
+        gap: 8,
+        paddingHorizontal: theme.spacing.sm,
+        paddingVertical: 10,
       }}
     >
       <Text
         style={{
           color: theme.colors.text,
+          flex: 1,
           fontFamily: theme.typography.body,
-          fontSize: 14,
-          lineHeight: 20,
+          fontSize: 13,
+          lineHeight: 18,
         }}
       >
         {suggestion.text}
       </Text>
 
-      <View style={{ alignItems: "flex-end" }}>
-        <Pressable
-          accessibilityLabel={`${t("home.brief.restockDone")}: ${suggestion.text}`}
-          onPress={() => handleDismiss(suggestion.id)}
-          style={({ pressed }) => ({
-            alignItems: "center",
-            backgroundColor: theme.colors.primaryMuted,
-            borderColor: theme.colors.border,
-            borderRadius: theme.radius.pill,
-            borderWidth: 1,
-            flexDirection: "row",
-            gap: 6,
-            opacity: pressed ? 0.88 : 1,
-            paddingHorizontal: theme.spacing.sm,
-            paddingVertical: 6,
-          })}
-        >
-          <Feather color={theme.colors.primary} name="check" size={14} />
-          <Text
-            style={{
-              color: theme.colors.primary,
-              fontFamily: theme.typography.body,
-              fontSize: 12,
-              fontWeight: "600",
-            }}
-          >
-            {t("home.brief.restockDone")}
-          </Text>
-        </Pressable>
-      </View>
+      <Pressable
+        accessibilityLabel={`${t("home.brief.restockDone")}: ${suggestion.text}`}
+        onPress={() => handleDismiss(suggestion.id)}
+        style={({ pressed }) => ({
+          alignItems: "center",
+          backgroundColor: theme.colors.primaryMuted,
+          borderColor: theme.colors.border,
+          borderRadius: theme.radius.pill,
+          borderWidth: 1,
+          height: 24,
+          justifyContent: "center",
+          marginLeft: "auto",
+          marginTop: 1,
+          opacity: pressed ? 0.88 : 1,
+          width: 24,
+        })}
+      >
+        <Feather color={theme.colors.primary} name="check" size={12} />
+      </Pressable>
     </View>
   );
 
   const fallbackCard = renderSuggestionCard(visibleSuggestions[0]);
 
   return (
-    <View style={{ gap: theme.spacing.sm }}>
+    <View style={{ gap: theme.spacing.xs }}>
       <View
         onLayout={(event) => {
           const nextWidth = Math.round(event.nativeEvent.layout.width);

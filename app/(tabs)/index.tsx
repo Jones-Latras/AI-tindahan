@@ -10,7 +10,6 @@ import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, Text, View }
 import { captureRef } from "react-native-view-shot";
 
 import { ActionButton } from "@/components/ActionButton";
-import { AutoSwipeSuggestionCarousel } from "@/components/AutoSwipeSuggestionCarousel";
 import { ChatRichText } from "@/components/ChatRichText";
 import { EmptyState } from "@/components/EmptyState";
 import { InputField } from "@/components/InputField";
@@ -1462,32 +1461,6 @@ export default function HomeScreen() {
                 lineHeight={22}
                 text={brief.insight}
               />
-            </View>
-
-            <View style={{ gap: theme.spacing.xs }}>
-              <Text
-                style={{
-                  color: theme.colors.textMuted,
-                  fontFamily: theme.typography.body,
-                  fontSize: 12,
-                  fontWeight: "700",
-                }}
-              >
-                {t("home.brief.restock")}
-              </Text>
-              {brief.restockSuggestions.length > 0 ? (
-                <AutoSwipeSuggestionCarousel suggestions={brief.restockSuggestions} />
-              ) : (
-                <Text
-                  style={{
-                    color: theme.colors.textMuted,
-                    fontFamily: theme.typography.body,
-                    fontSize: 14,
-                  }}
-                >
-                  {t("home.brief.noRestock")}
-                </Text>
-              )}
             </View>
 
             <ActionButton
