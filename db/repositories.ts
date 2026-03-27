@@ -9,6 +9,7 @@ import {
 } from "@/utils/pricing";
 import { sanitizeOptionalText, sanitizePhone, sanitizeText } from "@/utils/validation";
 import type {
+  AnalyticsTimeframe,
   ContainerReturnEvent,
   ContainerReturnStatus,
   CustomerRiskProfile,
@@ -26,6 +27,7 @@ import type {
   ProductPricingStrategy,
   ProductVelocity,
   RepackSession,
+  ReportsSnapshot,
   RestockList,
   RestockListItem,
   RestockListStatus,
@@ -156,6 +158,23 @@ type PaymentBreakdownRow = {
   gcash_cents: number | null;
   maya_cents: number | null;
   utang_cents: number | null;
+};
+
+type ReportsSalesTotalsRow = {
+  sales_cents: number | null;
+  transaction_count: number | null;
+};
+
+type ReportsGrossProfitRow = {
+  gross_profit_cents: number | null;
+};
+
+type ReportsExpenseTotalRow = {
+  expense_cents: number | null;
+};
+
+type ReportsPaymentActivityRow = {
+  payment_events: number | null;
 };
 
 type ExpenseRow = {
@@ -381,6 +400,18 @@ function normalizePaymentBreakdown(row?: PaymentBreakdownRow | null): PaymentBre
     mayaCents: row?.maya_cents ?? 0,
     utangCents: row?.utang_cents ?? 0,
   };
+}
+
+function getTimeframeDateCondition(column: string, timeframe: AnalyticsTimeframe) {
+  if (timeframe === "week") {
+    return `DATE(${column}, 'localtime') >= DATE('now', '-6 days', 'localtime')`;
+  }
+
+  if (timeframe === "month") {
+    return `STRFTIME('%Y-%m', ${column}, 'localtime') = STRFTIME('%Y-%m', 'now', 'localtime')`;
+  }
+
+  return `DATE(${column}, 'localtime') = DATE('now', 'localtime')`;
 }
 
 function mapExpense(row: ExpenseRow): Expense {
@@ -1764,6 +1795,96 @@ export async function getExpenseSummary(db: SQLiteDatabase): Promise<ExpenseSumm
     monthExpenseCents: totalsRow?.month_expense_cents ?? 0,
     topCategories,
     recentCategories: recentCategoryRows.map((row) => row.category),
+  };
+}
+
+export async function getReportsSnapshot(
+  db: SQLiteDatabase,
+  timeframe: AnalyticsTimeframe,
+): Promise<ReportsSnapshot> {
+  const salesDateCondition = getTimeframeDateCondition("created_at", timeframe);
+  const saleJoinedDateCondition = getTimeframeDateCondition("s.created_at", timeframe);
+  const expenseDateCondition = getTimeframeDateCondition("expense_date", timeframe);
+  const paymentDateCondition = getTimeframeDateCondition("created_at", timeframe);
+
+  const [salesRow, profitRow, expenseRow, paymentBreakdownRow, paymentActivityRow, expenseBreakdown] = await Promise.all([
+    db.getFirstAsync<ReportsSalesTotalsRow>(
+      `
+        SELECT
+          COALESCE(SUM(total_cents), 0) AS sales_cents,
+          COUNT(*) AS transaction_count
+        FROM sales
+        WHERE ${salesDateCondition}
+      `,
+    ),
+    db.getFirstAsync<ReportsGrossProfitRow>(
+      `
+        SELECT
+          COALESCE(SUM(si.line_total_cents - si.line_cost_total_cents), 0) AS gross_profit_cents
+        FROM sale_items si
+        INNER JOIN sales s ON s.id = si.sale_id
+        WHERE ${saleJoinedDateCondition}
+      `,
+    ),
+    db.getFirstAsync<ReportsExpenseTotalRow>(
+      `
+        SELECT
+          COALESCE(SUM(amount_cents), 0) AS expense_cents
+        FROM expenses
+        WHERE ${expenseDateCondition}
+      `,
+    ),
+    db.getFirstAsync<PaymentBreakdownRow>(
+      `
+        SELECT
+          COALESCE(SUM(CASE WHEN payment_method = 'cash' THEN total_cents ELSE 0 END), 0) AS cash_cents,
+          COALESCE(SUM(CASE WHEN payment_method = 'gcash' THEN total_cents ELSE 0 END), 0) AS gcash_cents,
+          COALESCE(SUM(CASE WHEN payment_method = 'maya' THEN total_cents ELSE 0 END), 0) AS maya_cents,
+          COALESCE(SUM(CASE WHEN payment_method = 'utang' THEN total_cents ELSE 0 END), 0) AS utang_cents
+        FROM sales
+        WHERE ${salesDateCondition}
+      `,
+    ),
+    db.getFirstAsync<ReportsPaymentActivityRow>(
+      `
+        SELECT
+          COUNT(*) AS payment_events
+        FROM utang_payments
+        WHERE ${paymentDateCondition}
+      `,
+    ),
+    db.getAllAsync<ExpenseCategorySummary>(
+      `
+        SELECT
+          category,
+          COALESCE(SUM(amount_cents), 0) AS totalCents,
+          COUNT(*) AS count
+        FROM expenses
+        WHERE ${expenseDateCondition}
+        GROUP BY category
+        ORDER BY totalCents DESC, category ASC
+        LIMIT 6
+      `,
+    ),
+  ]);
+
+  const grossProfitCents = profitRow?.gross_profit_cents ?? 0;
+  const expenseCents = expenseRow?.expense_cents ?? 0;
+
+  return {
+    timeframe,
+    salesCents: salesRow?.sales_cents ?? 0,
+    grossProfitCents,
+    expenseCents,
+    netProfitCents: grossProfitCents - expenseCents,
+    transactionCount: salesRow?.transaction_count ?? 0,
+    paymentEvents: paymentActivityRow?.payment_events ?? 0,
+    paymentBreakdown: normalizePaymentBreakdown(paymentBreakdownRow),
+    expenseBreakdown: expenseBreakdown.map((entry) => ({
+      category: entry.category,
+      totalCents: entry.totalCents,
+      count: entry.count,
+    })),
   };
 }
 

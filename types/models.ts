@@ -165,6 +165,20 @@ export interface ExpenseSummary {
   recentCategories: string[];
 }
 
+export type AnalyticsTimeframe = "today" | "week" | "month";
+
+export interface ReportsSnapshot {
+  timeframe: AnalyticsTimeframe;
+  salesCents: number;
+  grossProfitCents: number;
+  expenseCents: number;
+  netProfitCents: number;
+  transactionCount: number;
+  paymentEvents: number;
+  paymentBreakdown: PaymentBreakdown;
+  expenseBreakdown: ExpenseCategorySummary[];
+}
+
 export interface ContainerReturnEvent {
   id: number;
   saleId: number;

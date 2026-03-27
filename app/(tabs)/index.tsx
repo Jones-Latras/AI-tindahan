@@ -16,7 +16,6 @@ import { InputField } from "@/components/InputField";
 import { ModalSheet } from "@/components/ModalSheet";
 import { ReceiptView } from "@/components/ReceiptView";
 import { Screen } from "@/components/Screen";
-import { StatCard } from "@/components/StatCard";
 import { StatusBadge } from "@/components/StatusBadge";
 import { SurfaceCard } from "@/components/SurfaceCard";
 import type { TranslationKey } from "@/constants/translations";
@@ -24,9 +23,9 @@ import { useAppLanguage } from "@/contexts/LanguageContext";
 import { useAppTheme } from "@/contexts/ThemeContext";
 import {
   createRestockListFromThresholds,
-  getExpenseSummary,
   getHomeMetrics,
   getProductSalesVelocity,
+  getReportsSnapshot,
   getStoreName,
   getWeeklyPaymentBreakdown,
   listSalesHistory,
@@ -34,11 +33,12 @@ import {
 } from "@/db/repositories";
 import { chatWithAlingAi, getOrCreateHomeAiBrief, isGeminiReady } from "@/services/ai";
 import type {
+  AnalyticsTimeframe,
   ChatMessage,
-  ExpenseSummary,
   HomeAiBrief,
   HomeMetrics,
   ProductVelocity,
+  ReportsSnapshot,
   StoreAiSale,
   WeeklyPaymentReport,
 } from "@/types/models";
@@ -63,6 +63,7 @@ type HistorySaleMatch = {
 };
 
 const STORE_NAME_KEY = "tindahan.store-name";
+const REPORTS_TIMEFRAMES: AnalyticsTimeframe[] = ["today", "week", "month"];
 const EXPENSE_CATEGORY_TRANSLATION_KEYS: Partial<Record<string, TranslationKey>> = {
   electricity: "gastos.category.electricity",
   ice: "gastos.category.ice",
@@ -240,7 +241,8 @@ export default function HomeScreen() {
   const router = useRouter();
   const geminiReady = isGeminiReady();
   const [metrics, setMetrics] = useState<HomeMetrics | null>(null);
-  const [expenseSummary, setExpenseSummary] = useState<ExpenseSummary | null>(null);
+  const [reportsSnapshots, setReportsSnapshots] = useState<Record<AnalyticsTimeframe, ReportsSnapshot> | null>(null);
+  const [reportsTimeframe, setReportsTimeframe] = useState<AnalyticsTimeframe>("today");
   const [brief, setBrief] = useState<HomeAiBrief | null>(null);
   const [velocity, setVelocity] = useState<ProductVelocity[]>([]);
   const [weeklyReports, setWeeklyReports] = useState<WeeklyPaymentReport[]>([]);
@@ -378,15 +380,21 @@ export default function HomeScreen() {
     }
 
     try {
-      const [nextMetrics, nextExpenseSummary, nextBrief, nextVelocity, nextWeekly] = await Promise.all([
+      const [nextMetrics, nextBrief, nextVelocity, nextWeekly, todayReports, weekReports, monthReports] = await Promise.all([
         getHomeMetrics(db),
-        getExpenseSummary(db),
         getOrCreateHomeAiBrief(db, language),
         getProductSalesVelocity(db),
         getWeeklyPaymentBreakdown(db),
+        getReportsSnapshot(db, "today"),
+        getReportsSnapshot(db, "week"),
+        getReportsSnapshot(db, "month"),
       ]);
       setMetrics(nextMetrics);
-      setExpenseSummary(nextExpenseSummary);
+      setReportsSnapshots({
+        month: monthReports,
+        today: todayReports,
+        week: weekReports,
+      });
       setBrief(nextBrief);
       setVelocity(nextVelocity.filter((item) => item.unitsPerDay > 0 && (item.daysUntilOutOfStock ?? Infinity) <= 7).slice(0, 5));
       setWeeklyReports(nextWeekly);
@@ -595,142 +603,443 @@ export default function HomeScreen() {
   );
 
   const renderAnalyticsPanel = () => {
-    if (!metrics) {
+    if (!metrics || !reportsSnapshots) {
       return null;
     }
 
+    const report = reportsSnapshots[reportsTimeframe];
+    const timeframeLabel =
+      reportsTimeframe === "today"
+        ? t("gastos.summary.today")
+        : reportsTimeframe === "week"
+          ? t("gastos.summary.week")
+          : t("gastos.summary.month");
+    const paymentMixEntries = [
+      { amountCents: report.paymentBreakdown.cashCents, color: theme.colors.success, label: "Cash" },
+      { amountCents: report.paymentBreakdown.gcashCents, color: theme.colors.primary, label: "GCash" },
+      { amountCents: report.paymentBreakdown.mayaCents, color: theme.colors.accent, label: "Maya" },
+      { amountCents: report.paymentBreakdown.utangCents, color: theme.colors.warning, label: "Utang" },
+    ];
+    const paymentMixTotal = Math.max(paymentMixEntries.reduce((total, entry) => total + entry.amountCents, 0), 1);
+    const performanceEntries = [
+      { label: t("home.analytics.grossProfit"), value: formatCurrencyFromCents(report.grossProfitCents) },
+      { label: t("home.analytics.transactions"), value: String(report.transactionCount) },
+      { label: t("home.analytics.expenses"), value: formatCurrencyFromCents(report.expenseCents) },
+      { label: t("home.analytics.paymentsLogged"), value: String(report.paymentEvents) },
+    ];
+    const expenseEntries = report.expenseBreakdown.slice(0, 3);
+
     return (
       <>
-        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
-          <StatCard
-            icon="bar-chart-2"
-            label={t("home.analytics.salesToday")}
-            tone="primary"
-            value={formatCurrencyFromCents(metrics.todaySalesCents)}
-          />
-          <StatCard
-            icon="layers"
-            label={t("home.analytics.transactions")}
-            tone="accent"
-            value={String(metrics.todayTransactions)}
-          />
-          <StatCard
-            icon="trending-up"
-            label={t("home.analytics.grossProfit")}
-            tone="primary"
-            value={formatCurrencyFromCents(metrics.todayGrossProfitCents)}
-          />
-          <StatCard
-            icon="minus-circle"
-            label={t("home.analytics.expenses")}
-            tone="warning"
-            value={formatCurrencyFromCents(metrics.todayExpenseCents)}
-          />
-          <StatCard
-            icon="dollar-sign"
-            label={t("home.analytics.netProfit")}
-            tone={metrics.todayNetProfitCents >= 0 ? "accent" : "warning"}
-            value={formatCurrencyFromCents(metrics.todayNetProfitCents)}
-          />
-          <StatCard
-            icon="alert-triangle"
-            label={t("home.analytics.restockAlerts")}
-            tone="warning"
-            value={String(metrics.restockUrgencyCount)}
-          />
-          <StatCard
-            icon="repeat"
-            label={t("home.analytics.paymentsLogged")}
-            tone={metrics.todayPaymentEvents > 0 ? "primary" : "accent"}
-            value={String(metrics.todayPaymentEvents)}
-          />
-          <StatCard
-            icon="alert-circle"
-            label={t("home.analytics.debts")}
-            tone="warning"
-            value={formatCurrencyFromCents(metrics.totalUtangCents)}
-          />
+        <View
+          style={{
+            alignSelf: "stretch",
+            backgroundColor: theme.colors.surfaceMuted,
+            borderColor: theme.colors.border,
+            borderRadius: theme.radius.pill,
+            borderWidth: 1,
+            flexDirection: "row",
+            padding: 4,
+          }}
+        >
+          {REPORTS_TIMEFRAMES.map((timeframe) => {
+            const isActive = timeframe === reportsTimeframe;
+            const label =
+              timeframe === "today"
+                ? t("gastos.summary.today")
+                : timeframe === "week"
+                  ? t("gastos.summary.week")
+                  : t("gastos.summary.month");
+
+            return (
+              <Pressable
+                key={timeframe}
+                onPress={() => setReportsTimeframe(timeframe)}
+                style={({ pressed }) => ({
+                  alignItems: "center",
+                  backgroundColor: isActive ? theme.colors.surface : "transparent",
+                  borderRadius: theme.radius.pill,
+                  flex: 1,
+                  opacity: pressed ? 0.88 : 1,
+                  paddingVertical: 10,
+                })}
+              >
+                <Text
+                  style={{
+                    color: isActive ? theme.colors.text : theme.colors.textMuted,
+                    fontFamily: theme.typography.body,
+                    fontSize: 12,
+                    fontWeight: "700",
+                  }}
+                >
+                  {label.toUpperCase()}
+                </Text>
+              </Pressable>
+            );
+          })}
         </View>
 
         <SurfaceCard style={compactCardStyle}>
-          <View style={{ gap: 4 }}>
-            <Text
-              style={{
-                color: theme.colors.text,
-                fontFamily: theme.typography.display,
-                fontSize: 24,
-                fontWeight: "700",
-              }}
-            >
-              {t("home.paymentMix.title")}
-            </Text>
-            <Text
-              style={{
-                color: theme.colors.textMuted,
-                fontFamily: theme.typography.body,
-                fontSize: 14,
-              }}
-            >
-              {t("home.paymentMix.subtitle")}
-            </Text>
-          </View>
+          <Text
+            style={{
+              color: theme.colors.text,
+              fontFamily: theme.typography.body,
+              fontSize: 16,
+              fontWeight: "700",
+            }}
+          >
+            {t("home.reports.bottomLine.title")}
+          </Text>
 
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
-            <StatusBadge label={`Cash ${formatCurrencyFromCents(metrics.paymentBreakdown.cashCents)}`} tone="success" />
-            <StatusBadge label={`GCash ${formatCurrencyFromCents(metrics.paymentBreakdown.gcashCents)}`} tone="primary" />
-            <StatusBadge label={`Maya ${formatCurrencyFromCents(metrics.paymentBreakdown.mayaCents)}`} tone="primary" />
-            <StatusBadge label={`Utang ${formatCurrencyFromCents(metrics.paymentBreakdown.utangCents)}`} tone="warning" />
+          <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
+            <View
+              style={{
+                backgroundColor: theme.colors.surface,
+                borderColor: theme.colors.border,
+                borderRadius: theme.radius.md,
+                borderWidth: 1,
+                flex: 1,
+                gap: 8,
+                padding: theme.spacing.md,
+              }}
+            >
+              <Text
+                style={{
+                  color: theme.colors.textMuted,
+                  fontFamily: theme.typography.body,
+                  fontSize: 12,
+                  fontWeight: "700",
+                }}
+              >
+                {t("home.analytics.netProfit")}
+              </Text>
+              <Text
+                style={{
+                  color: report.netProfitCents >= 0 ? theme.colors.text : theme.colors.danger,
+                  fontFamily: theme.typography.display,
+                  fontSize: 24,
+                  fontWeight: "700",
+                }}
+              >
+                {formatCurrencyFromCents(report.netProfitCents)}
+              </Text>
+              <Text
+                style={{
+                  color: theme.colors.textMuted,
+                  fontFamily: theme.typography.body,
+                  fontSize: 12,
+                }}
+              >
+                {t("home.reports.netProfit.subtitle")}
+              </Text>
+            </View>
+
+            <View
+              style={{
+                backgroundColor: theme.colors.surface,
+                borderColor: theme.colors.border,
+                borderRadius: theme.radius.md,
+                borderWidth: 1,
+                flex: 1,
+                gap: 8,
+                padding: theme.spacing.md,
+              }}
+            >
+              <Text
+                style={{
+                  color: theme.colors.textMuted,
+                  fontFamily: theme.typography.body,
+                  fontSize: 12,
+                  fontWeight: "700",
+                }}
+              >
+                {t("home.reports.sales.label")}
+              </Text>
+              <Text
+                style={{
+                  color: theme.colors.text,
+                  fontFamily: theme.typography.display,
+                  fontSize: 24,
+                  fontWeight: "700",
+                }}
+              >
+                {formatCurrencyFromCents(report.salesCents)}
+              </Text>
+              <Text
+                style={{
+                  color: theme.colors.textMuted,
+                  fontFamily: theme.typography.body,
+                  fontSize: 12,
+                }}
+              >
+                {t("home.reports.sales.subtitle")}
+              </Text>
+            </View>
           </View>
         </SurfaceCard>
 
         <SurfaceCard style={compactCardStyle}>
-          <View style={{ gap: 4 }}>
+          <Text
+            style={{
+              color: theme.colors.text,
+              fontFamily: theme.typography.body,
+              fontSize: 16,
+              fontWeight: "700",
+            }}
+          >
+            {t("home.reports.actions.title")}
+          </Text>
+
+          <Pressable
+            onPress={() => setActivePanel("inventory")}
+            style={({ pressed }) => ({
+              alignItems: "center",
+              backgroundColor: theme.colors.warningMuted,
+              borderRadius: theme.radius.sm,
+              flexDirection: "row",
+              gap: theme.spacing.md,
+              opacity: pressed ? 0.92 : 1,
+              padding: theme.spacing.md,
+            })}
+          >
+            <View
+              style={{
+                alignItems: "center",
+                backgroundColor: theme.colors.surface,
+                borderRadius: theme.radius.pill,
+                height: 34,
+                justifyContent: "center",
+                width: 34,
+              }}
+            >
+              <Feather color={theme.colors.warning} name="package" size={16} />
+            </View>
             <Text
               style={{
                 color: theme.colors.text,
-                fontFamily: theme.typography.display,
-                fontSize: 24,
+                flex: 1,
+                fontFamily: theme.typography.body,
+                fontSize: 14,
                 fontWeight: "700",
               }}
             >
-              {t("home.expenses.title")}
+              {`${metrics.restockUrgencyCount} ${t("home.analytics.restockAlerts")}`}
             </Text>
-            <Text
+            <Feather color={theme.colors.warning} name="chevron-right" size={18} />
+          </Pressable>
+
+          <Pressable
+            onPress={() => setActivePanel("credit")}
+            style={({ pressed }) => ({
+              alignItems: "center",
+              backgroundColor: theme.colors.dangerMuted,
+              borderRadius: theme.radius.sm,
+              flexDirection: "row",
+              gap: theme.spacing.md,
+              opacity: pressed ? 0.92 : 1,
+              padding: theme.spacing.md,
+            })}
+          >
+            <View
               style={{
-                color: theme.colors.textMuted,
-                fontFamily: theme.typography.body,
-                fontSize: 14,
+                alignItems: "center",
+                backgroundColor: theme.colors.surface,
+                borderRadius: theme.radius.pill,
+                height: 34,
+                justifyContent: "center",
+                width: 34,
               }}
             >
-              {t("home.expenses.subtitle")}
+              <Feather color={theme.colors.danger} name="alert-triangle" size={16} />
+            </View>
+            <Text
+              style={{
+                color: theme.colors.text,
+                flex: 1,
+                fontFamily: theme.typography.body,
+                fontSize: 14,
+                fontWeight: "700",
+              }}
+            >
+              {`${formatCurrencyFromCents(metrics.totalUtangCents)} ${t("home.reports.actions.unpaidUtang")}`}
             </Text>
-          </View>
+            <Feather color={theme.colors.danger} name="chevron-right" size={18} />
+          </Pressable>
+        </SurfaceCard>
+
+        <SurfaceCard style={compactCardStyle}>
+          <Text
+            style={{
+              color: theme.colors.text,
+              fontFamily: theme.typography.body,
+              fontSize: 16,
+              fontWeight: "700",
+            }}
+          >
+            {t("home.reports.performance.title")}
+          </Text>
 
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
-            <StatusBadge
-              label={`${t("gastos.summary.today")} ${formatCurrencyFromCents(expenseSummary?.todayExpenseCents ?? 0)}`}
-              tone="warning"
-            />
-            <StatusBadge
-              label={`${t("gastos.summary.week")} ${formatCurrencyFromCents(expenseSummary?.weekExpenseCents ?? 0)}`}
-              tone="warning"
-            />
-            <StatusBadge
-              label={`${t("gastos.summary.month")} ${formatCurrencyFromCents(expenseSummary?.monthExpenseCents ?? 0)}`}
-              tone="warning"
-            />
+            {performanceEntries.map((entry) => (
+              <View
+                key={entry.label}
+                style={{
+                  backgroundColor: theme.colors.surface,
+                  borderColor: theme.colors.border,
+                  borderRadius: theme.radius.sm,
+                  borderWidth: 1,
+                  flex: 1,
+                  gap: 6,
+                  minWidth: "47%",
+                  padding: theme.spacing.md,
+                }}
+              >
+                <Text
+                  style={{
+                    color: theme.colors.textMuted,
+                    fontFamily: theme.typography.body,
+                    fontSize: 12,
+                    fontWeight: "600",
+                  }}
+                >
+                  {entry.label}
+                </Text>
+                <Text
+                  style={{
+                    color: theme.colors.text,
+                    fontFamily: theme.typography.display,
+                    fontSize: 22,
+                    fontWeight: "700",
+                  }}
+                >
+                  {entry.value}
+                </Text>
+              </View>
+            ))}
           </View>
+        </SurfaceCard>
 
-          {expenseSummary && expenseSummary.topCategories.length > 0 ? (
-            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
-              {expenseSummary.topCategories.map((entry) => (
-                <StatusBadge
-                  key={entry.category}
-                  label={`${formatExpenseCategoryLabel(entry.category, t)} ${formatCurrencyFromCents(entry.totalCents)}`}
-                  tone="neutral"
-                />
-              ))}
-            </View>
+        <SurfaceCard style={compactCardStyle}>
+          <Text
+            style={{
+              color: theme.colors.text,
+              fontFamily: theme.typography.body,
+              fontSize: 16,
+              fontWeight: "700",
+            }}
+          >
+            {t("home.reports.paymentMix.title")}
+          </Text>
+
+          {paymentMixEntries.map((entry) => {
+            const widthPercent =
+              entry.amountCents > 0 ? Math.max((entry.amountCents / paymentMixTotal) * 100, 6) : 0;
+
+            return (
+              <View key={entry.label} style={{ gap: 6 }}>
+                <View style={{ alignItems: "center", flexDirection: "row", justifyContent: "space-between" }}>
+                  <Text
+                    style={{
+                      color: theme.colors.text,
+                      fontFamily: theme.typography.body,
+                      fontSize: 13,
+                      fontWeight: "700",
+                    }}
+                  >
+                    {entry.label}
+                  </Text>
+                  <Text
+                    style={{
+                      color: theme.colors.textMuted,
+                      fontFamily: theme.typography.body,
+                      fontSize: 13,
+                    }}
+                  >
+                    {formatCurrencyFromCents(entry.amountCents)}
+                  </Text>
+                </View>
+
+                <View
+                  style={{
+                    backgroundColor: theme.colors.surfaceMuted,
+                    borderRadius: theme.radius.pill,
+                    height: 10,
+                    overflow: "hidden",
+                  }}
+                >
+                  {widthPercent > 0 ? (
+                    <View
+                      style={{
+                        backgroundColor: entry.color,
+                        borderRadius: theme.radius.pill,
+                        height: "100%",
+                        width: `${widthPercent}%`,
+                      }}
+                    />
+                  ) : null}
+                </View>
+              </View>
+            );
+          })}
+        </SurfaceCard>
+
+        <SurfaceCard style={compactCardStyle}>
+          <Text
+            style={{
+              color: theme.colors.text,
+              fontFamily: theme.typography.body,
+              fontSize: 16,
+              fontWeight: "700",
+            }}
+          >
+            {t("home.reports.expenses.title")}
+          </Text>
+
+          <Text
+            style={{
+              color: theme.colors.textMuted,
+              fontFamily: theme.typography.body,
+              fontSize: 13,
+            }}
+          >
+            {timeframeLabel}
+          </Text>
+
+          {expenseEntries.length > 0 ? (
+            expenseEntries.map((entry) => (
+              <View
+                key={entry.category}
+                style={{
+                  alignItems: "center",
+                  borderBottomColor: theme.colors.border,
+                  borderBottomWidth: 1,
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  paddingBottom: theme.spacing.sm,
+                }}
+              >
+                <Text
+                  style={{
+                    color: theme.colors.text,
+                    flex: 1,
+                    fontFamily: theme.typography.body,
+                    fontSize: 14,
+                  }}
+                >
+                  {formatExpenseCategoryLabel(entry.category, t)}
+                </Text>
+                <Text
+                  style={{
+                    color: theme.colors.text,
+                    fontFamily: theme.typography.body,
+                    fontSize: 14,
+                    fontWeight: "700",
+                  }}
+                >
+                  {formatCurrencyFromCents(entry.totalCents)}
+                </Text>
+              </View>
+            ))
           ) : (
             <Text
               style={{
@@ -739,7 +1048,7 @@ export default function HomeScreen() {
                 fontSize: 14,
               }}
             >
-              {t("home.expenses.empty")}
+              {t("home.reports.expenses.empty")}
             </Text>
           )}
         </SurfaceCard>
