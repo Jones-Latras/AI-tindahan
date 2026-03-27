@@ -777,9 +777,7 @@ export async function listProducts(db: SQLiteDatabase, searchTerm = "") {
             WHERE p.name LIKE ? OR COALESCE(p.category, '') LIKE ? OR COALESCE(p.barcode, '') LIKE ?
           `,
         ),
-        `%${safeTerm}%`,
-        `%${safeTerm}%`,
-        `%${safeTerm}%`,
+        [`%${safeTerm}%`, `%${safeTerm}%`, `%${safeTerm}%`],
       )
     : await db.getAllAsync<ProductRow>(buildProductSelectQuery());
 
@@ -811,7 +809,7 @@ export async function getProductByBarcode(db: SQLiteDatabase, barcode: string) {
 
   const row = await db.getFirstAsync<ProductRow>(
     buildProductSelectQuery("WHERE p.barcode = ?", "LIMIT 1"),
-    safeBarcode,
+    [safeBarcode],
   );
 
   return row ? mapProduct(row) : null;
@@ -1283,7 +1281,7 @@ export async function listInventoryPools(db: SQLiteDatabase): Promise<InventoryP
 export async function listProductsByInventoryPool(db: SQLiteDatabase, inventoryPoolId: number): Promise<Product[]> {
   const rows = await db.getAllAsync<ProductRow>(
     buildProductSelectQuery("WHERE pil.inventory_pool_id = ?", "ORDER BY p.name ASC"),
-    inventoryPoolId,
+    [inventoryPoolId],
   );
 
   return rows.map(mapProduct);
@@ -1315,8 +1313,7 @@ export async function listRepackSessionsForInventoryPool(
       ORDER BY rs.created_at DESC, rs.id DESC
       LIMIT ?
     `,
-    inventoryPoolId,
-    limit,
+    [inventoryPoolId, limit],
   );
 
   return rows.map(mapRepackSession);
@@ -1884,7 +1881,7 @@ export async function getRestockListById(db: SQLiteDatabase, restockListId: numb
       GROUP BY rl.id, rl.title, rl.status, rl.created_at, rl.completed_at
       LIMIT 1
     `,
-    restockListId,
+    [restockListId],
   );
 
   if (!summaryRow) {
@@ -1910,7 +1907,7 @@ export async function getRestockListById(db: SQLiteDatabase, restockListId: numb
       WHERE restock_list_id = ?
       ORDER BY is_checked ASC, id ASC
     `,
-    restockListId,
+    [restockListId],
   );
 
   return {
@@ -1931,7 +1928,7 @@ export async function toggleRestockListItem(
       WHERE id = ?
       LIMIT 1
     `,
-    restockListItemId,
+    [restockListItemId],
   );
 
   if (!row) {
@@ -1995,7 +1992,7 @@ export async function archiveRestockList(db: SQLiteDatabase, restockListId: numb
       WHERE id = ?
       LIMIT 1
     `,
-    restockListId,
+    [restockListId],
   );
 
   if (!existing) {
@@ -2643,7 +2640,7 @@ export async function getCustomerRiskProfile(db: SQLiteDatabase, customerId: num
       FROM utang
       WHERE customer_id = ?
     `,
-    customerId,
+    [customerId],
   );
 
   return {
@@ -2694,7 +2691,7 @@ export async function listCustomerLedger(db: SQLiteDatabase, customerId: number)
       WHERE customer_id = ?
       ORDER BY created_at DESC
     `,
-    customerId,
+    [customerId],
   );
 
   const paymentRows = await db.getAllAsync<UtangPaymentRow>(
@@ -2711,7 +2708,7 @@ export async function listCustomerLedger(db: SQLiteDatabase, customerId: number)
       WHERE customer_id = ?
       ORDER BY created_at ASC, id ASC
     `,
-    customerId,
+    [customerId],
   );
 
   const paymentsByUtangId = new Map<number, UtangPayment[]>();
@@ -2766,7 +2763,7 @@ export async function listOpenContainerReturnsByCustomer(
         AND status <> 'returned'
       ORDER BY created_at DESC, id DESC
     `,
-    customerId,
+    [customerId],
   );
 
   return rows.map(mapContainerReturnEvent);
@@ -2797,7 +2794,7 @@ export async function applyContainerReturn(db: SQLiteDatabase, eventId: number, 
       WHERE id = ?
       LIMIT 1
     `,
-    eventId,
+    [eventId],
   );
 
   if (!event) {
@@ -2851,7 +2848,7 @@ export async function applyUtangPayment(db: SQLiteDatabase, utangId: number, pay
       FROM utang
       WHERE id = ?
     `,
-    utangId,
+    [utangId],
   );
 
   if (!entry) {
