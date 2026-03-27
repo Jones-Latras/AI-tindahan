@@ -5,8 +5,4 @@ const baseConfig = appJson.expo as ExpoConfig;
 
 export default (): ExpoConfig => ({
   ...baseConfig,
-  extra: {
-    ...(baseConfig.extra ?? {}),
-    geminiKey: process.env.EXPO_PUBLIC_GEMINI_KEY?.trim() ?? "",
-  },
 });

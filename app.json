@@ -55,7 +55,6 @@
       "bundler": "metro"
     },
     "extra": {
-      "geminiKey": "",
       "router": {},
       "eas": {
         "projectId": "ef18d9d5-fbb0-464b-b179-af5560597e27"

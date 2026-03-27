@@ -30,9 +30,32 @@ Implemented in this repo:
 
 ## Security Note For Gemini
 
-This repo supports local Phase 2 development with `EXPO_PUBLIC_GEMINI_KEY`, because Expo client-side apps can only access public build-time env vars.
+Gemini requests now go through the Supabase Edge Function at `supabase/functions/gemini-proxy/index.ts`.
 
-That is acceptable for local development, but it is not a production-safe secret storage pattern because `EXPO_PUBLIC_*` values are bundled into the client app. Before launch, move Gemini calls behind a backend or edge function and keep the real API key there.
+Do not place a Gemini API key in the Expo client app. `EXPO_PUBLIC_*` values are bundled into the client, so the real `GEMINI_API_KEY` must stay in Supabase secrets only.
+
+## Gemini Proxy Setup
+
+1. Keep these client env vars in your local `.env`:
+   - `EXPO_PUBLIC_SUPABASE_URL`
+   - `EXPO_PUBLIC_SUPABASE_ANON_KEY`
+2. Set the real Gemini secret in Supabase:
+
+```bash
+supabase secrets set GEMINI_API_KEY=your_real_key
+```
+
+3. Deploy the proxy function:
+
+```bash
+supabase functions deploy gemini-proxy
+```
+
+4. If you want to test locally with the Supabase CLI:
+
+```bash
+supabase functions serve gemini-proxy --env-file supabase/.env
+```
 
 ## Stack
 

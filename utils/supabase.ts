@@ -9,6 +9,7 @@ const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? "";
 
 const REST_URL = `${supabaseUrl}/rest/v1`;
 const STORAGE_URL = `${supabaseUrl}/storage/v1`;
+const FUNCTIONS_URL = `${supabaseUrl}/functions/v1`;
 
 export function isSupabaseReady() {
   return Boolean(supabaseUrl && supabaseAnonKey);
@@ -25,6 +26,12 @@ const storageHeaders = (contentType?: string) => ({
   apikey: supabaseAnonKey,
   Authorization: `Bearer ${supabaseAnonKey}`,
   ...(contentType ? { "Content-Type": contentType } : {}),
+});
+
+const functionHeaders = () => ({
+  apikey: supabaseAnonKey,
+  Authorization: `Bearer ${supabaseAnonKey}`,
+  "Content-Type": "application/json",
 });
 
 function encodeStoragePath(path: string) {
@@ -111,4 +118,31 @@ export async function supabaseUploadStorageObject(
   }
 
   return getSupabaseStoragePublicUrl(bucket, path);
+}
+
+export async function invokeSupabaseFunction<T = unknown>(
+  functionName: string,
+  payload: Record<string, unknown>,
+  options?: {
+    signal?: AbortSignal;
+  },
+): Promise<T> {
+  const response = await fetch(`${FUNCTIONS_URL}/${functionName}`, {
+    method: "POST",
+    headers: functionHeaders(),
+    body: JSON.stringify(payload),
+    signal: options?.signal,
+  });
+
+  const rawBody = await response.text();
+
+  if (!response.ok) {
+    throw new Error(`Supabase function "${functionName}" failed (${response.status}): ${rawBody}`);
+  }
+
+  if (!rawBody.trim()) {
+    return undefined as T;
+  }
+
+  return JSON.parse(rawBody) as T;
 }

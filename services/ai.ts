@@ -1,4 +1,3 @@
-import Constants from "expo-constants";
 import Storage from "expo-sqlite/kv-store";
 import type { SQLiteDatabase } from "expo-sqlite";
 
@@ -22,6 +21,7 @@ import type {
   StoreAiContext,
   TrustScore,
 } from "@/types/models";
+import { invokeSupabaseFunction, isSupabaseReady } from "@/utils/supabase";
 import { formatCurrencyFromCents } from "@/utils/money";
 
 const GEMINI_MODELS = [
@@ -29,6 +29,7 @@ const GEMINI_MODELS = [
   "gemini-2.5-flash-lite",
   "gemini-2.5-flash",
 ] as const;
+const GEMINI_PROXY_FUNCTION = "gemini-proxy";
 const REQUEST_TIMEOUT_MS = 18_000;
 const HOME_AI_BRIEF_KEY_PREFIX = "ai.home-brief.v3";
 
@@ -77,39 +78,6 @@ type GeminiRequestBody = {
 function getTodayCacheKey(language: AppLanguage) {
   const day = new Intl.DateTimeFormat("en-CA").format(new Date());
   return `${HOME_AI_BRIEF_KEY_PREFIX}.${language}.${day}`;
-}
-
-function getGeminiUrl(model: string) {
-  return `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
-}
-
-function getGeminiApiKey() {
-  const fromEnv = process.env.EXPO_PUBLIC_GEMINI_KEY?.trim();
-
-  if (fromEnv) {
-    return fromEnv;
-  }
-
-  const fromExpoConfig = typeof Constants.expoConfig?.extra?.geminiKey === "string"
-    ? Constants.expoConfig.extra.geminiKey.trim()
-    : "";
-
-  if (fromExpoConfig) {
-    return fromExpoConfig;
-  }
-
-  const manifestExtra = (Constants as { manifest?: { extra?: Record<string, unknown> } }).manifest?.extra;
-  const fromManifest = typeof manifestExtra?.geminiKey === "string" ? manifestExtra.geminiKey.trim() : "";
-
-  if (fromManifest) {
-    return fromManifest;
-  }
-
-  const manifest2Extra = (Constants as {
-    manifest2?: { extra?: { expoClient?: { extra?: Record<string, unknown> } } };
-  }).manifest2?.extra?.expoClient?.extra;
-
-  return typeof manifest2Extra?.geminiKey === "string" ? manifest2Extra.geminiKey.trim() : "";
 }
 
 function getGeminiErrorMessage(error: unknown) {
@@ -168,13 +136,11 @@ function formatRetryHint(language: AppLanguage, retryAfterSeconds?: number) {
 }
 
 function ensureGeminiConfigured() {
-  const geminiApiKey = getGeminiApiKey();
-
-  if (!geminiApiKey) {
-    throw new Error("Gemini API key is not configured. Add EXPO_PUBLIC_GEMINI_KEY to your local .env file.");
+  if (!isSupabaseReady()) {
+    throw new Error(
+      "Gemini proxy is not configured. Add EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY, then deploy the gemini-proxy edge function.",
+    );
   }
-
-  return geminiApiKey;
 }
 
 function extractGeminiText(payload: any) {
@@ -202,7 +168,7 @@ function extractGeminiText(payload: any) {
 }
 
 async function callGeminiText(options: GeminiTextOptions) {
-  const geminiApiKey = ensureGeminiConfigured();
+  ensureGeminiConfigured();
   const body: GeminiRequestBody = {
     system_instruction: options.systemInstruction
       ? {
@@ -219,11 +185,11 @@ async function callGeminiText(options: GeminiTextOptions) {
     },
   };
 
-  return callGeminiWithFallback(geminiApiKey, body, (payload) => extractGeminiText(payload));
+  return callGeminiWithFallback(body, (payload) => extractGeminiText(payload));
 }
 
 async function callGeminiJson<T>(options: GeminiJsonOptions<T>) {
-  const geminiApiKey = ensureGeminiConfigured();
+  ensureGeminiConfigured();
   const body: GeminiRequestBody = {
     system_instruction: options.systemInstruction
       ? {
@@ -241,14 +207,13 @@ async function callGeminiJson<T>(options: GeminiJsonOptions<T>) {
     },
   };
 
-  return callGeminiWithFallback(geminiApiKey, body, (payload) => {
+  return callGeminiWithFallback(body, (payload) => {
     const text = extractGeminiText(payload);
     return options.validate(JSON.parse(text));
   });
 }
 
 async function callGeminiWithFallback<T>(
-  geminiApiKey: string,
   body: GeminiRequestBody,
   parsePayload: (payload: any) => T,
 ) {
@@ -259,22 +224,11 @@ async function callGeminiWithFallback<T>(
     const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
     try {
-      const response = await fetch(getGeminiUrl(model), {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-goog-api-key": geminiApiKey,
-        },
-        body: JSON.stringify(body),
-        signal: controller.signal,
-      });
-
-      if (!response.ok) {
-        const failureText = await response.text();
-        throw new Error(`Gemini request failed for ${model} (${response.status}): ${failureText || "Unknown error"}`);
-      }
-
-      const payload = await response.json();
+      const payload = await invokeSupabaseFunction<any>(
+        GEMINI_PROXY_FUNCTION,
+        { model, body },
+        { signal: controller.signal },
+      );
       return parsePayload(payload);
     } catch (error) {
       const message = getGeminiErrorMessage(error) || `Unknown error for ${model}.`;
@@ -532,8 +486,8 @@ function buildFallbackHomeAiBrief(
   } else if (failure?.kind === "config") {
     insight =
       language === "english"
-        ? "Gemini is not configured in this app build yet. Core POS features still work, and you can restart Expo after updating the Gemini key."
-        : "Hindi pa configured ang Gemini sa app build na ito. Gumagana pa rin ang core POS features, at puwede mong i-restart ang Expo pagkatapos i-update ang Gemini key.";
+        ? "Gemini proxy is not configured in this app build yet. Core POS features still work, and you can restart after wiring Supabase and deploying the edge function."
+        : "Hindi pa configured ang Gemini proxy sa app build na ito. Gumagana pa rin ang core POS features, at puwede mong i-restart pagkatapos i-wire ang Supabase at i-deploy ang edge function.";
   } else {
     insight =
       language === "english"
@@ -610,7 +564,7 @@ function computeHeuristicTrustScore(profile: CustomerRiskProfile): TrustScoreRes
 }
 
 export function isGeminiReady() {
-  return Boolean(getGeminiApiKey());
+  return isSupabaseReady();
 }
 
 export async function getOrCreateHomeAiBrief(db: SQLiteDatabase, language: AppLanguage = "taglish") {
@@ -792,8 +746,8 @@ export async function chatWithAlingAi(
 ) {
   if (!isGeminiReady()) {
     return language === "english"
-      ? "Gemini is not connected yet. Add EXPO_PUBLIC_GEMINI_KEY to your local .env to unlock Aling AI."
-      : "Hindi pa naka-connect ang Gemini key. Add EXPO_PUBLIC_GEMINI_KEY sa local .env mo para ma-unlock si Aling AI.";
+      ? "Gemini is not connected yet. Configure Supabase and deploy the gemini-proxy edge function to unlock Aling AI."
+      : "Hindi pa naka-connect ang Gemini proxy. I-configure ang Supabase at i-deploy ang gemini-proxy edge function para ma-unlock si Aling AI.";
   }
 
   const [context, storedStoreName] = await Promise.all([
