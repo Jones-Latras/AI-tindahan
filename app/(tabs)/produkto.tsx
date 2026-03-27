@@ -71,6 +71,8 @@ type ProductFormState = {
   inventoryPoolBaseUnitLabel: string;
   inventoryPoolQuantityAvailable: string;
   inventoryPoolReorderThreshold: string;
+  inventoryBundleCount: string;
+  inventoryBundleReorderCount: string;
   linkedUnitsPerSale: string;
   linkedDisplayUnitLabel: string;
   isPrimaryRestockProduct: boolean;
@@ -130,6 +132,8 @@ const emptyForm: ProductFormState = {
   inventoryPoolBaseUnitLabel: "piece",
   inventoryPoolQuantityAvailable: "",
   inventoryPoolReorderThreshold: "",
+  inventoryBundleCount: "",
+  inventoryBundleReorderCount: "",
   linkedUnitsPerSale: "",
   linkedDisplayUnitLabel: "piece",
   isPrimaryRestockProduct: false,
@@ -249,11 +253,79 @@ export default function ProduktoScreen() {
     setRepackWastage("0");
     setRepackNote("");
   }, []);
+  const linkedInventoryHelper = useMemo(() => {
+    if (form.inventoryMode !== "linked" || form.isWeightBased) {
+      return null;
+    }
+
+    const unitsPerSale = roundWeightKg(parseDecimalInput(form.linkedUnitsPerSale));
+    const hasUnitsPerSale = form.linkedUnitsPerSale.trim().length > 0;
+    const baseUnitLabel = form.inventoryPoolBaseUnitLabel.trim() || "unit";
+    const bundleLabel = form.linkedDisplayUnitLabel.trim() || "bundle";
+    const hasBundleCount = form.inventoryBundleCount.trim().length > 0;
+    const hasBundleReorderCount = form.inventoryBundleReorderCount.trim().length > 0;
+    const bundleCount = hasBundleCount ? roundWeightKg(parseDecimalInput(form.inventoryBundleCount)) : null;
+    const bundleReorderCount = hasBundleReorderCount
+      ? roundWeightKg(parseDecimalInput(form.inventoryBundleReorderCount))
+      : null;
+
+    if (!hasUnitsPerSale || !Number.isFinite(unitsPerSale) || unitsPerSale <= 0) {
+      return {
+        ready: false as const,
+        baseUnitLabel,
+        bundleLabel,
+      };
+    }
+
+    return {
+      ready: true as const,
+      baseUnitLabel,
+      bundleLabel,
+      unitsPerSale,
+      bundleCount,
+      bundleReorderCount,
+      quantityAvailable:
+        bundleCount !== null && Number.isFinite(bundleCount) && bundleCount >= 0
+          ? roundWeightKg(bundleCount * unitsPerSale)
+          : null,
+      reorderThreshold:
+        bundleReorderCount !== null && Number.isFinite(bundleReorderCount) && bundleReorderCount >= 0
+          ? roundWeightKg(bundleReorderCount * unitsPerSale)
+          : null,
+    };
+  }, [
+    form.inventoryBundleCount,
+    form.inventoryBundleReorderCount,
+    form.inventoryMode,
+    form.inventoryPoolBaseUnitLabel,
+    form.isWeightBased,
+    form.linkedDisplayUnitLabel,
+    form.linkedUnitsPerSale,
+  ]);
+  const resolvedLinkedInventoryValues = useMemo(() => {
+    const hasManualQuantity = form.inventoryPoolQuantityAvailable.trim().length > 0;
+    const hasManualThreshold = form.inventoryPoolReorderThreshold.trim().length > 0;
+
+    return {
+      quantityAvailable:
+        !hasManualQuantity && linkedInventoryHelper?.ready && linkedInventoryHelper.quantityAvailable !== null
+          ? linkedInventoryHelper.quantityAvailable
+          : roundWeightKg(parseDecimalInput(form.inventoryPoolQuantityAvailable)),
+      reorderThreshold:
+        !hasManualThreshold && linkedInventoryHelper?.ready && linkedInventoryHelper.reorderThreshold !== null
+          ? linkedInventoryHelper.reorderThreshold
+          : roundWeightKg(parseDecimalInput(form.inventoryPoolReorderThreshold)),
+    };
+  }, [
+    form.inventoryPoolQuantityAvailable,
+    form.inventoryPoolReorderThreshold,
+    linkedInventoryHelper,
+  ]);
   const pricingPreview = useMemo<ProductFormPreview>(() => {
     const name = form.name.trim();
     const linkedUnitsPerSale = roundWeightKg(parseDecimalInput(form.linkedUnitsPerSale));
-    const linkedPoolQuantity = roundWeightKg(parseDecimalInput(form.inventoryPoolQuantityAvailable));
-    const linkedPoolThreshold = roundWeightKg(parseDecimalInput(form.inventoryPoolReorderThreshold));
+    const linkedPoolQuantity = resolvedLinkedInventoryValues.quantityAvailable;
+    const linkedPoolThreshold = resolvedLinkedInventoryValues.reorderThreshold;
     const hasValidLinkedInventory =
       form.inventoryMode !== "linked" ||
       (Number.isFinite(linkedUnitsPerSale) &&
@@ -355,7 +427,7 @@ export default function ProduktoScreen() {
       marginPercent: computeProfitMargin(costPriceCents, priceCents),
       sellingPriceTotalCents: priceCents * stock,
     };
-  }, [form]);
+  }, [form, resolvedLinkedInventoryValues]);
   const shouldShowValidationMessage = modalVisible && (editingProduct !== null || form.name.trim().length > 0);
   const visibleProducts = useMemo(
     () =>
@@ -451,6 +523,22 @@ export default function ProduktoScreen() {
         product.inventoryQuantityAvailable !== null ? formatWeightKg(product.inventoryQuantityAvailable) : "",
       inventoryPoolReorderThreshold:
         product.inventoryReorderThreshold !== null ? formatWeightKg(product.inventoryReorderThreshold) : "",
+      inventoryBundleCount:
+        product.inventoryMode === "linked" &&
+        !product.isWeightBased &&
+        product.inventoryQuantityAvailable !== null &&
+        product.linkedUnitsPerSale !== null &&
+        product.linkedUnitsPerSale > 0
+          ? formatWeightKg(roundWeightKg(product.inventoryQuantityAvailable / product.linkedUnitsPerSale))
+          : "",
+      inventoryBundleReorderCount:
+        product.inventoryMode === "linked" &&
+        !product.isWeightBased &&
+        product.inventoryReorderThreshold !== null &&
+        product.linkedUnitsPerSale !== null &&
+        product.linkedUnitsPerSale > 0
+          ? formatWeightKg(roundWeightKg(product.inventoryReorderThreshold / product.linkedUnitsPerSale))
+          : "",
       linkedUnitsPerSale: product.linkedUnitsPerSale !== null ? formatWeightKg(product.linkedUnitsPerSale) : "",
       linkedDisplayUnitLabel: product.linkedDisplayUnitLabel ?? (product.isWeightBased ? "kg" : "piece"),
       isPrimaryRestockProduct: product.isPrimaryRestockProduct,
@@ -649,9 +737,9 @@ export default function ProduktoScreen() {
             inventoryPoolName: form.inventoryPoolName,
             inventoryPoolBaseUnitLabel: form.inventoryPoolBaseUnitLabel,
             inventoryPoolQuantityAvailable:
-              form.inventoryMode === "linked" ? parseDecimalInput(form.inventoryPoolQuantityAvailable) : null,
+              form.inventoryMode === "linked" ? resolvedLinkedInventoryValues.quantityAvailable : null,
             inventoryPoolReorderThreshold:
-              form.inventoryMode === "linked" ? parseDecimalInput(form.inventoryPoolReorderThreshold) : null,
+              form.inventoryMode === "linked" ? resolvedLinkedInventoryValues.reorderThreshold : null,
             linkedUnitsPerSale: form.inventoryMode === "linked" ? parseDecimalInput(form.linkedUnitsPerSale) : null,
             linkedDisplayUnitLabel: form.linkedDisplayUnitLabel,
             isPrimaryRestockProduct: form.isPrimaryRestockProduct,
@@ -675,9 +763,9 @@ export default function ProduktoScreen() {
             inventoryPoolName: form.inventoryPoolName,
             inventoryPoolBaseUnitLabel: form.inventoryPoolBaseUnitLabel,
             inventoryPoolQuantityAvailable:
-              form.inventoryMode === "linked" ? parseDecimalInput(form.inventoryPoolQuantityAvailable) : null,
+              form.inventoryMode === "linked" ? resolvedLinkedInventoryValues.quantityAvailable : null,
             inventoryPoolReorderThreshold:
-              form.inventoryMode === "linked" ? parseDecimalInput(form.inventoryPoolReorderThreshold) : null,
+              form.inventoryMode === "linked" ? resolvedLinkedInventoryValues.reorderThreshold : null,
             linkedUnitsPerSale: form.inventoryMode === "linked" ? parseDecimalInput(form.linkedUnitsPerSale) : null,
             linkedDisplayUnitLabel: form.linkedDisplayUnitLabel,
             isPrimaryRestockProduct: form.isPrimaryRestockProduct,
@@ -716,7 +804,17 @@ export default function ProduktoScreen() {
     } finally {
       setSaving(false);
     }
-  }, [categories, db, editingProduct?.id, form, loadProducts, persistCategories, pricingPreview, resetRepackState]);
+  }, [
+    categories,
+    db,
+    editingProduct?.id,
+    form,
+    loadProducts,
+    persistCategories,
+    pricingPreview,
+    resetRepackState,
+    resolvedLinkedInventoryValues,
+  ]);
 
   const handleDelete = useCallback(() => {
     if (!editingProduct) {
@@ -1328,6 +1426,8 @@ export default function ProduktoScreen() {
                       setForm((current) => ({
                         ...current,
                         inventoryMode: option.value,
+                        inventoryBundleCount: option.value === "linked" ? current.inventoryBundleCount : "",
+                        inventoryBundleReorderCount: option.value === "linked" ? current.inventoryBundleReorderCount : "",
                       }))
                     }
                     style={({ pressed }) => ({
@@ -1371,6 +1471,22 @@ export default function ProduktoScreen() {
                             onPress={() =>
                               setForm((current) => ({
                                 ...current,
+                                inventoryBundleCount:
+                                  current.linkedUnitsPerSale.trim().length > 0 &&
+                                  Number.isFinite(parseDecimalInput(current.linkedUnitsPerSale)) &&
+                                  parseDecimalInput(current.linkedUnitsPerSale) > 0
+                                    ? formatWeightKg(
+                                        roundWeightKg(pool.quantityAvailable / parseDecimalInput(current.linkedUnitsPerSale)),
+                                      )
+                                    : current.inventoryBundleCount,
+                                inventoryBundleReorderCount:
+                                  current.linkedUnitsPerSale.trim().length > 0 &&
+                                  Number.isFinite(parseDecimalInput(current.linkedUnitsPerSale)) &&
+                                  parseDecimalInput(current.linkedUnitsPerSale) > 0
+                                    ? formatWeightKg(
+                                        roundWeightKg(pool.reorderThreshold / parseDecimalInput(current.linkedUnitsPerSale)),
+                                      )
+                                    : current.inventoryBundleReorderCount,
                                 inventoryPoolId: pool.id,
                                 inventoryPoolName: pool.name,
                                 inventoryPoolBaseUnitLabel: pool.baseUnitLabel,
@@ -1474,6 +1590,120 @@ export default function ProduktoScreen() {
                     />
                   </View>
                 </View>
+
+                <SurfaceCard style={{ gap: theme.spacing.sm, padding: theme.spacing.sm }}>
+                  <View style={{ gap: 4 }}>
+                    <Text
+                      style={{
+                        color: theme.colors.text,
+                        fontFamily: theme.typography.body,
+                        fontSize: 13,
+                        fontWeight: "700",
+                      }}
+                    >
+                      {t("produkto.inventoryHelper.title")}
+                    </Text>
+                    <Text
+                      style={{
+                        color: theme.colors.textMuted,
+                        fontFamily: theme.typography.body,
+                        fontSize: 12,
+                        lineHeight: 18,
+                      }}
+                    >
+                      {t("produkto.inventoryHelper.subtitle")}
+                    </Text>
+                  </View>
+
+                  <View style={{ flexDirection: "row", gap: theme.spacing.md }}>
+                    <View style={{ flex: 1 }}>
+                      <InputField
+                        keyboardType="decimal-pad"
+                        label={t("produkto.inventoryHelper.stockCount")}
+                        onChangeText={(value) => setForm((current) => ({ ...current, inventoryBundleCount: value }))}
+                        placeholder="0"
+                        value={form.inventoryBundleCount}
+                      />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <InputField
+                        keyboardType="decimal-pad"
+                        label={t("produkto.inventoryHelper.reorderCount")}
+                        onChangeText={(value) =>
+                          setForm((current) => ({ ...current, inventoryBundleReorderCount: value }))
+                        }
+                        placeholder="0"
+                        value={form.inventoryBundleReorderCount}
+                      />
+                    </View>
+                  </View>
+
+                  {linkedInventoryHelper?.ready ? (
+                    <>
+                      {linkedInventoryHelper.quantityAvailable !== null ? (
+                        <Text
+                          style={{
+                            color: theme.colors.text,
+                            fontFamily: theme.typography.body,
+                            fontSize: 12,
+                            fontWeight: "700",
+                          }}
+                        >
+                          {t("produkto.inventoryHelper.quantity", {
+                            quantity: formatWeightKg(linkedInventoryHelper.quantityAvailable),
+                            unit: linkedInventoryHelper.baseUnitLabel,
+                          })}
+                        </Text>
+                      ) : null}
+                      {linkedInventoryHelper.reorderThreshold !== null ? (
+                        <Text
+                          style={{
+                            color: theme.colors.textMuted,
+                            fontFamily: theme.typography.body,
+                            fontSize: 12,
+                            fontWeight: "700",
+                          }}
+                        >
+                          {t("produkto.inventoryHelper.threshold", {
+                            quantity: formatWeightKg(linkedInventoryHelper.reorderThreshold),
+                            unit: linkedInventoryHelper.baseUnitLabel,
+                          })}
+                        </Text>
+                      ) : null}
+
+                      {(linkedInventoryHelper.quantityAvailable !== null || linkedInventoryHelper.reorderThreshold !== null) ? (
+                        <ActionButton
+                          label={t("produkto.inventoryHelper.apply")}
+                          onPress={() =>
+                            setForm((current) => ({
+                              ...current,
+                              inventoryPoolQuantityAvailable:
+                                linkedInventoryHelper.quantityAvailable !== null
+                                  ? formatWeightKg(linkedInventoryHelper.quantityAvailable)
+                                  : current.inventoryPoolQuantityAvailable,
+                              inventoryPoolReorderThreshold:
+                                linkedInventoryHelper.reorderThreshold !== null
+                                  ? formatWeightKg(linkedInventoryHelper.reorderThreshold)
+                                  : current.inventoryPoolReorderThreshold,
+                            }))
+                          }
+                          variant="ghost"
+                        />
+                      ) : null}
+                    </>
+                  ) : (
+                    <Text
+                      style={{
+                        color: theme.colors.textSoft,
+                        fontFamily: theme.typography.body,
+                        fontSize: 12,
+                        lineHeight: 18,
+                      }}
+                    >
+                      {t("produkto.inventoryHelper.needsUnitsPerSale")}
+                    </Text>
+                  )}
+                </SurfaceCard>
 
                 <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
                   {[
