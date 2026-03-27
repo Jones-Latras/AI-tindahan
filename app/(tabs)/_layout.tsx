@@ -47,9 +47,9 @@ function FloatingTabBar({ state, descriptors, navigation }: any) {
         left: theme.spacing.lg,
         right: theme.spacing.lg,
         flexDirection: "row",
-        alignItems: "center",
+        alignItems: "stretch",
         justifyContent: "space-between",
-        gap: theme.spacing.md,
+        gap: theme.spacing.sm,
       }}
     >
       <View
@@ -166,44 +166,45 @@ function FloatingTabBar({ state, descriptors, navigation }: any) {
       </View>
 
       {bentaRoute ? (
-        <Pressable
-          onPress={() => {
-            const event = navigation.emit({
-              type: "tabPress",
-              target: bentaRoute.key,
-              canPreventDefault: true,
-            });
-            if (!event.defaultPrevented) {
-              navigation.navigate(bentaRoute.name, bentaRoute.params);
-            }
-          }}
-          style={({ pressed }) => ({
-            transform: [{ scale: pressed ? 0.94 : 1 }],
-          })}
-        >
-          <LinearGradient
-            colors={[theme.colors.primary, theme.colors.success]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={{
-              alignItems: "center",
-              justifyContent: "center",
-              width: 58,
-              height: 58,
-              borderRadius: theme.radius.lg,
-              borderWidth: 1,
-              borderColor: "rgba(255, 255, 255, 0.15)",
-              elevation: 16,
-              shadowColor: "#000",
-              shadowOffset: { width: 0, height: 12 },
-              shadowOpacity: 0.2,
-              shadowRadius: 24,
+        <View>
+          <Pressable
+            onPress={() => {
+              const event = navigation.emit({
+                type: "tabPress",
+                target: bentaRoute.key,
+                canPreventDefault: true,
+              });
+              if (!event.defaultPrevented) {
+                navigation.navigate(bentaRoute.name, bentaRoute.params);
+              }
             }}
+            style={({ pressed }) => ({
+              transform: [{ scale: pressed ? 0.94 : 1 }],
+            })}
           >
-            <Feather color={theme.colors.primaryText} name="plus" size={28} />
-          </LinearGradient>
-        </Pressable>
-      ) : null}
+            <LinearGradient
+              colors={[theme.colors.primary, theme.colors.success]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={{
+                alignItems: "center",
+                justifyContent: "center",
+                width: 74,
+                height: 74,
+                borderRadius: 36,
+                borderWidth: 1,
+                borderColor: "rgba(255, 255, 255, 0.15)",
+                elevation: 16,
+                shadowColor: "#000",
+                shadowOffset: { width: 0, height: 12 },
+                shadowOpacity: 0.2,
+                shadowRadius: 24,
+              }}
+            >
+              <Feather color="#ffffff" name="plus" size={32} />
+            </LinearGradient>
+          </Pressable>
+        </View>) : null}
     </View>
   );
 }
