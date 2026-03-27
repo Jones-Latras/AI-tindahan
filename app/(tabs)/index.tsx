@@ -259,11 +259,23 @@ export default function HomeScreen() {
   const [receiptSale, setReceiptSale] = useState<StoreAiSale | null>(null);
   const [receiptAction, setReceiptAction] = useState<"share" | "download" | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>(() => [createChatMessage("assistant", t("home.aiWelcome"))]);
+  const [briefDate, setBriefDate] = useState(() => new Date());
   const receiptCaptureRef = useRef<View>(null);
   const compactCardStyle = {
     gap: theme.spacing.sm,
     padding: theme.spacing.md,
   } as const;
+  const briefDateLabel = useMemo(
+    () =>
+      new Intl.DateTimeFormat(language === "english" ? "en-PH" : "fil-PH", {
+        day: "numeric",
+        month: "short",
+        weekday: "long",
+      })
+        .format(briefDate)
+        .toUpperCase(),
+    [briefDate, language],
+  );
   const shortcutItems = useMemo(() => {
     const items: Array<{
       icon: keyof typeof Feather.glyphMap;
@@ -300,6 +312,14 @@ export default function HomeScreen() {
     return items;
   }, [t]);
   const activeShortcut = shortcutItems.find((item) => item.key === activePanel) ?? null;
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setBriefDate(new Date());
+    }, 60_000);
+
+    return () => clearInterval(timer);
+  }, []);
   const historySortOptions = useMemo(
     () => [
       { key: "latest" as const, label: t("home.history.sort.latest") },
@@ -1427,6 +1447,19 @@ export default function HomeScreen() {
           </SurfaceCard>
         ) : brief ? (
           <SurfaceCard style={compactCardStyle}>
+            <Text
+              style={{
+                color: theme.colors.textSoft,
+                fontFamily: theme.typography.body,
+                fontSize: 11,
+                fontWeight: "700",
+                letterSpacing: 0.8,
+                textTransform: "uppercase",
+              }}
+            >
+              {briefDateLabel}
+            </Text>
+
             <View style={{ alignItems: "center", flexDirection: "row", justifyContent: "space-between", gap: theme.spacing.sm }}>
               <View style={{ flex: 1, gap: 4 }}>
                 <Text

@@ -1,10 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo } from "react";
 import { usePathname, useRouter } from "expo-router";
 import { PanResponder, ScrollView, Text, View, type StyleProp, type TextStyle, type ViewStyle } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 
-import { useAppLanguage } from "@/contexts/LanguageContext";
 import { useAppTheme } from "@/contexts/ThemeContext";
 
 type ScreenProps = {
@@ -35,58 +34,6 @@ function normalizeTabPathname(pathname: string) {
   }
 
   return normalizedPathname;
-}
-
-function LiveDateChip() {
-  const { theme } = useAppTheme();
-  const { language } = useAppLanguage();
-  const [now, setNow] = useState(() => new Date());
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setNow(new Date());
-    }, 60_000);
-
-    return () => clearInterval(timer);
-  }, []);
-
-  const locale = language === "english" ? "en-PH" : "fil-PH";
-  const dateLabel = useMemo(
-    () =>
-      new Intl.DateTimeFormat(locale, {
-        day: "numeric",
-        month: "short",
-        weekday: "long",
-      }).format(now),
-    [locale, now],
-  );
-
-  return (
-    <View
-      style={{
-        alignItems: "center",
-        backgroundColor: theme.colors.surfaceMuted,
-        borderColor: theme.colors.border,
-        borderRadius: theme.radius.pill,
-        borderWidth: 1,
-        justifyContent: "center",
-        minHeight: 34,
-        paddingHorizontal: theme.spacing.md,
-        paddingVertical: 6,
-      }}
-    >
-      <Text
-        style={{
-          color: theme.colors.textMuted,
-          fontFamily: theme.typography.body,
-          fontSize: 12,
-          fontWeight: "700",
-        }}
-      >
-        {dateLabel}
-      </Text>
-    </View>
-  );
 }
 
 export function Screen({
@@ -202,10 +149,7 @@ export function Screen({
               </Text>
             ) : null}
           </View>
-          <View style={{ alignItems: "flex-end", flexShrink: 0, gap: theme.spacing.sm }}>
-            <LiveDateChip />
-            {rightSlot}
-          </View>
+          {rightSlot ? <View style={{ alignItems: "flex-end", flexShrink: 0 }}>{rightSlot}</View> : null}
         </View>
         {children}
       </ScrollView>
