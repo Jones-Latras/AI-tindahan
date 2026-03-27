@@ -30,7 +30,7 @@ const GEMINI_MODELS = [
   "gemini-2.5-flash",
 ] as const;
 const REQUEST_TIMEOUT_MS = 18_000;
-const HOME_AI_BRIEF_KEY_PREFIX = "ai.home-brief.v2";
+const HOME_AI_BRIEF_KEY_PREFIX = "ai.home-brief.v3";
 
 type GeminiContent = {
   role?: "user" | "model";
@@ -364,7 +364,13 @@ function buildStoreAiPromptContext(context: StoreAiContext) {
         todayGrossProfitCents: context.todayGrossProfitCents,
         todayExpenseCents: context.todayExpenseCents,
         todayNetProfitCents: context.todayNetProfitCents,
+        restockUrgencyCount: context.restockUrgencyCount,
+        todayPaymentEvents: context.todayPaymentEvents,
+        todayPaymentCents: context.todayPaymentCents,
         totalUtangCents: context.totalUtangCents,
+        openContainerReturnEvents: context.openContainerReturnEvents,
+        openContainerReturnCustomers: context.openContainerReturnCustomers,
+        openContainerReturnQuantity: context.openContainerReturnQuantity,
         paymentBreakdown: context.paymentBreakdown,
         lowStockProducts: context.lowStockProducts,
         delikadoCustomers: context.delikadoCustomers,
@@ -378,6 +384,8 @@ function buildStoreAiPromptContext(context: StoreAiContext) {
       customers: convertMoneyFieldsForAi(context.customers),
       sales: convertMoneyFieldsForAi(context.sales),
       expenses: convertMoneyFieldsForAi(context.expenses),
+      utangPayments: convertMoneyFieldsForAi(context.utangPayments),
+      openContainerReturns: convertMoneyFieldsForAi(context.openContainerReturns),
     },
     null,
     2,
@@ -469,6 +477,30 @@ function buildFallbackExpenseInsight(
     : `Nasa ${expenseAmount} ang gastos ngayon kaya ${netProfitAmount} ang net profit.${categorySuffix ? ` Pinakamalaking pressure: ${categorySuffix}.` : ""}`;
 }
 
+function buildFallbackOperationsInsight(
+  language: AppLanguage,
+  todayPaymentEvents: number,
+  todayPaymentCents: number,
+  openContainerReturnQuantity: number,
+  openContainerReturnCustomers: number,
+) {
+  const paymentInsight =
+    todayPaymentEvents > 0
+      ? language === "english"
+        ? `Logged ${todayPaymentEvents} utang payment ${todayPaymentEvents === 1 ? "entry" : "entries"} today worth ${formatCurrencyFromCents(todayPaymentCents)}.`
+        : `May ${todayPaymentEvents} na log ng bayad sa utang ngayon na nagkakahalaga ng ${formatCurrencyFromCents(todayPaymentCents)}.`
+      : "";
+
+  const bottleInsight =
+    openContainerReturnQuantity > 0
+      ? language === "english"
+        ? `There are still ${openContainerReturnQuantity} empty ${openContainerReturnQuantity === 1 ? "bottle" : "bottles"} pending across ${openContainerReturnCustomers} ${openContainerReturnCustomers === 1 ? "customer" : "customers"}.`
+        : `May ${openContainerReturnQuantity} pang empty bottle na hindi pa naibabalik mula sa ${openContainerReturnCustomers} ${openContainerReturnCustomers === 1 ? "customer" : "customers"}.`
+      : "";
+
+  return [paymentInsight, bottleInsight].filter(Boolean).join(" ");
+}
+
 function buildFallbackHomeAiBrief(
   language: AppLanguage,
   restockSuggestions: string[] = [],
@@ -477,6 +509,10 @@ function buildFallbackHomeAiBrief(
     todayExpenseCents?: number;
     todayNetProfitCents?: number;
     topExpenseCategory?: string;
+    todayPaymentEvents?: number;
+    todayPaymentCents?: number;
+    openContainerReturnQuantity?: number;
+    openContainerReturnCustomers?: number;
   },
 ): HomeAiBrief {
   const failure = error ? parseGeminiFailure(error) : null;
@@ -511,9 +547,16 @@ function buildFallbackHomeAiBrief(
     options?.todayNetProfitCents ?? 0,
     options?.topExpenseCategory,
   );
+  const operationsInsight = buildFallbackOperationsInsight(
+    language,
+    options?.todayPaymentEvents ?? 0,
+    options?.todayPaymentCents ?? 0,
+    options?.openContainerReturnQuantity ?? 0,
+    options?.openContainerReturnCustomers ?? 0,
+  );
 
   return {
-    insight: expenseInsight ? `${insight} ${expenseInsight}` : insight,
+    insight: [insight, expenseInsight, operationsInsight].filter(Boolean).join(" "),
     restockSuggestions,
     generatedOn: new Date().toISOString(),
     source: "fallback",
@@ -618,6 +661,10 @@ export async function getOrCreateHomeAiBrief(db: SQLiteDatabase, language: AppLa
       todayExpenseCents: homeMetrics.todayExpenseCents,
       todayNetProfitCents: homeMetrics.todayNetProfitCents,
       topExpenseCategory: humanizeExpenseCategory(expenseSummary.topCategories[0]?.category),
+      todayPaymentEvents: homeMetrics.todayPaymentEvents,
+      todayPaymentCents: homeMetrics.todayPaymentCents,
+      openContainerReturnQuantity: homeMetrics.openContainerReturnQuantity,
+      openContainerReturnCustomers: homeMetrics.openContainerReturnCustomers,
     });
     await Storage.setItem(cacheKey, JSON.stringify(fallback));
     return fallback;
@@ -630,6 +677,8 @@ export async function getOrCreateHomeAiBrief(db: SQLiteDatabase, language: AppLa
           "You are Aling AI, a practical business assistant for a sari-sari store in the Philippines.",
           getReplyLanguageInstruction(language),
           "If products are low stock, out of stock, or at risk of running out soon, include concrete restock suggestions.",
+          "When linked inventory exists, reason about the shared stock pool and prefer the primary restock product over the child tingi item when recommending restocks.",
+          "Treat utang payments and open bottle-return obligations as operational signals worth mentioning when relevant.",
           "Stay concise and never invent store data that was not provided.",
         ].join(" "),
       contents: [
@@ -643,6 +692,9 @@ export async function getOrCreateHomeAiBrief(db: SQLiteDatabase, language: AppLa
                 `Today's gross profit: ${formatCurrencyFromCents(homeMetrics.todayGrossProfitCents)}`,
                 `Today's expenses: ${formatCurrencyFromCents(homeMetrics.todayExpenseCents)}`,
                 `Today's net profit: ${formatCurrencyFromCents(homeMetrics.todayNetProfitCents)}`,
+                `Restock alerts right now: ${homeMetrics.restockUrgencyCount}`,
+                `Today's utang payments: ${homeMetrics.todayPaymentEvents} log(s) totaling ${formatCurrencyFromCents(homeMetrics.todayPaymentCents)}`,
+                `Open bottle-return obligations: ${homeMetrics.openContainerReturnQuantity} container(s) across ${homeMetrics.openContainerReturnCustomers} customer(s)`,
                 `Top products this week: ${salesContext.topProducts.map((product) => product.name).join(", ") || "None yet"}`,
                 `Top expense categories this month: ${
                   expenseSummary.topCategories.length > 0
@@ -667,7 +719,11 @@ export async function getOrCreateHomeAiBrief(db: SQLiteDatabase, language: AppLa
                 `Low stock products right now: ${
                   homeMetrics.lowStockProducts.length > 0
                     ? homeMetrics.lowStockProducts
-                        .map((item) => `${item.name}: ${item.stock} stock, ${item.minStock} minimum`)
+                        .map((item) =>
+                          item.inventoryMode === "linked"
+                            ? `${item.name}: linked pool ${item.inventoryPoolName ?? "shared stock"}, ${item.isPrimaryRestockProduct ? "primary restock item" : "linked child item"}, ${item.stock} stock, ${item.minStock} minimum`
+                            : `${item.name}: ${item.stock} stock, ${item.minStock} minimum`,
+                        )
                         .join("; ")
                     : "None"
                 }`,
@@ -719,6 +775,10 @@ export async function getOrCreateHomeAiBrief(db: SQLiteDatabase, language: AppLa
       todayExpenseCents: homeMetrics.todayExpenseCents,
       todayNetProfitCents: homeMetrics.todayNetProfitCents,
       topExpenseCategory: humanizeExpenseCategory(expenseSummary.topCategories[0]?.category),
+      todayPaymentEvents: homeMetrics.todayPaymentEvents,
+      todayPaymentCents: homeMetrics.todayPaymentCents,
+      openContainerReturnQuantity: homeMetrics.openContainerReturnQuantity,
+      openContainerReturnCustomers: homeMetrics.openContainerReturnCustomers,
     });
     return fallback;
   }
@@ -753,6 +813,7 @@ export async function chatWithAlingAi(
         getReplyLanguageInstruction(language),
         "Be encouraging, brief, and specific to the store data provided.",
         "The store data provided is authoritative. Use it as your source of truth for products, stock, sales, utang, customers, pricing, and payment mix.",
+        "Linked inventory pools, repack sessions, utang payment logs, and bottle-return obligations are meaningful operational context. Use them when relevant.",
         "All money in the provided context is already in Philippine pesos (PHP). Never reply in cents unless the user explicitly asks for cents.",
         "When the user asks about specific products, customers, balances, stock, or sales, inspect the provided data carefully before answering.",
         "Do not volunteer phone numbers unless the user explicitly asks for them.",

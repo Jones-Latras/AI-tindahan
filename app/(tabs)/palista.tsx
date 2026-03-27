@@ -430,13 +430,13 @@ export default function PalistaScreen() {
       try {
         await applyContainerReturn(db, event.id, quantityToReturn);
         await refreshCustomerDetail(selectedCustomer.id);
-      } catch (error) {
-        Alert.alert(
-          "Bottle return failed",
-          error instanceof Error ? error.message : "The bottle return could not be recorded.",
-        );
-      } finally {
-        setReturningContainerId(null);
+    } catch (error) {
+      Alert.alert(
+          t("palista.alert.containerReturnFailedTitle"),
+          error instanceof Error ? error.message : t("palista.alert.containerReturnFailedMessage"),
+      );
+    } finally {
+      setReturningContainerId(null);
       }
     },
     [db, refreshCustomerDetail, selectedCustomer],
@@ -870,7 +870,7 @@ export default function PalistaScreen() {
                       fontWeight: "700",
                     }}
                   >
-                    Empty bottles
+                    {t("palista.containerReturns.title")}
                   </Text>
                   <Text
                     style={{
@@ -880,11 +880,19 @@ export default function PalistaScreen() {
                       fontWeight: "700",
                     }}
                   >
-                    {outstandingBottleCount > 0 ? `${outstandingBottleCount} outstanding` : "No outstanding empties"}
+                    {outstandingBottleCount === 0
+                      ? t("palista.containerReturns.outstanding.none")
+                      : outstandingBottleCount === 1
+                        ? t("palista.containerReturns.outstanding.single")
+                        : t("palista.containerReturns.outstanding.plural", { count: outstandingBottleCount })}
                   </Text>
                 </View>
                 <StatusBadge
-                  label={outstandingBottleCount > 0 ? "Return Needed" : "All Clear"}
+                  label={
+                    outstandingBottleCount > 0
+                      ? t("palista.containerReturns.status.pending")
+                      : t("palista.containerReturns.status.clear")
+                  }
                   tone={outstandingBottleCount > 0 ? "warning" : "success"}
                 />
               </View>
@@ -926,7 +934,7 @@ export default function PalistaScreen() {
                           </Text>
                         </View>
                         <StatusBadge
-                          label={`${outstandingQuantity} left`}
+                          label={t("palista.containerReturns.left", { count: outstandingQuantity })}
                           tone={outstandingQuantity > 0 ? "warning" : "success"}
                         />
                       </View>
@@ -939,15 +947,22 @@ export default function PalistaScreen() {
                         }}
                       >
                         {event.quantityReturned > 0
-                          ? `${event.quantityReturned} of ${event.quantityOut} returned`
-                          : `${event.quantityOut} to return`}
+                          ? t("palista.containerReturns.returnedProgress", {
+                              returned: event.quantityReturned,
+                              total: event.quantityOut,
+                            })
+                          : t("palista.containerReturns.toReturn", { count: event.quantityOut })}
                       </Text>
 
                       <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
                         {outstandingQuantity > 1 ? (
                           <ActionButton
                             disabled={returningContainerId === event.id}
-                            label={returningContainerId === event.id ? "Saving..." : "Return 1"}
+                            label={
+                              returningContainerId === event.id
+                                ? t("palista.containerReturns.saving")
+                                : t("palista.containerReturns.returnOne")
+                            }
                             onPress={() => void handleContainerReturn(event, 1)}
                             style={{ flex: 1 }}
                             variant="secondary"
@@ -955,7 +970,13 @@ export default function PalistaScreen() {
                         ) : null}
                         <ActionButton
                           disabled={returningContainerId === event.id}
-                          label={returningContainerId === event.id ? "Saving..." : outstandingQuantity === 1 ? "Mark Returned" : "Return All"}
+                          label={
+                            returningContainerId === event.id
+                              ? t("palista.containerReturns.saving")
+                              : outstandingQuantity === 1
+                                ? t("palista.containerReturns.markReturned")
+                                : t("palista.containerReturns.returnAll")
+                          }
                           onPress={() => void handleContainerReturn(event, outstandingQuantity)}
                           style={{ flex: 1 }}
                           variant="ghost"
@@ -973,7 +994,7 @@ export default function PalistaScreen() {
                     lineHeight: 18,
                   }}
                 >
-                  No outstanding bottle-return records for this customer.
+                  {t("palista.containerReturns.empty")}
                 </Text>
               )}
             </SurfaceCard>

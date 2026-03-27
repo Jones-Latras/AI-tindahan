@@ -83,7 +83,13 @@ export interface HomeMetrics {
   todayGrossProfitCents: number;
   todayExpenseCents: number;
   todayNetProfitCents: number;
+  restockUrgencyCount: number;
+  todayPaymentEvents: number;
+  todayPaymentCents: number;
   totalUtangCents: number;
+  openContainerReturnEvents: number;
+  openContainerReturnCustomers: number;
+  openContainerReturnQuantity: number;
   lowStockProducts: Product[];
   delikadoCustomers: RiskCustomerAlert[];
   paymentBreakdown: PaymentBreakdown;
@@ -351,7 +357,13 @@ export interface StoreAiContext {
   todayGrossProfitCents: number;
   todayExpenseCents: number;
   todayNetProfitCents: number;
+  restockUrgencyCount: number;
+  todayPaymentEvents: number;
+  todayPaymentCents: number;
   totalUtangCents: number;
+  openContainerReturnEvents: number;
+  openContainerReturnCustomers: number;
+  openContainerReturnQuantity: number;
   lowStockProducts: Product[];
   topProducts: TopProductSummary[];
   delikadoCustomers: RiskCustomerAlert[];
@@ -364,6 +376,8 @@ export interface StoreAiContext {
   customers: StoreAiCustomer[];
   sales: StoreAiSale[];
   expenses: Expense[];
+  utangPayments: UtangPayment[];
+  openContainerReturns: ContainerReturnEvent[];
 }
 
 export interface CustomerRiskProfile {

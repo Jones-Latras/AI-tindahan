@@ -1311,13 +1311,13 @@ export default function ProduktoScreen() {
                 fontWeight: "700",
               }}
             >
-              Inventory setup
+              {t("produkto.inventorySetup")}
             </Text>
 
             <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
               {[
-                { label: "Standalone", value: "standalone" as ProductInventoryMode },
-                { label: "Linked Tingi", value: "linked" as ProductInventoryMode },
+                { label: t("produkto.inventoryMode.standalone"), value: "standalone" as ProductInventoryMode },
+                { label: t("produkto.inventoryMode.linked"), value: "linked" as ProductInventoryMode },
               ].map((option) => {
                 const active = form.inventoryMode === option.value;
 
@@ -1966,13 +1966,13 @@ export default function ProduktoScreen() {
               fontWeight: "700",
             }}
           >
-            Bottle return tracking
+            {t("produkto.containerTracking.title")}
           </Text>
 
           <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
             {[
-              { label: "No empties", value: false },
-              { label: "Track empties", value: true },
+              { label: t("produkto.containerTracking.none"), value: false },
+              { label: t("produkto.containerTracking.track"), value: true },
             ].map((option) => {
               const active = form.hasContainerReturn === option.value;
 
@@ -2020,16 +2020,16 @@ export default function ProduktoScreen() {
               <View style={{ flexDirection: "row", gap: theme.spacing.md }}>
                 <View style={{ flex: 1 }}>
                   <InputField
-                    label="Empty bottle label"
+                    label={t("produkto.containerTracking.label")}
                     onChangeText={(value) => setForm((current) => ({ ...current, containerLabel: value }))}
-                    placeholder="Example: Coke Empty"
+                    placeholder={t("produkto.containerTracking.labelPlaceholder")}
                     value={form.containerLabel}
                   />
                 </View>
                 <View style={{ flex: 1 }}>
                   <InputField
                     keyboardType="number-pad"
-                    label="Bottles per sale"
+                    label={t("produkto.containerTracking.perSale")}
                     onChangeText={(value) =>
                       setForm((current) => ({ ...current, defaultContainerQuantityPerSale: value }))
                     }
@@ -2041,7 +2041,7 @@ export default function ProduktoScreen() {
 
               <InputField
                 keyboardType="decimal-pad"
-                label="Deposit amount (optional)"
+                label={t("produkto.containerTracking.deposit")}
                 onChangeText={(value) => setForm((current) => ({ ...current, containerDeposit: value }))}
                 placeholder="0.00"
                 value={form.containerDeposit}
@@ -2199,8 +2199,8 @@ export default function ProduktoScreen() {
           </View>
         }
         onClose={resetRepackState}
-        subtitle="Record how bulk stock was converted into a smaller sellable product."
-        title="Log Repack"
+        subtitle={t("produkto.repack.subtitle")}
+        title={t("produkto.repack.title")}
         visible={repackModalVisible}
       >
         <View style={{ gap: theme.spacing.sm }}>

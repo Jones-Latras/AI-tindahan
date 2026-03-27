@@ -362,6 +362,18 @@ function mapContainerReturnEvent(row: ContainerReturnEventRow): ContainerReturnE
   };
 }
 
+function mapUtangPayment(row: UtangPaymentRow): UtangPayment {
+  return {
+    id: row.id,
+    utangId: row.utang_id,
+    customerId: row.customer_id,
+    amountCents: row.amount_cents,
+    note: row.note,
+    createdAt: row.created_at,
+    source: row.source,
+  };
+}
+
 function normalizePaymentBreakdown(row?: PaymentBreakdownRow | null): PaymentBreakdown {
   return {
     cashCents: row?.cash_cents ?? 0,
@@ -2053,7 +2065,36 @@ export async function getHomeMetrics(db: SQLiteDatabase): Promise<HomeMetrics> {
     `,
   );
 
-  const lowStockProducts = await listLowStockProducts(db, 5);
+  const paymentActivityRow = await db.getFirstAsync<{
+    today_payment_events: number | null;
+    today_payment_cents: number | null;
+  }>(
+    `
+      SELECT
+        COUNT(*) AS today_payment_events,
+        COALESCE(SUM(amount_cents), 0) AS today_payment_cents
+      FROM utang_payments
+      WHERE DATE(created_at, 'localtime') = DATE('now', 'localtime')
+    `,
+  );
+
+  const containerSummaryRow = await db.getFirstAsync<{
+    open_event_count: number | null;
+    open_customer_count: number | null;
+    open_quantity: number | null;
+  }>(
+    `
+      SELECT
+        COUNT(*) AS open_event_count,
+        COUNT(DISTINCT customer_id) AS open_customer_count,
+        COALESCE(SUM(quantity_out - quantity_returned), 0) AS open_quantity
+      FROM container_return_events
+      WHERE status <> 'returned' AND quantity_out > quantity_returned
+    `,
+  );
+
+  const allLowStockProducts = await listLowStockProducts(db);
+  const lowStockProducts = allLowStockProducts.slice(0, 5);
 
   const delikadoRows = await db.getAllAsync<{
     id: number;
@@ -2085,7 +2126,13 @@ export async function getHomeMetrics(db: SQLiteDatabase): Promise<HomeMetrics> {
     todayGrossProfitCents,
     todayExpenseCents,
     todayNetProfitCents: todayGrossProfitCents - todayExpenseCents,
+    restockUrgencyCount: allLowStockProducts.length,
+    todayPaymentEvents: paymentActivityRow?.today_payment_events ?? 0,
+    todayPaymentCents: paymentActivityRow?.today_payment_cents ?? 0,
     totalUtangCents: utangRow?.total_utang_cents ?? 0,
+    openContainerReturnEvents: containerSummaryRow?.open_event_count ?? 0,
+    openContainerReturnCustomers: containerSummaryRow?.open_customer_count ?? 0,
+    openContainerReturnQuantity: containerSummaryRow?.open_quantity ?? 0,
     lowStockProducts,
     delikadoCustomers: delikadoRows.map<RiskCustomerAlert>((row) => ({
       id: row.id,
@@ -2217,6 +2264,7 @@ export async function getStoreAiContext(db: SQLiteDatabase): Promise<StoreAiCont
     expenses,
     customers,
     ledgerRows,
+    paymentRows,
     salesRows,
     saleItemRows,
     containerReturnRows,
@@ -2256,6 +2304,21 @@ export async function getStoreAiContext(db: SQLiteDatabase): Promise<StoreAiCont
           paid_at
         FROM utang
         ORDER BY customer_id ASC, created_at DESC
+      `,
+    ),
+    db.getAllAsync<UtangPaymentRow>(
+      `
+        SELECT
+          id,
+          utang_id,
+          customer_id,
+          amount_cents,
+          note,
+          source,
+          created_at
+        FROM utang_payments
+        ORDER BY created_at DESC, id DESC
+        LIMIT 80
       `,
     ),
     db.getAllAsync<SaleContextRow>(
@@ -2341,6 +2404,10 @@ export async function getStoreAiContext(db: SQLiteDatabase): Promise<StoreAiCont
   }
 
   const sales = mapSalesHistory(salesRows, saleItemRows, containerReturnRows);
+  const utangPayments = paymentRows.map(mapUtangPayment);
+  const openContainerReturns = containerReturnRows
+    .map(mapContainerReturnEvent)
+    .filter((event) => event.status !== "returned" && event.quantityOut > event.quantityReturned);
 
   return {
     storeName,
@@ -2350,7 +2417,13 @@ export async function getStoreAiContext(db: SQLiteDatabase): Promise<StoreAiCont
     todayGrossProfitCents: homeMetrics.todayGrossProfitCents,
     todayExpenseCents: homeMetrics.todayExpenseCents,
     todayNetProfitCents: homeMetrics.todayNetProfitCents,
+    restockUrgencyCount: homeMetrics.restockUrgencyCount,
+    todayPaymentEvents: homeMetrics.todayPaymentEvents,
+    todayPaymentCents: homeMetrics.todayPaymentCents,
     totalUtangCents: homeMetrics.totalUtangCents,
+    openContainerReturnEvents: homeMetrics.openContainerReturnEvents,
+    openContainerReturnCustomers: homeMetrics.openContainerReturnCustomers,
+    openContainerReturnQuantity: homeMetrics.openContainerReturnQuantity,
     lowStockProducts: homeMetrics.lowStockProducts,
     topProducts: salesInsight.topProducts,
     delikadoCustomers: homeMetrics.delikadoCustomers,
@@ -2401,6 +2474,8 @@ export async function getStoreAiContext(db: SQLiteDatabase): Promise<StoreAiCont
     })),
     sales,
     expenses: expenses.map(mapExpense),
+    utangPayments,
+    openContainerReturns,
   };
 }
 

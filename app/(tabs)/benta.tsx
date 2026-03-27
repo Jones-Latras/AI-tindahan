@@ -2067,19 +2067,19 @@ export default function BentaScreen() {
           <View style={{ gap: theme.spacing.sm }}>
             <ActionButton
               disabled={containerDecisions.length === 0}
-              label="Continue Checkout"
+              label={t("benta.containerCheck.continue")}
               onPress={() => void performCheckout(containerDecisions)}
             />
             <ActionButton
-              label="Back"
+              label={t("benta.containerCheck.back")}
               onPress={() => setContainerDecisionVisible(false)}
               variant="ghost"
             />
           </View>
         }
         onClose={() => setContainerDecisionVisible(false)}
-        subtitle="Choose which bottled items are taken out so the empty bottles can be tracked."
-        title="Bottle Return Check"
+        subtitle={t("benta.containerCheckSubtitle")}
+        title={t("benta.containerCheckTitle")}
         visible={containerDecisionVisible}
       >
         <View style={{ gap: theme.spacing.sm }}>
@@ -2108,15 +2108,15 @@ export default function BentaScreen() {
                   </Text>
                 </View>
                 <StatusBadge
-                  label={decision.takeOut ? "Take out" : "In-store"}
+                  label={decision.takeOut ? t("benta.containerCheck.takeOut") : t("benta.containerCheck.inStore")}
                   tone={decision.takeOut ? "warning" : "success"}
                 />
               </View>
 
               <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
                 {[
-                  { label: "In-store", value: false },
-                  { label: "Take out", value: true },
+                  { label: t("benta.containerCheck.inStore"), value: false },
+                  { label: t("benta.containerCheck.takeOut"), value: true },
                 ].map((option) => {
                   const active = decision.takeOut === option.value;
 
@@ -2162,7 +2162,7 @@ export default function BentaScreen() {
           {containerDecisions.some((decision) => decision.takeOut) ? (
             selectedCustomer ? (
               <SurfaceCard style={{ gap: theme.spacing.sm, padding: theme.spacing.md }}>
-                <StatusBadge label="Linked Customer" tone="warning" />
+                <StatusBadge label={t("benta.containerCheck.linkedCustomer")} tone="warning" />
                 <Text
                   style={{
                     color: theme.colors.text,
@@ -2180,7 +2180,7 @@ export default function BentaScreen() {
                     fontSize: 13,
                   }}
                 >
-                  Take-out bottles will be cleared later from this customer's profile.
+                  {t("benta.containerCheck.customerHint")}
                 </Text>
               </SurfaceCard>
             ) : (
@@ -2193,10 +2193,10 @@ export default function BentaScreen() {
                     fontWeight: "700",
                   }}
                 >
-                  Select a customer before saving take-out bottles.
+                  {t("benta.containerCheck.customerRequired")}
                 </Text>
                 <ActionButton
-                  label="Select Customer"
+                  label={t("benta.containerCheck.selectCustomer")}
                   onPress={() => {
                     setContainerDecisionVisible(false);
                     setCustomerPickerVisible(true);

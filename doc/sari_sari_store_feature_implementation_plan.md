@@ -29,7 +29,7 @@ The goal is not just to add UI. The goal is to make these features reliable acro
 - [x] Phase 3: Restock shopping list
 - [x] Phase 4: Tingi / linked inventory
 - [x] Phase 5: Bottle deposit tracker
-- [ ] Phase 6: AI, sync, analytics, receipts, and rollout hardening
+- [x] Phase 6: AI, sync, analytics, receipts, and rollout hardening
 
 ---
 
@@ -193,7 +193,7 @@ Recommended slices:
 4. [x] Tingi count-based linking
 5. [x] Tingi repack sessions
 6. [x] Bottle deposit tracker
-7. [ ] AI + sync + analytics polish
+7. [x] AI + sync + analytics polish
 
 ---
 
@@ -1089,6 +1089,15 @@ Add:
 
 ## Phase 6: Rest of System Updates After Feature Work
 
+Current implementation progress:
+
+- [x] Step 6.1 shared types extended across shipped feature slices
+- [x] Step 6.2 repository queries updated for metrics, AI context, history, checkout, and ledger follow-up
+- [x] Step 6.3 sync / restore support added for every shipped Phase 1-5 table and product field
+- [x] Step 6.4 translation coverage expanded for expenses, restock, linked inventory / repack labels, bottle-return flow, and payment-history flow
+- [x] Step 6.5 Home now surfaces net profit, expenses, restock urgency, payment activity, and bottle-return obligations
+- [x] Step 6.6 Aling AI now receives expense totals, utang payment history, linked inventory context, and open bottle-return obligations
+
 ## Step 6.1: Update shared types
 
 Update `types/models.ts` with all new entities:
@@ -1105,21 +1114,21 @@ Update `types/models.ts` with all new entities:
 
 Also extend:
 
-- `Product`
-- `HomeMetrics`
-- `StoreAiContext`
-- any related AI or analytics summaries
+- [x] `Product`
+- [x] `HomeMetrics`
+- [x] `StoreAiContext`
+- [x] related AI and analytics summaries
 
 ## Step 6.2: Update repository queries
 
 After adding new tables, update:
 
-- home metrics
-- AI context generation
-- product save / load
-- checkout sale flow
-- customer ledger queries
-- sales history
+- [x] home metrics
+- [x] AI context generation
+- [x] product save / load
+- [x] checkout sale flow
+- [x] customer ledger queries
+- [x] sales history
 
 ## Step 6.3: Update sync / restore
 
@@ -1127,46 +1136,46 @@ Extend `utils/sync.ts` and Supabase schema for every new table and field.
 
 Required additions:
 
-- `expenses`
-- `utang_payments`
-- `restock_lists`
-- `restock_list_items`
-- `inventory_pools`
-- `product_inventory_links`
-- `repack_sessions`
-- `container_return_events`
-- any new product columns
+- [x] `expenses`
+- [x] `utang_payments`
+- [x] `restock_lists`
+- [x] `restock_list_items`
+- [x] `inventory_pools`
+- [x] `product_inventory_links`
+- [x] `repack_sessions`
+- [x] `container_return_events`
+- [x] new product columns used by the shipped slices
 
 ## Step 6.4: Update translations
 
 Add new labels for:
 
-- Expenses / Gastos
-- restock list flow
-- Tingi setup
-- repack session flow
-- bottle deposit flow
-- payment history flow
+- [x] Expenses / Gastos
+- [x] restock list flow
+- [x] Tingi setup
+- [x] repack session flow
+- [x] bottle deposit flow
+- [x] payment history flow
 
 ## Step 6.5: Update Home analytics
 
 Home should reflect the new reality:
 
-- net profit
-- today expenses
-- restock urgency
-- customer payment activity
-- bottle-return obligations if relevant
+- [x] net profit
+- [x] today expenses
+- [x] restock urgency
+- [x] customer payment activity
+- [x] bottle-return obligations if relevant
 
 ## Step 6.6: Update Aling AI
 
 The AI prompt context should include:
 
-- expense totals
-- payment-event history
-- better restock context
-- linked inventory / repack awareness
-- bottle-return obligations
+- [x] expense totals
+- [x] payment-event history
+- [x] better restock context
+- [x] linked inventory / repack awareness
+- [x] bottle-return obligations
 
 So Aling AI can say things like:
 

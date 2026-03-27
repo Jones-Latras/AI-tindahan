@@ -611,6 +611,18 @@ export default function HomeScreen() {
             value={formatCurrencyFromCents(metrics.todayNetProfitCents)}
           />
           <StatCard
+            icon="alert-triangle"
+            label={t("home.analytics.restockAlerts")}
+            tone="warning"
+            value={String(metrics.restockUrgencyCount)}
+          />
+          <StatCard
+            icon="repeat"
+            label={t("home.analytics.paymentsLogged")}
+            tone={metrics.todayPaymentEvents > 0 ? "primary" : "accent"}
+            value={String(metrics.todayPaymentEvents)}
+          />
+          <StatCard
             icon="alert-circle"
             label={t("home.analytics.debts")}
             tone="warning"
@@ -1010,6 +1022,23 @@ export default function HomeScreen() {
       return null;
     }
 
+    const paymentActivityLabel =
+      metrics.todayPaymentEvents === 0
+        ? t("home.credit.paymentLogs.none")
+        : metrics.todayPaymentEvents === 1
+          ? t("home.credit.paymentLogs.single")
+          : t("home.credit.paymentLogs.plural", { count: metrics.todayPaymentEvents });
+    const bottleReturnLabel =
+      metrics.openContainerReturnQuantity === 0
+        ? t("home.credit.bottleReturns.none")
+        : metrics.openContainerReturnQuantity === 1
+          ? t("home.credit.bottlesPending.single")
+          : t("home.credit.bottlesPending.plural", { count: metrics.openContainerReturnQuantity });
+    const bottleCustomerLabel =
+      metrics.openContainerReturnCustomers === 1
+        ? t("home.credit.customersHolding.single")
+        : t("home.credit.customersHolding.plural", { count: metrics.openContainerReturnCustomers });
+
     return (
       <SurfaceCard style={compactCardStyle}>
         <View style={{ gap: 4 }}>
@@ -1032,6 +1061,23 @@ export default function HomeScreen() {
           >
             {t("home.risk.subtitle")}
           </Text>
+        </View>
+
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
+          <StatusBadge
+            label={t("home.credit.paymentsToday", {
+              amount: formatCurrencyFromCents(metrics.todayPaymentCents),
+            })}
+            tone={metrics.todayPaymentEvents > 0 ? "primary" : "neutral"}
+          />
+          <StatusBadge label={paymentActivityLabel} tone={metrics.todayPaymentEvents > 0 ? "primary" : "neutral"} />
+          <StatusBadge
+            label={bottleReturnLabel}
+            tone={metrics.openContainerReturnQuantity > 0 ? "warning" : "success"}
+          />
+          {metrics.openContainerReturnCustomers > 0 ? (
+            <StatusBadge label={bottleCustomerLabel} tone="warning" />
+          ) : null}
         </View>
 
         {metrics.delikadoCustomers.length > 0 ? (
