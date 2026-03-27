@@ -177,29 +177,6 @@ export async function syncToCloud(db: SQLiteDatabase): Promise<string> {
     pushed += productInventoryLinks.length;
   }
 
-  // Sync container_return_events
-  const containerReturnEvents = await db.getAllAsync<Record<string, unknown>>(
-    `SELECT
-      id,
-      sale_id,
-      customer_id,
-      product_id,
-      product_name_snapshot,
-      container_label_snapshot,
-      quantity_out,
-      quantity_returned,
-      created_at,
-      last_returned_at,
-      status
-    FROM container_return_events
-    WHERE synced = 0`,
-  );
-  if (containerReturnEvents.length > 0) {
-    await supabaseUpsert("container_return_events", containerReturnEvents);
-    await db.runAsync("UPDATE container_return_events SET synced = 1 WHERE synced = 0");
-    pushed += containerReturnEvents.length;
-  }
-
   // Sync customers
   const customers = await db.getAllAsync<Record<string, unknown>>(
     "SELECT id, name, COALESCE(phone, '') AS phone, trust_score, created_at FROM customers WHERE synced = 0",
@@ -251,6 +228,29 @@ export async function syncToCloud(db: SQLiteDatabase): Promise<string> {
     await supabaseUpsert("sale_items", saleItems);
     await db.runAsync("UPDATE sale_items SET synced = 1 WHERE synced = 0");
     pushed += saleItems.length;
+  }
+
+  // Sync container_return_events after customers, sales, and sale_items so FKs already exist in Supabase.
+  const containerReturnEvents = await db.getAllAsync<Record<string, unknown>>(
+    `SELECT
+      id,
+      sale_id,
+      customer_id,
+      product_id,
+      product_name_snapshot,
+      container_label_snapshot,
+      quantity_out,
+      quantity_returned,
+      created_at,
+      last_returned_at,
+      status
+    FROM container_return_events
+    WHERE synced = 0`,
+  );
+  if (containerReturnEvents.length > 0) {
+    await supabaseUpsert("container_return_events", containerReturnEvents);
+    await db.runAsync("UPDATE container_return_events SET synced = 1 WHERE synced = 0");
+    pushed += containerReturnEvents.length;
   }
 
   // Sync repack_sessions
