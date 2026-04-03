@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 
+import { FLOATING_TAB_BAR_HEIGHT, getFloatingTabBarBottomOffset } from "@/constants/navigation";
 import { useAppLanguage } from "@/contexts/LanguageContext";
 import { useAppTheme } from "@/contexts/ThemeContext";
 
@@ -12,6 +13,7 @@ function FloatingTabBar({ state, descriptors, navigation }: any) {
   const { theme } = useAppTheme();
   const insets = useSafeAreaInsets();
   const [tabWidth, setTabWidth] = useState(0);
+  const tabBarBottomOffset = getFloatingTabBarBottomOffset(insets.bottom);
 
   const bentaRouteIndex = state.routes.findIndex((route: any) => route.name === "benta");
   const bentaRoute = state.routes[bentaRouteIndex];
@@ -43,7 +45,7 @@ function FloatingTabBar({ state, descriptors, navigation }: any) {
     <View
       style={{
         position: "absolute",
-        bottom: Math.max(insets.bottom, 16) + 8,
+        bottom: tabBarBottomOffset,
         left: theme.spacing.lg,
         right: theme.spacing.lg,
         flexDirection: "row",
@@ -189,8 +191,8 @@ function FloatingTabBar({ state, descriptors, navigation }: any) {
               style={{
                 alignItems: "center",
                 justifyContent: "center",
-                width: 74,
-                height: 74,
+                width: FLOATING_TAB_BAR_HEIGHT,
+                height: FLOATING_TAB_BAR_HEIGHT,
                 borderRadius: 36,
                 borderWidth: 1,
                 borderColor: "rgba(255, 255, 255, 0.15)",

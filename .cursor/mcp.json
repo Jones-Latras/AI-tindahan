@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "gluestack-mcp": {
+      "command": "node",
+      "args": [
+        "C:\\Users\\USER\\Documents\\Portfolio Projects\\tindahan-ai\\mcp\\index.js"
+      ]
+    }
+  }
+}

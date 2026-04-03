@@ -6,6 +6,7 @@ import Storage from "expo-sqlite/kv-store";
 import * as Sharing from "expo-sharing";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Alert, Animated, Easing, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { captureRef } from "react-native-view-shot";
 
 import { ActionButton } from "@/components/ActionButton";
@@ -19,6 +20,7 @@ import { ReceiptView } from "@/components/ReceiptView";
 import { Screen } from "@/components/Screen";
 import { StatusBadge } from "@/components/StatusBadge";
 import { SurfaceCard } from "@/components/SurfaceCard";
+import { getFloatingCartBottomOffset } from "@/constants/navigation";
 import { useAppLanguage } from "@/contexts/LanguageContext";
 import { useAppTheme } from "@/contexts/ThemeContext";
 import {
@@ -81,6 +83,7 @@ export default function BentaScreen() {
   const db = useSQLiteContext();
   const { theme } = useAppTheme();
   const { t } = useAppLanguage();
+  const insets = useSafeAreaInsets();
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
@@ -340,7 +343,7 @@ export default function BentaScreen() {
   const shouldOfferCustomerSelection = requiresCustomer || hasTrackedContainers;
   const isCheckoutReady =
     cartItems.length > 0 && isEnoughCash && (!requiresCustomer || Boolean(selectedCustomer));
-  const floatingCartBottomOffset = theme.spacing.xl + theme.spacing.xs;
+  const floatingCartBottomOffset = getFloatingCartBottomOffset(insets.bottom);
   const screenBottomPadding = floatingCartBottomOffset + (hasActiveCart ? 80 : 58);
 
   const triggerCartPulse = useCallback(() => {
@@ -807,6 +810,36 @@ export default function BentaScreen() {
     trackedContainerItems,
   ]);
 
+  const handleClearCart = useCallback(() => {
+    if (cartItems.length === 0) {
+      return;
+    }
+
+    Alert.alert(t("benta.cartBar.clearTitle"), t("benta.cartBar.clearMessage"), [
+      {
+        text: "Cancel",
+        style: "cancel",
+      },
+      {
+        text: t("benta.cartBar.clearConfirm"),
+        style: "destructive",
+        onPress: () => {
+          clearCart();
+          setCartSheetVisible(false);
+          setCashInput("");
+          setPaymentMethod("cash");
+          setPaymentMethodExpanded(false);
+          setSelectedCustomer(null);
+          setContainerDecisions([]);
+          setContainerDecisionVisible(false);
+          setTawadActive(false);
+          setTawadInput("");
+          setTawadType("fixed");
+        },
+      },
+    ]);
+  }, [cartItems.length, clearCart, t]);
+
   return (
     <>
       <Screen
@@ -897,12 +930,10 @@ export default function BentaScreen() {
                 ],
               }}
             >
-              <Pressable
-                onPress={() => setCartSheetVisible(true)}
-                style={({ pressed }) => ({
+              <View
+                style={{
                   backgroundColor: theme.colors.primary,
                   borderRadius: theme.radius.pill,
-                  opacity: pressed ? 0.96 : 1,
                   paddingHorizontal: theme.spacing.sm,
                   paddingVertical: theme.spacing.sm,
                   shadowColor: theme.colors.shadow,
@@ -910,62 +941,90 @@ export default function BentaScreen() {
                   shadowOpacity: 1,
                   shadowRadius: 20,
                   elevation: 4,
-                })}
+                }}
               >
-                <View style={{ alignItems: "center", flexDirection: "row", gap: theme.spacing.md }}>
-                  <View style={{ alignItems: "center", flex: 1, flexDirection: "row", gap: theme.spacing.sm }}>
-                    <Text
-                      style={{
-                        color: theme.colors.primaryText,
-                        fontFamily: theme.typography.body,
-                        fontSize: 14,
-                        fontWeight: "700",
-                      }}
-                    >
-                      {cartCountLabel}
-                    </Text>
-                    <Text
-                      style={{
-                        color: theme.colors.primaryText,
-                        fontFamily: theme.typography.body,
-                        fontSize: 14,
-                        opacity: 0.72,
-                      }}
-                    >
-                      |
-                    </Text>
-                    <Text
-                      style={{
-                        color: theme.colors.primaryText,
-                        fontFamily: theme.typography.display,
-                        fontSize: 18,
-                        fontWeight: "700",
-                      }}
-                    >
-                      {formatCurrencyFromCents(finalTotalCents)}
-                    </Text>
-                  </View>
-                  <View
-                    style={{
-                      backgroundColor: theme.colors.primaryText,
-                      borderRadius: theme.radius.pill,
-                      paddingHorizontal: theme.spacing.lg,
-                      paddingVertical: 10,
-                    }}
+                <View style={{ alignItems: "center", flexDirection: "row", gap: theme.spacing.sm }}>
+                  <Pressable
+                    onPress={() => setCartSheetVisible(true)}
+                    style={({ pressed }) => ({
+                      alignItems: "center",
+                      flex: 1,
+                      flexDirection: "row",
+                      gap: theme.spacing.md,
+                      opacity: pressed ? 0.96 : 1,
+                    })}
                   >
-                    <Text
+                    <View style={{ alignItems: "center", flex: 1, flexDirection: "row", gap: theme.spacing.sm }}>
+                      <Text
+                        style={{
+                          color: theme.colors.primaryText,
+                          fontFamily: theme.typography.body,
+                          fontSize: 14,
+                          fontWeight: "700",
+                        }}
+                      >
+                        {cartCountLabel}
+                      </Text>
+                      <Text
+                        style={{
+                          color: theme.colors.primaryText,
+                          fontFamily: theme.typography.body,
+                          fontSize: 14,
+                          opacity: 0.72,
+                        }}
+                      >
+                        |
+                      </Text>
+                      <Text
+                        style={{
+                          color: theme.colors.primaryText,
+                          fontFamily: theme.typography.display,
+                          fontSize: 18,
+                          fontWeight: "700",
+                        }}
+                      >
+                        {formatCurrencyFromCents(finalTotalCents)}
+                      </Text>
+                    </View>
+                    <View
                       style={{
-                        color: theme.colors.primary,
-                        fontFamily: theme.typography.body,
-                        fontSize: 12,
-                        fontWeight: "700",
+                        backgroundColor: theme.colors.primaryText,
+                        borderRadius: theme.radius.pill,
+                        paddingHorizontal: theme.spacing.lg,
+                        paddingVertical: 10,
                       }}
                     >
-                      {t("benta.cartBar.view")}
-                    </Text>
-                  </View>
+                      <Text
+                        style={{
+                          color: theme.colors.primary,
+                          fontFamily: theme.typography.body,
+                          fontSize: 12,
+                          fontWeight: "700",
+                        }}
+                      >
+                        {t("benta.cartBar.view")}
+                      </Text>
+                    </View>
+                  </Pressable>
+                  <Pressable
+                    accessibilityLabel={t("benta.cartBar.clear")}
+                    onPress={handleClearCart}
+                    style={({ pressed }) => ({
+                      alignItems: "center",
+                      backgroundColor: "rgba(255, 255, 255, 0.16)",
+                      borderColor: "rgba(255, 255, 255, 0.28)",
+                      borderRadius: theme.radius.pill,
+                      borderWidth: 1,
+                      height: 42,
+                      justifyContent: "center",
+                      opacity: pressed ? 0.82 : 1,
+                      width: 42,
+                    })}
+                  >
+                    <Feather color={theme.colors.primaryText} name="trash-2" size={18} />
+                  </Pressable>
                 </View>
-              </Pressable>
+              </View>
             </Animated.View>
           </>
         }

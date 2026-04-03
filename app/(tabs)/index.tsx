@@ -54,16 +54,54 @@ function createChatMessage(role: ChatMessage["role"], text: string): ChatMessage
   };
 }
 
-type HomePanel = "analytics" | "inventory" | "credit" | "history";
+type HomePanel = "analytics" | "inventory" | "credit" | "history" | "calculator";
 type HistorySort = "latest" | "oldest" | "highest-total" | "lowest-total" | "most-quantity" | "least-quantity";
 type HistorySaleMatch = {
   sale: StoreAiSale;
   matchedItems: StoreAiSale["items"];
   totalQuantity: number;
 };
+type CalculatorOperator = "+" | "-" | "*" | "/";
+type CalculatorButton = {
+  label: string;
+  type: "action" | "digit" | "equals" | "operator";
+  value: string;
+};
 
 const STORE_NAME_KEY = "tindahan.store-name";
 const REPORTS_TIMEFRAMES: AnalyticsTimeframe[] = ["today", "week", "month"];
+const CALCULATOR_BUTTON_ROWS: CalculatorButton[][] = [
+  [
+    { label: "AC", type: "action", value: "clear" },
+    { label: "DEL", type: "action", value: "backspace" },
+    { label: "/", type: "operator", value: "/" },
+    { label: "x", type: "operator", value: "*" },
+  ],
+  [
+    { label: "7", type: "digit", value: "7" },
+    { label: "8", type: "digit", value: "8" },
+    { label: "9", type: "digit", value: "9" },
+    { label: "-", type: "operator", value: "-" },
+  ],
+  [
+    { label: "4", type: "digit", value: "4" },
+    { label: "5", type: "digit", value: "5" },
+    { label: "6", type: "digit", value: "6" },
+    { label: "+", type: "operator", value: "+" },
+  ],
+  [
+    { label: "1", type: "digit", value: "1" },
+    { label: "2", type: "digit", value: "2" },
+    { label: "3", type: "digit", value: "3" },
+    { label: "=", type: "equals", value: "=" },
+  ],
+  [
+    { label: "0", type: "digit", value: "0" },
+    { label: "00", type: "digit", value: "00" },
+    { label: ".", type: "digit", value: "." },
+    { label: "=", type: "equals", value: "=" },
+  ],
+];
 const EXPENSE_CATEGORY_TRANSLATION_KEYS: Partial<Record<string, TranslationKey>> = {
   electricity: "gastos.category.electricity",
   ice: "gastos.category.ice",
@@ -77,6 +115,132 @@ const EXPENSE_CATEGORY_TRANSLATION_KEYS: Partial<Record<string, TranslationKey>>
 
 function normalizeSearchValue(value: string) {
   return value.trim().toLowerCase();
+}
+
+function isCalculatorOperator(value: string): value is CalculatorOperator {
+  return value === "+" || value === "-" || value === "*" || value === "/";
+}
+
+function getCalculatorOperatorPrecedence(operator: CalculatorOperator) {
+  return operator === "+" || operator === "-" ? 1 : 2;
+}
+
+function applyCalculatorOperation(left: number, right: number, operator: CalculatorOperator) {
+  if (operator === "+") {
+    return left + right;
+  }
+
+  if (operator === "-") {
+    return left - right;
+  }
+
+  if (operator === "*") {
+    return left * right;
+  }
+
+  if (right === 0) {
+    throw new Error("Division by zero");
+  }
+
+  return left / right;
+}
+
+function roundCalculatorNumber(value: number) {
+  const rounded = Math.round((value + Number.EPSILON) * 1_000_000_000) / 1_000_000_000;
+  return Object.is(rounded, -0) ? 0 : rounded;
+}
+
+function getLastCalculatorNumberSegment(expression: string) {
+  const match = expression.match(/-?\d*\.?\d*$/);
+  return match?.[0] ?? "";
+}
+
+function stringifyCalculatorNumber(value: number) {
+  return roundCalculatorNumber(value).toString();
+}
+
+function formatCalculatorNumber(value: number, language: "english" | "taglish") {
+  return new Intl.NumberFormat(language === "english" ? "en-PH" : "fil-PH", {
+    maximumFractionDigits: 9,
+  }).format(roundCalculatorNumber(value));
+}
+
+function evaluateCalculatorExpression(expression: string) {
+  const compactExpression = expression.replace(/\s+/g, "");
+
+  if (!compactExpression) {
+    return 0;
+  }
+
+  const values: number[] = [];
+  const operators: CalculatorOperator[] = [];
+  let index = 0;
+
+  const resolveTopOperation = () => {
+    const operator = operators.pop();
+    const right = values.pop();
+    const left = values.pop();
+
+    if (!operator || right === undefined || left === undefined) {
+      throw new Error("Incomplete expression");
+    }
+
+    values.push(roundCalculatorNumber(applyCalculatorOperation(left, right, operator)));
+  };
+
+  while (index < compactExpression.length) {
+    const currentCharacter = compactExpression[index];
+    const previousCharacter = index > 0 ? compactExpression[index - 1] : "";
+    const isUnaryMinus = currentCharacter === "-" && (index === 0 || isCalculatorOperator(previousCharacter));
+
+    if (/\d/.test(currentCharacter) || currentCharacter === "." || isUnaryMinus) {
+      let endIndex = index + 1;
+
+      while (endIndex < compactExpression.length && /[\d.]/.test(compactExpression[endIndex] ?? "")) {
+        endIndex += 1;
+      }
+
+      const token = compactExpression.slice(index, endIndex);
+
+      if (token === "-" || token === "." || token === "-." || (token.match(/\./g) ?? []).length > 1) {
+        throw new Error("Invalid number");
+      }
+
+      const parsedValue = Number.parseFloat(token);
+
+      if (!Number.isFinite(parsedValue)) {
+        throw new Error("Invalid number");
+      }
+
+      values.push(parsedValue);
+      index = endIndex;
+      continue;
+    }
+
+    if (!isCalculatorOperator(currentCharacter)) {
+      throw new Error("Unsupported input");
+    }
+
+    while (
+      operators.length > 0 &&
+      getCalculatorOperatorPrecedence(operators[operators.length - 1]!) >= getCalculatorOperatorPrecedence(currentCharacter)
+    ) {
+      resolveTopOperation();
+    }
+
+    operators.push(currentCharacter);
+    index += 1;
+  }
+
+  while (operators.length > 0) {
+    resolveTopOperation();
+  }
+
+  if (values.length !== 1) {
+    throw new Error("Incomplete expression");
+  }
+
+  return roundCalculatorNumber(values[0]!);
 }
 
 function formatExpenseCategoryLabel(
@@ -258,6 +422,7 @@ export default function HomeScreen() {
   const [historySearch, setHistorySearch] = useState("");
   const [historySort, setHistorySort] = useState<HistorySort>("latest");
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [calculatorExpression, setCalculatorExpression] = useState("0");
   const [receiptSale, setReceiptSale] = useState<StoreAiSale | null>(null);
   const [receiptAction, setReceiptAction] = useState<"share" | "download" | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>(() => [createChatMessage("assistant", t("home.aiWelcome"))]);
@@ -308,6 +473,12 @@ export default function HomeScreen() {
           key: "history",
           subtitle: t("home.shortcuts.history.subtitle"),
           title: t("home.shortcuts.history.title"),
+        },
+        {
+          icon: "plus-square",
+          key: "calculator",
+          subtitle: t("home.shortcuts.calculator.subtitle"),
+          title: t("home.shortcuts.calculator.title"),
         },
       ];
 
@@ -364,6 +535,24 @@ export default function HomeScreen() {
 
     return nextHistory;
   }, [historySort, normalizedHistorySearch, salesHistory]);
+  const calculatorPreview = useMemo(() => {
+    try {
+      return evaluateCalculatorExpression(calculatorExpression);
+    } catch {
+      return null;
+    }
+  }, [calculatorExpression]);
+  const calculatorExpressionLabel = useMemo(
+    () => calculatorExpression.replace(/\*/g, "x"),
+    [calculatorExpression],
+  );
+  const calculatorResultLabel = useMemo(
+    () =>
+      calculatorPreview === null
+        ? t("home.calculator.invalid")
+        : formatCalculatorNumber(calculatorPreview, language),
+    [calculatorPreview, language, t],
+  );
 
   useEffect(() => {
     setMessages((current) =>
@@ -472,6 +661,85 @@ export default function HomeScreen() {
       setHistoryLoading(false);
     }
   }, [db]);
+
+  const handleCalculatorInput = useCallback((value: string) => {
+    setCalculatorExpression((current) => {
+      if (value === "clear") {
+        return "0";
+      }
+
+      if (value === "backspace") {
+        if (current.length <= 1) {
+          return "0";
+        }
+
+        const nextExpression = current.slice(0, -1);
+        return nextExpression === "" ? "0" : nextExpression;
+      }
+
+      if (value === "=") {
+        try {
+          return stringifyCalculatorNumber(evaluateCalculatorExpression(current));
+        } catch {
+          return current;
+        }
+      }
+
+      const lastCharacter = current.slice(-1);
+
+      if (value === ".") {
+        const currentSegment = getLastCalculatorNumberSegment(current);
+
+        if (currentSegment.includes(".")) {
+          return current;
+        }
+
+        if (current === "0" || current === "") {
+          return "0.";
+        }
+
+        if (current === "-") {
+          return "-0.";
+        }
+
+        if (isCalculatorOperator(lastCharacter)) {
+          return `${current}0.`;
+        }
+
+        return `${current}.`;
+      }
+
+      if (isCalculatorOperator(value)) {
+        if (current === "0" && value !== "-") {
+          return current;
+        }
+
+        if (current === "-" && value !== "-") {
+          return current;
+        }
+
+        if (current.endsWith(".")) {
+          return `${current}0${value}`;
+        }
+
+        if (isCalculatorOperator(lastCharacter)) {
+          return `${current.slice(0, -1)}${value}`;
+        }
+
+        return `${current}${value}`;
+      }
+
+      if (current === "0") {
+        return value === "00" ? current : value;
+      }
+
+      if (current === "-0") {
+        return value === "00" ? current : `-${value}`;
+      }
+
+      return `${current}${value}`;
+    });
+  }, []);
 
   const handleOpenRestockLists = useCallback(() => {
     setActivePanel(null);
@@ -1653,6 +1921,139 @@ export default function HomeScreen() {
     );
   };
 
+  const renderCalculatorPanel = () => (
+    <View style={{ gap: theme.spacing.md }}>
+      <SurfaceCard style={[compactCardStyle, { gap: theme.spacing.md }]}>
+        <View style={{ gap: theme.spacing.xs }}>
+          <Text
+            style={{
+              color: theme.colors.textMuted,
+              fontFamily: theme.typography.body,
+              fontSize: 12,
+              fontWeight: "700",
+              textTransform: "uppercase",
+            }}
+          >
+            {t("home.calculator.expression")}
+          </Text>
+          <Text
+            numberOfLines={2}
+            style={{
+              color: theme.colors.text,
+              fontFamily: theme.typography.display,
+              fontSize: 28,
+              fontWeight: "700",
+              textAlign: "right",
+            }}
+          >
+            {calculatorExpressionLabel}
+          </Text>
+        </View>
+
+        <View style={{ backgroundColor: theme.colors.border, height: 1 }} />
+
+        <View style={{ gap: theme.spacing.xs }}>
+          <Text
+            style={{
+              color: theme.colors.textMuted,
+              fontFamily: theme.typography.body,
+              fontSize: 12,
+              fontWeight: "700",
+              textTransform: "uppercase",
+            }}
+          >
+            {t("home.calculator.result")}
+          </Text>
+          <Text
+            numberOfLines={1}
+            style={{
+              color: calculatorPreview === null ? theme.colors.textSoft : theme.colors.primary,
+              fontFamily: theme.typography.display,
+              fontSize: 24,
+              fontWeight: "700",
+              textAlign: "right",
+            }}
+          >
+            {calculatorResultLabel}
+          </Text>
+          <Text
+            style={{
+              color: theme.colors.textMuted,
+              fontFamily: theme.typography.body,
+              fontSize: 13,
+              lineHeight: 18,
+            }}
+          >
+            {t("home.calculator.ready")}
+          </Text>
+        </View>
+      </SurfaceCard>
+
+      <View style={{ gap: theme.spacing.sm }}>
+        {CALCULATOR_BUTTON_ROWS.map((row, rowIndex) => (
+          <View key={`calculator-row-${rowIndex}`} style={{ flexDirection: "row", gap: theme.spacing.sm }}>
+            {row.map((button, buttonIndex) => {
+              const palette =
+                button.type === "equals"
+                  ? {
+                      backgroundColor: theme.colors.primary,
+                      borderColor: theme.colors.primary,
+                      textColor: theme.colors.primaryText,
+                    }
+                  : button.type === "operator"
+                    ? {
+                        backgroundColor: theme.colors.primaryMuted,
+                        borderColor: theme.colors.primaryMuted,
+                        textColor: theme.colors.primary,
+                      }
+                    : button.value === "clear"
+                      ? {
+                          backgroundColor: theme.colors.dangerMuted,
+                          borderColor: theme.colors.dangerMuted,
+                          textColor: theme.colors.danger,
+                        }
+                      : {
+                          backgroundColor: theme.colors.surface,
+                          borderColor: theme.colors.border,
+                          textColor: theme.colors.text,
+                        };
+
+              return (
+                <Pressable
+                  key={`${button.label}-${buttonIndex}`}
+                  onPress={() => handleCalculatorInput(button.value)}
+                  style={({ pressed }) => ({
+                    alignItems: "center",
+                    backgroundColor: palette.backgroundColor,
+                    borderColor: palette.borderColor,
+                    borderRadius: theme.radius.md,
+                    borderWidth: 1,
+                    flex: 1,
+                    justifyContent: "center",
+                    minHeight: 58,
+                    opacity: pressed ? 0.88 : 1,
+                    transform: [{ scale: pressed ? 0.97 : 1 }],
+                  })}
+                >
+                  <Text
+                    style={{
+                      color: palette.textColor,
+                      fontFamily: theme.typography.body,
+                      fontSize: button.label.length > 2 ? 14 : 20,
+                      fontWeight: "700",
+                    }}
+                  >
+                    {button.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+
   const renderActivePanelContent = () => {
     if (activePanel === "analytics") {
       return renderAnalyticsPanel();
@@ -1668,6 +2069,10 @@ export default function HomeScreen() {
 
     if (activePanel === "history") {
       return renderHistoryPanel();
+    }
+
+    if (activePanel === "calculator") {
+      return renderCalculatorPanel();
     }
 
     return null;
