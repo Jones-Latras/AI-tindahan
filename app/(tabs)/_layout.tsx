@@ -23,6 +23,7 @@ function FloatingTabBar({ state, descriptors, navigation }: any) {
   );
 
   const activePillIndex = pillRoutes.findIndex((r: any) => r.key === state.routes[state.index]?.key);
+  const showActivePill = activePillIndex >= 0;
   const slideAnim = useRef(new Animated.Value(Math.max(0, activePillIndex))).current;
 
   useEffect(() => {
@@ -81,27 +82,29 @@ function FloatingTabBar({ state, descriptors, navigation }: any) {
             onLayout={(e) => setTabWidth(e.nativeEvent.layout.width / 4)}
             style={{ flex: 1, flexDirection: "row", position: "relative", alignItems: "center", justifyContent: "space-between" }}
           >
-            <Animated.View
-              style={{
-                position: "absolute",
-                left: 0,
-                width: "25%",
-                height: 54,
-                alignItems: "center",
-                justifyContent: "center",
-                zIndex: 0,
-                transform: [{ translateX }],
-              }}
-            >
-              <View
+            {showActivePill ? (
+              <Animated.View
                 style={{
-                  width: 54,
+                  position: "absolute",
+                  left: 0,
+                  width: "25%",
                   height: 54,
-                  backgroundColor: theme.colors.primaryMuted,
-                  borderRadius: 16,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  zIndex: 0,
+                  transform: [{ translateX }],
                 }}
-              />
-            </Animated.View>
+              >
+                <View
+                  style={{
+                    width: 54,
+                    height: 54,
+                    backgroundColor: theme.colors.primaryMuted,
+                    borderRadius: 16,
+                  }}
+                />
+              </Animated.View>
+            ) : null}
 
             {pillRoutes.map((route: any, index: number) => {
               const { options } = descriptors[route.key];

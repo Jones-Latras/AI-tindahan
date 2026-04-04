@@ -161,6 +161,13 @@ function getExpensePrimaryLabel(
   return expense.description?.trim() || formatExpenseCategoryLabel(expense.category, t);
 }
 
+function getExpenseTitle(
+  expense: Expense,
+  t: (key: TranslationKey, params?: Record<string, number | string>) => string,
+) {
+  return expense.description?.trim() || t("gastos.noDescription");
+}
+
 function getInitials(value: string) {
   const cleaned = value.trim();
 
@@ -369,6 +376,14 @@ export default function GastosScreen() {
       },
     ],
     [summary?.monthExpenseCents, summary?.todayExpenseCents, summary?.weekExpenseCents, t, theme.colors.success, theme.colors.warning, trackedRemainingCents],
+  );
+  const expenseHistoryCountLabel = useMemo(
+    () =>
+      t("gastos.history.showingResults", {
+        count: filteredExpenses.length,
+        total: expenses.length,
+      }),
+    [expenses.length, filteredExpenses.length, t],
   );
 
   const openNewExpenseModal = useCallback(() => {
@@ -795,6 +810,7 @@ export default function GastosScreen() {
           paddingBottom: 120,
           paddingTop: theme.spacing.md,
         }}
+        subtitle={t("gastos.subtitle")}
         titleStyle={{
           fontFamily: theme.typography.label,
           fontSize: 28,
@@ -1057,7 +1073,30 @@ export default function GastosScreen() {
           )}
         </SurfaceCard>
 
-        <Text style={microLabelStyle}>{t("home.analytics.transactions")}</Text>
+        <View
+          style={{
+            alignItems: "center",
+            flexDirection: "row",
+            gap: theme.spacing.md,
+            justifyContent: "space-between",
+          }}
+        >
+          <View style={{ flex: 1, gap: theme.spacing.xs }}>
+            <Text style={microLabelStyle}>{t("gastos.history.title")}</Text>
+            <Text
+              style={{
+                color: theme.colors.textMuted,
+                fontFamily: theme.typography.body,
+                fontSize: 14,
+                lineHeight: 20,
+              }}
+            >
+              {t("gastos.history.subtitle")}
+            </Text>
+          </View>
+
+          {!loading && expenses.length > 0 ? <StatusBadge label={expenseHistoryCountLabel} tone="neutral" /> : null}
+        </View>
 
         {loading ? (
           <SurfaceCard style={[compactCardStyle, { alignItems: "center" }]}>
@@ -1117,40 +1156,63 @@ export default function GastosScreen() {
                     </Text>
                   </View>
 
-                  <View style={{ flex: 1, gap: 4 }}>
-                    <Text
-                      numberOfLines={1}
+                  <View style={{ flex: 1, gap: theme.spacing.xs }}>
+                    <View
                       style={{
-                        color: theme.colors.text,
-                        fontFamily: theme.typography.label,
-                        fontSize: 14,
-                        fontWeight: "600",
+                        alignItems: "center",
+                        flexDirection: "row",
+                        gap: theme.spacing.md,
+                        justifyContent: "space-between",
                       }}
                     >
-                      {getExpensePrimaryLabel(expense, t)}
-                    </Text>
-                    <Text
-                      numberOfLines={1}
-                      style={{
-                        color: theme.colors.textMuted,
-                        fontFamily: theme.typography.body,
-                        fontSize: 13,
-                      }}
-                    >
-                      {formatExpenseTimestamp(expense.expenseDate)}
-                    </Text>
-                  </View>
+                      <Text
+                        numberOfLines={1}
+                        style={{
+                          color: theme.colors.text,
+                          flex: 1,
+                          fontFamily: theme.typography.label,
+                          fontSize: 14,
+                          fontWeight: "600",
+                        }}
+                      >
+                        {getExpenseTitle(expense, t)}
+                      </Text>
 
-                  <Text
-                    style={{
-                      color: theme.colors.warning,
-                      fontFamily: MONO_FONT_FAMILY,
-                      fontSize: 18,
-                      fontWeight: "600",
-                    }}
-                  >
-                    {formatCurrencyFromCents(expense.amountCents)}
-                  </Text>
+                      <Text
+                        style={{
+                          color: theme.colors.warning,
+                          fontFamily: MONO_FONT_FAMILY,
+                          fontSize: 18,
+                          fontWeight: "600",
+                        }}
+                      >
+                        {formatCurrencyFromCents(expense.amountCents)}
+                      </Text>
+                    </View>
+
+                    <View
+                      style={{
+                        alignItems: "center",
+                        flexDirection: "row",
+                        gap: theme.spacing.sm,
+                        justifyContent: "space-between",
+                      }}
+                    >
+                      <StatusBadge label={formatExpenseCategoryLabel(expense.category, t)} tone="neutral" />
+                      <Text
+                        numberOfLines={1}
+                        style={{
+                          color: theme.colors.textMuted,
+                          flex: 1,
+                          fontFamily: theme.typography.body,
+                          fontSize: 13,
+                          textAlign: "right",
+                        }}
+                      >
+                        {formatExpenseTimestamp(expense.expenseDate)}
+                      </Text>
+                    </View>
+                  </View>
                 </View>
               </SurfaceCard>
             </Pressable>
