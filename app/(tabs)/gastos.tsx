@@ -810,7 +810,6 @@ export default function GastosScreen() {
           paddingBottom: 120,
           paddingTop: theme.spacing.md,
         }}
-        subtitle={t("gastos.subtitle")}
         titleStyle={{
           fontFamily: theme.typography.label,
           fontSize: 28,
@@ -819,40 +818,16 @@ export default function GastosScreen() {
         }}
         title={t("gastos.title")}
       >
-        <SurfaceCard style={compactCardStyle}>
-          <Text style={microLabelStyle}>{t("gastos.field.category")}</Text>
+        <View
+          style={{
+            alignItems: "center",
+            flexDirection: "row",
+            gap: theme.spacing.sm,
+            justifyContent: "flex-end",
+          }}
+        >
+          <View style={{ flex: 1 }} />
           <View style={{ alignItems: "center", flexDirection: "row", gap: theme.spacing.sm }}>
-            <View
-              style={{
-                alignItems: "center",
-                backgroundColor: theme.colors.surface,
-                borderColor: theme.colors.border,
-                borderRadius: theme.radius.sm,
-                borderWidth: 1,
-                flex: 1,
-                flexDirection: "row",
-                minHeight: 52,
-                paddingHorizontal: theme.spacing.md,
-              }}
-            >
-              <Feather color={theme.colors.textSoft} name="search" size={16} />
-              <TextInput
-                allowFontScaling={false}
-                onChangeText={setSearchTerm}
-                placeholder={t("gastos.searchPlaceholder")}
-                placeholderTextColor={theme.colors.textSoft}
-                style={{
-                  color: theme.colors.text,
-                  flex: 1,
-                  fontFamily: theme.typography.body,
-                  fontSize: 14,
-                  minHeight: 50,
-                  paddingLeft: theme.spacing.sm,
-                }}
-                value={searchTerm}
-              />
-            </View>
-
             <Pressable
               accessibilityLabel={t("gastos.budget.openButton")}
               onPress={() => openNewBudgetModal()}
@@ -887,51 +862,7 @@ export default function GastosScreen() {
               <Feather color={theme.colors.primaryText} name="plus" size={16} />
             </Pressable>
           </View>
-
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
-              <Pressable
-                key="all"
-                onPress={() => setSelectedCategory(null)}
-                style={({ pressed }) => ({
-                  backgroundColor: selectedCategory === null ? theme.colors.primaryMuted : theme.colors.surface,
-                  borderColor: selectedCategory === null ? theme.colors.primary : theme.colors.border,
-                  opacity: pressed ? 0.92 : 1,
-                  ...pillChipBaseStyle,
-                })}
-              >
-                <Text
-                  style={[microLabelStyle, { color: selectedCategory === null ? theme.colors.primary : theme.colors.textMuted }]}
-                >
-                  {t("gastos.category.all")}
-                </Text>
-              </Pressable>
-
-              {filterCategories.map((category) => {
-                const active = selectedCategory === category;
-
-                return (
-                  <Pressable
-                    key={category}
-                    onPress={() => setSelectedCategory(category)}
-                    style={({ pressed }) => ({
-                      backgroundColor: active ? theme.colors.primaryMuted : theme.colors.surface,
-                      borderColor: active ? theme.colors.primary : theme.colors.border,
-                      opacity: pressed ? 0.92 : 1,
-                      ...pillChipBaseStyle,
-                    })}
-                  >
-                    <Text
-                      style={[microLabelStyle, { color: active ? theme.colors.primary : theme.colors.textMuted }]}
-                    >
-                      {formatExpenseCategoryLabel(category, t)}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </ScrollView>
-        </SurfaceCard>
+        </View>
 
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
           {summaryCards.map((item) => (
@@ -1083,20 +1014,86 @@ export default function GastosScreen() {
         >
           <View style={{ flex: 1, gap: theme.spacing.xs }}>
             <Text style={microLabelStyle}>{t("gastos.history.title")}</Text>
-            <Text
-              style={{
-                color: theme.colors.textMuted,
-                fontFamily: theme.typography.body,
-                fontSize: 14,
-                lineHeight: 20,
-              }}
-            >
-              {t("gastos.history.subtitle")}
-            </Text>
           </View>
 
           {!loading && expenses.length > 0 ? <StatusBadge label={expenseHistoryCountLabel} tone="neutral" /> : null}
         </View>
+
+        <SurfaceCard style={compactCardStyle}>
+          <View
+            style={{
+              alignItems: "center",
+              backgroundColor: theme.colors.surface,
+              borderColor: theme.colors.border,
+              borderRadius: theme.radius.sm,
+              borderWidth: 1,
+              flexDirection: "row",
+              minHeight: 52,
+              paddingHorizontal: theme.spacing.md,
+            }}
+          >
+            <Feather color={theme.colors.textSoft} name="search" size={16} />
+            <TextInput
+              allowFontScaling={false}
+              onChangeText={setSearchTerm}
+              placeholder={t("gastos.searchPlaceholder")}
+              placeholderTextColor={theme.colors.textSoft}
+              style={{
+                color: theme.colors.text,
+                flex: 1,
+                fontFamily: theme.typography.body,
+                fontSize: 14,
+                minHeight: 50,
+                paddingLeft: theme.spacing.sm,
+              }}
+              value={searchTerm}
+            />
+          </View>
+
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
+              <Pressable
+                key="all"
+                onPress={() => setSelectedCategory(null)}
+                style={({ pressed }) => ({
+                  backgroundColor: selectedCategory === null ? theme.colors.primaryMuted : theme.colors.surface,
+                  borderColor: selectedCategory === null ? theme.colors.primary : theme.colors.border,
+                  opacity: pressed ? 0.92 : 1,
+                  ...pillChipBaseStyle,
+                })}
+              >
+                <Text
+                  style={[microLabelStyle, { color: selectedCategory === null ? theme.colors.primary : theme.colors.textMuted }]}
+                >
+                  {t("gastos.category.all")}
+                </Text>
+              </Pressable>
+
+              {filterCategories.map((category) => {
+                const active = selectedCategory === category;
+
+                return (
+                  <Pressable
+                    key={category}
+                    onPress={() => setSelectedCategory(category)}
+                    style={({ pressed }) => ({
+                      backgroundColor: active ? theme.colors.primaryMuted : theme.colors.surface,
+                      borderColor: active ? theme.colors.primary : theme.colors.border,
+                      opacity: pressed ? 0.92 : 1,
+                      ...pillChipBaseStyle,
+                    })}
+                  >
+                    <Text
+                      style={[microLabelStyle, { color: active ? theme.colors.primary : theme.colors.textMuted }]}
+                    >
+                      {formatExpenseCategoryLabel(category, t)}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </ScrollView>
+        </SurfaceCard>
 
         {loading ? (
           <SurfaceCard style={[compactCardStyle, { alignItems: "center" }]}>

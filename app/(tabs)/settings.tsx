@@ -13,7 +13,7 @@ import { useAppTheme } from "@/contexts/ThemeContext";
 import { clearAllLocalStoreData, getStoreName, saveStoreName } from "@/db/repositories";
 import { seedStoreData } from "@/scripts/seed-store";
 import { isSupabaseReady } from "@/utils/supabase";
-import { getLastSyncTime, restoreFromCloud, syncToCloud } from "@/utils/sync";
+import { restoreFromCloud, syncToCloud } from "@/utils/sync";
 
 const STORE_NAME_KEY = "tindahan.store-name";
 const OWNER_NAME_KEY = "tindahan.owner-name";
@@ -30,7 +30,6 @@ type SettingsSectionProps = {
 type SettingsRowProps = {
   icon: keyof typeof Feather.glyphMap;
   title: string;
-  subtitle?: string;
   right?: ReactNode;
   onPress?: () => void;
   isLast?: boolean;
@@ -158,7 +157,6 @@ function SettingsAction({ label, onPress, disabled, busy, tone = "primary" }: Se
 function SettingsRow({
   icon,
   title,
-  subtitle,
   right,
   onPress,
   isLast = false,
@@ -209,18 +207,6 @@ function SettingsRow({
         >
           {title}
         </Text>
-        {subtitle ? (
-          <Text
-            style={{
-              color: theme.colors.textMuted,
-              fontFamily: theme.typography.body,
-              fontSize: 13,
-              lineHeight: 18,
-            }}
-          >
-            {subtitle}
-          </Text>
-        ) : null}
       </View>
 
       {right}
@@ -250,7 +236,6 @@ export default function SettingsScreen() {
   const [storeNameDraft, setStoreNameDraft] = useState("");
   const [savingStoreName, setSavingStoreName] = useState(false);
   const [syncing, setSyncing] = useState(false);
-  const [lastSync, setLastSync] = useState<string | null>(null);
   const [seeding, setSeeding] = useState(false);
   const [clearingData, setClearingData] = useState(false);
 
@@ -276,7 +261,6 @@ export default function SettingsScreen() {
         setStoreName(nextStoreName);
         setStoreNameDraft(nextStoreName);
       })();
-      void getLastSyncTime(db).then(setLastSync);
     }, [db]),
   );
 
@@ -336,8 +320,6 @@ export default function SettingsScreen() {
 
                 setStoreName("");
                 setStoreNameDraft("");
-                setLastSync(null);
-
                 Alert.alert(
                   "Local data cleared",
                   "This device is now reset. Sign in and restore from cloud if you want your backed up data again.",
@@ -389,21 +371,18 @@ export default function SettingsScreen() {
         <SettingsSection title="Account">
           <SettingsRow
             icon="user"
-            subtitle={activeStore ? `Active store: ${activeStore.name}` : "Create a store before using cloud sync."}
             title={user?.email ?? "Signed in"}
             tone="primary"
           />
           <SettingsRow
             icon="shield"
             isLast={stores.length <= 1}
-            subtitle={stores.length > 1 ? `${stores.length} stores available for this account.` : "Single-store access is active."}
             title={activeStore?.role ? `Role: ${activeStore.role}` : "No store membership yet"}
           />
           {stores.length > 1 ? (
             <SettingsRow
               icon="layers"
               isLast
-              subtitle="Store switching UI is not added yet. The first linked store stays active."
               title="Multiple stores detected"
             />
           ) : null}
@@ -486,16 +465,6 @@ export default function SettingsScreen() {
             </Pressable>
           </View>
 
-          <Text
-            style={{
-              color: theme.colors.textMuted,
-              fontFamily: theme.typography.body,
-              fontSize: 13,
-              lineHeight: 18,
-            }}
-          >
-            {t("home.settings.store.subtitle")}
-          </Text>
         </View>
       </SettingsSection>
 
@@ -514,7 +483,6 @@ export default function SettingsScreen() {
                     try {
                       const msg = await syncToCloud(db);
                       Alert.alert(t("home.cloud.backupTitle"), msg);
-                      setLastSync(await getLastSyncTime(db));
                     } catch (error) {
                       Alert.alert(t("home.cloud.backupFailed"), String(error));
                     } finally {
@@ -523,15 +491,6 @@ export default function SettingsScreen() {
                   })();
                 }}
               />
-            }
-            subtitle={
-              !session?.user
-                ? "Sign in to enable cloud backup."
-                : !activeStore
-                  ? "Create a store before backing up."
-                  : lastSync
-                    ? t("home.cloud.lastBackup", { time: lastSync })
-                    : t("home.cloud.none")
             }
             title={t("home.settings.backup.title")}
             tone="primary"
@@ -558,7 +517,6 @@ export default function SettingsScreen() {
                             try {
                               const msg = await restoreFromCloud(db);
                               Alert.alert(t("home.cloud.restoreResult"), msg);
-                              setLastSync(await getLastSyncTime(db));
                             } catch (error) {
                               Alert.alert(t("home.cloud.restoreFailed"), String(error));
                             } finally {
@@ -587,7 +545,6 @@ export default function SettingsScreen() {
                 tone="secondary"
               />
             }
-            subtitle="Delete all local store data on this device. Cloud backups stay untouched."
             title="Reset this device"
             tone="warning"
           />
@@ -611,7 +568,6 @@ export default function SettingsScreen() {
                 tone="secondary"
               />
             }
-            subtitle="This device will keep local data, but cloud actions will require sign-in again."
             title="End this session"
             tone="warning"
           />
