@@ -5,6 +5,7 @@
     "owner": "jltrs",
     "scheme": "tindahanai",
     "version": "0.1.0",
+    "icon": "./assets/icon.png",
     "runtimeVersion": {
       "policy": "appVersion"
     },
@@ -44,9 +45,16 @@
     ],
     "android": {
       "package": "com.tindahanai.app",
+      "versionCode": 1,
       "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0D6A54"
       }
+    },
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0D6A54"
     },
     "updates": {
       "url": "https://u.expo.dev/ef18d9d5-fbb0-464b-b179-af5560597e27"
