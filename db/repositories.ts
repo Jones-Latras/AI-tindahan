@@ -11,11 +11,15 @@ import { createSyncId } from "@/utils/id";
 import { sanitizeOptionalText, sanitizePhone, sanitizeText } from "@/utils/validation";
 import type {
   AnalyticsTimeframe,
+  BudgetStatus,
   ContainerReturnEvent,
   ContainerReturnStatus,
   CustomerRiskProfile,
   CustomerSummary,
   Expense,
+  ExpenseBudget,
+  ExpenseBudgetProgress,
+  ExpenseBudgetSummary,
   ExpenseCategorySummary,
   ExpenseSummary,
   HomeMetrics,
@@ -184,6 +188,15 @@ type ExpenseRow = {
   amount_cents: number;
   description: string | null;
   expense_date: string;
+  created_at: string;
+  updated_at: string;
+};
+
+type ExpenseBudgetRow = {
+  id: number;
+  category: string;
+  amount_cents: number;
+  budget_month: string;
   created_at: string;
   updated_at: string;
 };
@@ -424,6 +437,60 @@ function mapExpense(row: ExpenseRow): Expense {
     expenseDate: row.expense_date,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+  };
+}
+
+function normalizeBudgetCategory(category?: string | null) {
+  if (!category) {
+    return "";
+  }
+
+  return sanitizeExpenseCategory(category);
+}
+
+function mapExpenseBudget(row: ExpenseBudgetRow): ExpenseBudget {
+  return {
+    id: row.id,
+    category: row.category.trim().length > 0 ? row.category : null,
+    amountCents: row.amount_cents,
+    budgetMonth: row.budget_month,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function getBudgetStatus(spentCents: number, budgetCents: number): BudgetStatus {
+  if (budgetCents <= 0) {
+    return "over";
+  }
+
+  if (spentCents >= budgetCents) {
+    return "over";
+  }
+
+  if (spentCents >= budgetCents * 0.8) {
+    return "warning";
+  }
+
+  return "on_track";
+}
+
+function buildExpenseBudgetProgress(
+  budget: ExpenseBudget,
+  spentCents: number,
+): ExpenseBudgetProgress {
+  const usageRatio = budget.amountCents > 0 ? spentCents / budget.amountCents : 0;
+
+  return {
+    budgetId: budget.id,
+    category: budget.category,
+    budgetMonth: budget.budgetMonth,
+    budgetCents: budget.amountCents,
+    spentCents,
+    remainingCents: budget.amountCents - spentCents,
+    usageRatio,
+    usagePercent: Math.round(usageRatio * 100),
+    status: getBudgetStatus(spentCents, budget.amountCents),
   };
 }
 
@@ -671,6 +738,12 @@ export type ExpenseInput = {
   expenseDate?: string;
 };
 
+export type ExpenseBudgetInput = {
+  category?: string | null;
+  amountCents: number;
+  budgetMonth?: string;
+};
+
 export type RepackSessionInput = {
   sourceProductId: number;
   outputProductId: number;
@@ -717,6 +790,7 @@ const LOCAL_RESET_TABLES = [
   "utang",
   "restock_lists",
   "expenses",
+  "expense_budgets",
   "inventory_pools",
   "products",
   "customers",
@@ -1626,6 +1700,22 @@ function normalizeExpenseDate(expenseDate?: string) {
   return parsed.toISOString();
 }
 
+function normalizeBudgetMonth(budgetMonth?: string) {
+  const fallback = new Date().toISOString().slice(0, 7);
+
+  if (!budgetMonth) {
+    return fallback;
+  }
+
+  const normalized = budgetMonth.trim();
+
+  if (!/^\d{4}-\d{2}$/.test(normalized)) {
+    throw new Error("Budget month must use YYYY-MM format.");
+  }
+
+  return normalized;
+}
+
 function formatDefaultRestockListTitle(createdAt = new Date()) {
   const formatted = new Intl.DateTimeFormat("en-PH", {
     day: "numeric",
@@ -1734,6 +1824,207 @@ export async function listExpenseCategories(db: SQLiteDatabase) {
   return rows.map((row) => row.category);
 }
 
+export async function listExpenseBudgets(
+  db: SQLiteDatabase,
+  budgetMonth?: string,
+): Promise<ExpenseBudget[]> {
+  const normalizedBudgetMonth = normalizeBudgetMonth(budgetMonth);
+  const rows = await db.getAllAsync<ExpenseBudgetRow>(
+    `
+      SELECT
+        id,
+        category,
+        amount_cents,
+        budget_month,
+        created_at,
+        updated_at
+      FROM expense_budgets
+      WHERE budget_month = ?
+      ORDER BY CASE WHEN category = '' THEN 0 ELSE 1 END ASC, updated_at DESC, id DESC
+    `,
+    normalizedBudgetMonth,
+  );
+
+  return rows.map(mapExpenseBudget);
+}
+
+export async function upsertExpenseBudget(
+  db: SQLiteDatabase,
+  input: ExpenseBudgetInput,
+) {
+  assertMoney(input.amountCents, "Budget amount");
+
+  if (input.amountCents <= 0) {
+    throw new Error("Budget amount must be greater than zero.");
+  }
+
+  const category = normalizeBudgetCategory(input.category);
+  const budgetMonth = normalizeBudgetMonth(input.budgetMonth);
+  const existingBudget = await db.getFirstAsync<{ id: number }>(
+    `
+      SELECT id
+      FROM expense_budgets
+      WHERE budget_month = ?
+        AND category = ?
+      LIMIT 1
+    `,
+    budgetMonth,
+    category,
+  );
+
+  if (existingBudget) {
+    await db.runAsync(
+      `
+        UPDATE expense_budgets
+        SET
+          amount_cents = ?,
+          updated_at = CURRENT_TIMESTAMP,
+          synced = 0
+        WHERE id = ?
+      `,
+      input.amountCents,
+      existingBudget.id,
+    );
+
+    return existingBudget.id;
+  }
+
+  const result = await db.runAsync(
+    `
+      INSERT INTO expense_budgets (
+        category,
+        amount_cents,
+        budget_month,
+        sync_id,
+        created_at,
+        updated_at,
+        synced
+      )
+      VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0)
+    `,
+    category,
+    input.amountCents,
+    budgetMonth,
+    createSyncId(),
+  );
+
+  return Number(result.lastInsertRowId);
+}
+
+export async function updateExpenseBudget(
+  db: SQLiteDatabase,
+  budgetId: number,
+  input: ExpenseBudgetInput,
+) {
+  assertMoney(input.amountCents, "Budget amount");
+
+  if (input.amountCents <= 0) {
+    throw new Error("Budget amount must be greater than zero.");
+  }
+
+  const category = normalizeBudgetCategory(input.category);
+  const budgetMonth = normalizeBudgetMonth(input.budgetMonth);
+
+  await db.runAsync(
+    `
+      UPDATE expense_budgets
+      SET
+        category = ?,
+        amount_cents = ?,
+        budget_month = ?,
+        updated_at = CURRENT_TIMESTAMP,
+        synced = 0
+      WHERE id = ?
+    `,
+    category,
+    input.amountCents,
+    budgetMonth,
+    budgetId,
+  );
+}
+
+export async function deleteExpenseBudget(db: SQLiteDatabase, budgetId: number) {
+  await db.runAsync("DELETE FROM expense_budgets WHERE id = ?", budgetId);
+}
+
+export async function deleteExpenseCategory(db: SQLiteDatabase, category: string) {
+  const normalizedCategory = sanitizeExpenseCategory(category);
+
+  if (normalizedCategory === "other") {
+    throw new Error('The "other" category cannot be deleted.');
+  }
+
+  await db.withExclusiveTransactionAsync(async (txn) => {
+    await txn.runAsync(
+      `
+        UPDATE expenses
+        SET
+          category = 'other',
+          updated_at = CURRENT_TIMESTAMP,
+          synced = 0
+        WHERE category = ?
+      `,
+      normalizedCategory,
+    );
+
+    const categoryBudgets = await txn.getAllAsync<{
+      id: number;
+      amount_cents: number;
+      budget_month: string;
+    }>(
+      `
+        SELECT id, amount_cents, budget_month
+        FROM expense_budgets
+        WHERE category = ?
+      `,
+      normalizedCategory,
+    );
+
+    for (const budget of categoryBudgets) {
+      const existingOtherBudget = await txn.getFirstAsync<{ id: number; amount_cents: number }>(
+        `
+          SELECT id, amount_cents
+          FROM expense_budgets
+          WHERE budget_month = ?
+            AND category = 'other'
+          LIMIT 1
+        `,
+        budget.budget_month,
+      );
+
+      if (existingOtherBudget) {
+        await txn.runAsync(
+          `
+            UPDATE expense_budgets
+            SET
+              amount_cents = ?,
+              updated_at = CURRENT_TIMESTAMP,
+              synced = 0
+            WHERE id = ?
+          `,
+          existingOtherBudget.amount_cents + budget.amount_cents,
+          existingOtherBudget.id,
+        );
+
+        await txn.runAsync("DELETE FROM expense_budgets WHERE id = ?", budget.id);
+        continue;
+      }
+
+      await txn.runAsync(
+        `
+          UPDATE expense_budgets
+          SET
+            category = 'other',
+            updated_at = CURRENT_TIMESTAMP,
+            synced = 0
+          WHERE id = ?
+        `,
+        budget.id,
+      );
+    }
+  });
+}
+
 export async function addExpense(db: SQLiteDatabase, input: ExpenseInput) {
   assertMoney(input.amountCents, "Expense amount");
 
@@ -1802,6 +2093,84 @@ export async function updateExpense(db: SQLiteDatabase, expenseId: number, input
 
 export async function deleteExpense(db: SQLiteDatabase, expenseId: number) {
   await db.runAsync("DELETE FROM expenses WHERE id = ?", expenseId);
+}
+
+export async function getExpenseBudgetSummary(
+  db: SQLiteDatabase,
+  budgetMonth?: string,
+): Promise<ExpenseBudgetSummary> {
+  const normalizedBudgetMonth = normalizeBudgetMonth(budgetMonth);
+  const budgets = await listExpenseBudgets(db, normalizedBudgetMonth);
+  const totalSpentRow = await db.getFirstAsync<{ total_spent_cents: number | null }>(
+    `
+      SELECT
+        COALESCE(SUM(amount_cents), 0) AS total_spent_cents
+      FROM expenses
+      WHERE STRFTIME('%Y-%m', expense_date, 'localtime') = ?
+    `,
+    normalizedBudgetMonth,
+  );
+  const categorySpendRows = await db.getAllAsync<{ category: string; spent_cents: number }>(
+    `
+      SELECT
+        category,
+        COALESCE(SUM(amount_cents), 0) AS spent_cents
+      FROM expenses
+      WHERE STRFTIME('%Y-%m', expense_date, 'localtime') = ?
+      GROUP BY category
+    `,
+    normalizedBudgetMonth,
+  );
+
+  const spentByCategory = new Map<string, number>();
+
+  for (const row of categorySpendRows) {
+    spentByCategory.set(row.category, row.spent_cents);
+  }
+
+  const overallBudget = budgets.find((budget) => budget.category === null) ?? null;
+  const categoryBudgets = budgets
+    .filter((budget) => budget.category !== null)
+    .map((budget) => buildExpenseBudgetProgress(budget, spentByCategory.get(budget.category ?? "") ?? 0))
+    .sort((left, right) => right.spentCents - left.spentCents || right.budgetCents - left.budgetCents || left.budgetId - right.budgetId);
+
+  const totalSpentCents = totalSpentRow?.total_spent_cents ?? 0;
+
+  if (overallBudget) {
+    const overallProgress = buildExpenseBudgetProgress(overallBudget, totalSpentCents);
+
+    return {
+      budgetMonth: normalizedBudgetMonth,
+      totalSpentCents,
+      trackedBudgetCents: overallProgress.budgetCents,
+      trackedSpentCents: overallProgress.spentCents,
+      trackedRemainingCents: overallProgress.remainingCents,
+      trackedUsageRatio: overallProgress.usageRatio,
+      trackedUsagePercent: overallProgress.usagePercent,
+      trackedStatus: overallProgress.status,
+      unbudgetedSpentCents: 0,
+      overallBudget: overallProgress,
+      categoryBudgets,
+    };
+  }
+
+  const trackedBudgetCents = categoryBudgets.reduce((sum, budget) => sum + budget.budgetCents, 0);
+  const trackedSpentCents = categoryBudgets.reduce((sum, budget) => sum + budget.spentCents, 0);
+  const trackedUsageRatio = trackedBudgetCents > 0 ? trackedSpentCents / trackedBudgetCents : 0;
+
+  return {
+    budgetMonth: normalizedBudgetMonth,
+    totalSpentCents,
+    trackedBudgetCents,
+    trackedSpentCents,
+    trackedRemainingCents: trackedBudgetCents - trackedSpentCents,
+    trackedUsageRatio,
+    trackedUsagePercent: Math.round(trackedUsageRatio * 100),
+    trackedStatus: getBudgetStatus(trackedSpentCents, trackedBudgetCents),
+    unbudgetedSpentCents: Math.max(0, totalSpentCents - trackedSpentCents),
+    overallBudget: null,
+    categoryBudgets,
+  };
 }
 
 export async function getTodayExpenseTotal(db: SQLiteDatabase) {

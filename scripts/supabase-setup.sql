@@ -139,6 +139,18 @@ create table if not exists expenses (
   unique (store_id, sync_id)
 );
 
+create table if not exists expense_budgets (
+  sync_id uuid primary key,
+  store_id uuid not null references stores(id) on delete cascade,
+  category text not null default '',
+  amount_cents integer not null,
+  budget_month text not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (store_id, sync_id),
+  unique (store_id, budget_month, category)
+);
+
 create table if not exists restock_lists (
   sync_id uuid primary key,
   store_id uuid not null references stores(id) on delete cascade,
@@ -257,6 +269,7 @@ alter table inventory_pools enable row level security;
 alter table app_settings enable row level security;
 alter table sales enable row level security;
 alter table expenses enable row level security;
+alter table expense_budgets enable row level security;
 alter table restock_lists enable row level security;
 alter table utang enable row level security;
 alter table product_inventory_links enable row level security;
@@ -310,6 +323,9 @@ create policy "sales members access" on sales for all
 using (public.is_store_member(store_id)) with check (public.is_store_member(store_id));
 drop policy if exists "expenses members access" on expenses;
 create policy "expenses members access" on expenses for all
+using (public.is_store_member(store_id)) with check (public.is_store_member(store_id));
+drop policy if exists "expense budgets members access" on expense_budgets;
+create policy "expense budgets members access" on expense_budgets for all
 using (public.is_store_member(store_id)) with check (public.is_store_member(store_id));
 drop policy if exists "restock lists members access" on restock_lists;
 create policy "restock lists members access" on restock_lists for all

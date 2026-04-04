@@ -151,6 +151,43 @@ export interface Expense {
   updatedAt: string;
 }
 
+export type BudgetStatus = "on_track" | "warning" | "over";
+
+export interface ExpenseBudget {
+  id: number;
+  category: string | null;
+  amountCents: number;
+  budgetMonth: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ExpenseBudgetProgress {
+  budgetId: number;
+  category: string | null;
+  budgetMonth: string;
+  budgetCents: number;
+  spentCents: number;
+  remainingCents: number;
+  usageRatio: number;
+  usagePercent: number;
+  status: BudgetStatus;
+}
+
+export interface ExpenseBudgetSummary {
+  budgetMonth: string;
+  totalSpentCents: number;
+  trackedBudgetCents: number;
+  trackedSpentCents: number;
+  trackedRemainingCents: number;
+  trackedUsageRatio: number;
+  trackedUsagePercent: number;
+  trackedStatus: BudgetStatus;
+  unbudgetedSpentCents: number;
+  overallBudget: ExpenseBudgetProgress | null;
+  categoryBudgets: ExpenseBudgetProgress[];
+}
+
 export interface ExpenseCategorySummary {
   category: string;
   totalCents: number;

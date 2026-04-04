@@ -3,7 +3,7 @@ import type { SQLiteDatabase } from "expo-sqlite";
 import { createSyncId } from "@/utils/id";
 
 export const DATABASE_NAME = "tindahan-ai.db";
-export const DATABASE_VERSION = 14;
+export const DATABASE_VERSION = 15;
 
 const SYNC_ID_TABLES = [
   "products",
@@ -13,6 +13,7 @@ const SYNC_ID_TABLES = [
   "utang",
   "utang_payments",
   "expenses",
+  "expense_budgets",
   "restock_lists",
   "restock_list_items",
   "inventory_pools",
@@ -149,6 +150,17 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
         synced INTEGER NOT NULL DEFAULT 0
       );
 
+      CREATE TABLE IF NOT EXISTS expense_budgets (
+        id INTEGER PRIMARY KEY NOT NULL,
+        category TEXT NOT NULL DEFAULT '',
+        amount_cents INTEGER NOT NULL CHECK(amount_cents > 0),
+        budget_month TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        synced INTEGER NOT NULL DEFAULT 0,
+        sync_id TEXT
+      );
+
       CREATE TABLE IF NOT EXISTS restock_lists (
         id INTEGER PRIMARY KEY NOT NULL,
         title TEXT NOT NULL,
@@ -242,6 +254,9 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
       CREATE INDEX IF NOT EXISTS idx_utang_payments_customer ON utang_payments(customer_id, created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_expenses_date ON expenses(expense_date DESC);
       CREATE INDEX IF NOT EXISTS idx_expenses_category ON expenses(category, expense_date DESC);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_expense_budgets_month_category ON expense_budgets(budget_month, category);
+      CREATE INDEX IF NOT EXISTS idx_expense_budgets_month ON expense_budgets(budget_month, updated_at DESC);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_expense_budgets_sync_id ON expense_budgets(sync_id);
       CREATE INDEX IF NOT EXISTS idx_restock_lists_status ON restock_lists(status, created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_restock_list_items_list ON restock_list_items(restock_list_id, is_checked ASC, id ASC);
       CREATE INDEX IF NOT EXISTS idx_inventory_pools_name ON inventory_pools(name);
@@ -637,7 +652,30 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
     currentVersion = 14;
   }
 
-  if (currentVersion >= 14) {
+  if (currentVersion < 15) {
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS expense_budgets (
+        id INTEGER PRIMARY KEY NOT NULL,
+        category TEXT NOT NULL DEFAULT '',
+        amount_cents INTEGER NOT NULL CHECK(amount_cents > 0),
+        budget_month TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        synced INTEGER NOT NULL DEFAULT 0,
+        sync_id TEXT
+      );
+
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_expense_budgets_month_category ON expense_budgets(budget_month, category);
+      CREATE INDEX IF NOT EXISTS idx_expense_budgets_month ON expense_budgets(budget_month, updated_at DESC);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_expense_budgets_sync_id ON expense_budgets(sync_id);
+
+      UPDATE expense_budgets SET synced = 0;
+    `);
+
+    currentVersion = 15;
+  }
+
+  if (currentVersion >= 15) {
     await backfillSyncIds(db);
   }
 

@@ -391,6 +391,23 @@ export async function syncToCloud(db: SQLiteDatabase) {
     pushed += expenses.length;
   }
 
+  const expenseBudgets = await db.getAllAsync<Record<string, unknown>>(
+    `SELECT
+      sync_id,
+      category,
+      amount_cents,
+      budget_month,
+      created_at,
+      updated_at
+    FROM expense_budgets
+    WHERE synced = 0`,
+  );
+  if (expenseBudgets.length > 0) {
+    await supabaseUpsert("expense_budgets", expenseBudgets.map((row) => ({ store_id: storeId, ...row })));
+    await db.runAsync("UPDATE expense_budgets SET synced = 1 WHERE synced = 0");
+    pushed += expenseBudgets.length;
+  }
+
   const restockLists = await db.getAllAsync<Record<string, unknown>>(
     `SELECT
       sync_id,
@@ -629,6 +646,37 @@ export async function restoreFromCloud(db: SQLiteDatabase) {
         row.amount_cents as number,
         (row.description as string | null) ?? null,
         row.expense_date as string,
+        row.created_at as string,
+        row.updated_at as string,
+        row.sync_id as string,
+      );
+      restored++;
+    }
+
+    const expenseBudgets = await supabaseSelectAll("expense_budgets", { store_id: storeId });
+    for (const expenseBudget of expenseBudgets) {
+      const row = expenseBudget as Record<string, unknown>;
+      await db.runAsync(
+        `INSERT INTO expense_budgets (
+          category,
+          amount_cents,
+          budget_month,
+          created_at,
+          updated_at,
+          sync_id,
+          synced
+        )
+        VALUES (?, ?, ?, ?, ?, ?, 1)
+        ON CONFLICT(sync_id) DO UPDATE SET
+          category = excluded.category,
+          amount_cents = excluded.amount_cents,
+          budget_month = excluded.budget_month,
+          created_at = excluded.created_at,
+          updated_at = excluded.updated_at,
+          synced = 1`,
+        row.category as string,
+        row.amount_cents as number,
+        row.budget_month as string,
         row.created_at as string,
         row.updated_at as string,
         row.sync_id as string,
