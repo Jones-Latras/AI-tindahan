@@ -967,6 +967,7 @@ export default function ProduktoScreen() {
           }}
         >
           <TextInput
+            allowFontScaling={false}
             onChangeText={setSearchTerm}
             placeholder={t("produkto.searchPlaceholder")}
             placeholderTextColor={theme.colors.textSoft}
@@ -974,7 +975,7 @@ export default function ProduktoScreen() {
               color: theme.colors.text,
               flex: 1,
               fontFamily: theme.typography.body,
-              fontSize: 15,
+              fontSize: 14,
               minHeight: 50,
             }}
             value={searchTerm}
@@ -992,6 +993,7 @@ export default function ProduktoScreen() {
           }}
         >
           <Pressable
+            accessibilityLabel={t("produkto.newCategoryButton")}
             onPress={() => openCategoryModal("catalog")}
             style={({ pressed }) => ({
               alignItems: "center",
@@ -999,24 +1001,13 @@ export default function ProduktoScreen() {
               borderColor: theme.colors.primary,
               borderRadius: theme.radius.pill,
               borderWidth: 1,
-              flexDirection: "row",
-              gap: theme.spacing.xs,
+              height: 36,
+              justifyContent: "center",
               opacity: pressed ? 0.92 : 1,
-              paddingHorizontal: theme.spacing.md,
-              paddingVertical: 10,
+              width: 36,
             })}
           >
             <Feather color={theme.colors.primary} name="plus" size={14} />
-            <Text
-              style={{
-                color: theme.colors.primary,
-                fontFamily: theme.typography.body,
-                fontSize: 12,
-                fontWeight: "700",
-              }}
-            >
-              {t("produkto.newCategoryChip")}
-            </Text>
           </Pressable>
           {[
             { label: t("produkto.categoryAll"), value: null as string | null },

@@ -288,6 +288,7 @@ export default function GastosScreen() {
             >
               <Feather color={theme.colors.textSoft} name="search" size={16} />
               <TextInput
+                allowFontScaling={false}
                 onChangeText={setSearchTerm}
                 placeholder={t("gastos.searchPlaceholder")}
                 placeholderTextColor={theme.colors.textSoft}
@@ -295,7 +296,7 @@ export default function GastosScreen() {
                   color: theme.colors.text,
                   flex: 1,
                   fontFamily: theme.typography.body,
-                  fontSize: 15,
+                  fontSize: 14,
                   minHeight: 50,
                   paddingLeft: theme.spacing.sm,
                 }}
@@ -304,29 +305,19 @@ export default function GastosScreen() {
             </View>
 
             <Pressable
+              accessibilityLabel={t("gastos.addButton")}
               onPress={openNewExpenseModal}
               style={({ pressed }) => ({
                 alignItems: "center",
                 backgroundColor: theme.colors.primary,
                 borderRadius: theme.radius.pill,
-                flexDirection: "row",
-                gap: theme.spacing.xs,
+                height: 44,
+                justifyContent: "center",
                 opacity: pressed ? 0.9 : 1,
-                paddingHorizontal: theme.spacing.md,
-                paddingVertical: 14,
+                width: 44,
               })}
             >
               <Feather color={theme.colors.primaryText} name="plus" size={16} />
-              <Text
-                style={{
-                  color: theme.colors.primaryText,
-                  fontFamily: theme.typography.body,
-                  fontSize: 13,
-                  fontWeight: "700",
-                }}
-              >
-                {t("gastos.addButton")}
-              </Text>
             </Pressable>
           </View>
 

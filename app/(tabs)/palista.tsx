@@ -475,6 +475,7 @@ export default function PalistaScreen() {
           >
             <Feather color={theme.colors.textSoft} name="search" size={16} />
             <TextInput
+              allowFontScaling={false}
               onChangeText={setSearchTerm}
               placeholder={t("palista.search.placeholder")}
               placeholderTextColor={theme.colors.textSoft}
@@ -482,7 +483,7 @@ export default function PalistaScreen() {
                 color: theme.colors.text,
                 flex: 1,
                 fontFamily: theme.typography.body,
-                fontSize: 15,
+                fontSize: 14,
                 minHeight: 50,
                 paddingLeft: theme.spacing.sm,
               }}
@@ -498,24 +499,13 @@ export default function PalistaScreen() {
               borderColor: theme.colors.primary,
               borderRadius: theme.radius.pill,
               borderWidth: 1,
-              flexDirection: "row",
-              gap: theme.spacing.xs,
+              height: 44,
+              justifyContent: "center",
               opacity: pressed ? 0.9 : 1,
-              paddingHorizontal: theme.spacing.md,
-              paddingVertical: 12,
+              width: 44,
             })}
           >
             <Feather color={theme.colors.primaryText} name="plus" size={14} />
-            <Text
-              style={{
-                color: theme.colors.primaryText,
-                fontFamily: theme.typography.body,
-                fontSize: 12,
-                fontWeight: "700",
-              }}
-            >
-              {t("palista.newCustomerCompact")}
-            </Text>
           </Pressable>
           <Pressable
             accessibilityLabel={t("palista.refreshScores")}

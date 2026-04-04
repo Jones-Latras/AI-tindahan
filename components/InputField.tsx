@@ -38,6 +38,7 @@ export function InputField({
         {label}
       </Text>
       <TextInput
+        allowFontScaling={false}
         keyboardType={keyboardType}
         multiline={multiline}
         onChangeText={onChangeText}
@@ -51,7 +52,7 @@ export function InputField({
           borderWidth: 1,
           color: theme.colors.text,
           fontFamily: theme.typography.body,
-          fontSize: 15,
+          fontSize: 14,
           minHeight: multiline ? 96 : 52,
           paddingHorizontal: theme.spacing.md,
           paddingTop: multiline ? theme.spacing.md : 0,

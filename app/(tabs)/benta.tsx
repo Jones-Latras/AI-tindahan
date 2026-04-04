@@ -1045,14 +1045,15 @@ export default function BentaScreen() {
             }}
           >
             <TextInput
+              allowFontScaling={false}
               onChangeText={setSearchTerm}
-              placeholder="Find by name, category, or barcode"
+              placeholder="Search or scan"
               placeholderTextColor={theme.colors.textSoft}
               style={{
                 color: theme.colors.text,
                 flex: 1,
                 fontFamily: theme.typography.body,
-                fontSize: 15,
+                fontSize: 14,
                 minHeight: 50,
                 paddingRight: theme.spacing.sm,
               }}
