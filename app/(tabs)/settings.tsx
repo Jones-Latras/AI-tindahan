@@ -141,7 +141,7 @@ function SettingsAction({ label, onPress, disabled, busy, tone = "primary" }: Se
         style={{
           color: primary ? theme.colors.primaryText : theme.colors.text,
           flexShrink: 1,
-          fontFamily: theme.typography.body,
+          fontFamily: theme.typography.label,
           fontSize: 12,
           fontWeight: "700",
           textAlign: "center",

@@ -152,7 +152,7 @@ function FloatingTabBar({ state, descriptors, navigation }: any) {
                       numberOfLines={1}
                       style={{
                         color: isFocused ? theme.colors.primary : theme.colors.textSoft,
-                        fontFamily: theme.typography.body,
+                        fontFamily: theme.typography.label,
                         fontSize: 10,
                         fontWeight: "700",
                       }}

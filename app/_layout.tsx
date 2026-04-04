@@ -1,4 +1,5 @@
 import Storage from "expo-sqlite/kv-store";
+import { useFonts } from "expo-font";
 import { LinearGradient } from "expo-linear-gradient";
 import { Stack } from "expo-router";
 import { SQLiteProvider } from "expo-sqlite";
@@ -6,6 +7,12 @@ import { StatusBar } from "expo-status-bar";
 import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Animated, Easing, Text, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import {
+  Inter_400Regular,
+  Inter_500Medium,
+  Inter_600SemiBold,
+  Inter_700Bold,
+} from "@expo-google-fonts/inter";
 
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { LanguageProvider, useAppLanguage } from "@/contexts/LanguageContext";
@@ -515,6 +522,17 @@ function AppShell() {
 }
 
 export default function RootLayout() {
+  const [fontsLoaded, fontError] = useFonts({
+    Inter_400Regular,
+    Inter_500Medium,
+    Inter_600SemiBold,
+    Inter_700Bold,
+  });
+
+  if (!fontsLoaded && !fontError) {
+    return null;
+  }
+
   return (
     <ThemeProvider>
       <LanguageProvider>

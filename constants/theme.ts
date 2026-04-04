@@ -1,20 +1,8 @@
-import { Platform } from "react-native";
-
 import type { ThemeMode } from "@/types/models";
 
-// Use the platform's primary system family instead of device-dependent branded/condensed faces.
-// This keeps text metrics more stable across phones until bundled custom fonts are added.
-const displayFontFamily = Platform.select({
-  ios: "System",
-  android: "sans-serif-medium",
-  default: "system-ui",
-}) as string;
-
-const bodyFontFamily = Platform.select({
-  ios: "System",
-  android: "sans-serif",
-  default: "system-ui",
-}) as string;
+const displayFontFamily = "Inter_700Bold";
+const bodyFontFamily = "Inter_400Regular";
+const labelFontFamily = "Inter_600SemiBold";
 
 export const lightTheme = {
   mode: "light" as ThemeMode,
@@ -45,6 +33,7 @@ export const lightTheme = {
   typography: {
     display: displayFontFamily,
     body: bodyFontFamily,
+    label: labelFontFamily,
   },
   spacing: {
     xs: 6,
@@ -91,6 +80,7 @@ export const darkTheme = {
   typography: {
     display: displayFontFamily,
     body: bodyFontFamily,
+    label: labelFontFamily,
   },
   spacing: {
     xs: 6,
