@@ -818,52 +818,6 @@ export default function GastosScreen() {
         }}
         title={t("gastos.title")}
       >
-        <View
-          style={{
-            alignItems: "center",
-            flexDirection: "row",
-            gap: theme.spacing.sm,
-            justifyContent: "flex-end",
-          }}
-        >
-          <View style={{ flex: 1 }} />
-          <View style={{ alignItems: "center", flexDirection: "row", gap: theme.spacing.sm }}>
-            <Pressable
-              accessibilityLabel={t("gastos.budget.openButton")}
-              onPress={() => openNewBudgetModal()}
-              style={({ pressed }) => ({
-                alignItems: "center",
-                backgroundColor: theme.colors.primaryMuted,
-                borderColor: theme.colors.primary,
-                borderRadius: theme.radius.pill,
-                borderWidth: 1,
-                height: 44,
-                justifyContent: "center",
-                opacity: pressed ? 0.9 : 1,
-                width: 44,
-              })}
-            >
-              <Feather color={theme.colors.primary} name="target" size={16} />
-            </Pressable>
-
-            <Pressable
-              accessibilityLabel={t("gastos.addButton")}
-              onPress={openNewExpenseModal}
-              style={({ pressed }) => ({
-                alignItems: "center",
-                backgroundColor: theme.colors.primary,
-                borderRadius: theme.radius.pill,
-                height: 44,
-                justifyContent: "center",
-                opacity: pressed ? 0.9 : 1,
-                width: 44,
-              })}
-            >
-              <Feather color={theme.colors.primaryText} name="plus" size={16} />
-            </Pressable>
-          </View>
-        </View>
-
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
           {summaryCards.map((item) => (
             <SurfaceCard
@@ -893,20 +847,61 @@ export default function GastosScreen() {
         <SurfaceCard style={[compactCardStyle, { gap: theme.spacing.md }]}>
           <View
             style={{
-              gap: theme.spacing.xs,
+              alignItems: "flex-start",
+              flexDirection: "row",
+              gap: theme.spacing.md,
+              justifyContent: "space-between",
             }}
           >
-            <Text style={microLabelStyle}>{currentBudgetMonthLabel}</Text>
-            <Text
-              style={{
-                color: theme.colors.text,
-                fontFamily: theme.typography.label,
-                fontSize: 18,
-                fontWeight: "600",
-              }}
-            >
-              {t("gastos.budget.title")}
-            </Text>
+            <View style={{ flex: 1, gap: theme.spacing.xs, minWidth: 0 }}>
+              <Text style={microLabelStyle}>{currentBudgetMonthLabel}</Text>
+              <Text
+                style={{
+                  color: theme.colors.text,
+                  fontFamily: theme.typography.label,
+                  fontSize: 18,
+                  fontWeight: "600",
+                }}
+              >
+                {t("gastos.budget.title")}
+              </Text>
+            </View>
+
+            <View style={{ alignItems: "center", flexDirection: "row", gap: theme.spacing.sm }}>
+              <Pressable
+                accessibilityLabel={t("gastos.budget.openButton")}
+                onPress={() => openNewBudgetModal()}
+                style={({ pressed }) => ({
+                  alignItems: "center",
+                  backgroundColor: theme.colors.primaryMuted,
+                  borderColor: theme.colors.primary,
+                  borderRadius: theme.radius.pill,
+                  borderWidth: 1,
+                  height: 44,
+                  justifyContent: "center",
+                  opacity: pressed ? 0.9 : 1,
+                  width: 44,
+                })}
+              >
+                <Feather color={theme.colors.primary} name="target" size={16} />
+              </Pressable>
+
+              <Pressable
+                accessibilityLabel={t("gastos.addButton")}
+                onPress={openNewExpenseModal}
+                style={({ pressed }) => ({
+                  alignItems: "center",
+                  backgroundColor: theme.colors.primary,
+                  borderRadius: theme.radius.pill,
+                  height: 44,
+                  justifyContent: "center",
+                  opacity: pressed ? 0.9 : 1,
+                  width: 44,
+                })}
+              >
+                <Feather color={theme.colors.primaryText} name="plus" size={16} />
+              </Pressable>
+            </View>
           </View>
 
           {budgetSummary && budgetSummary.trackedBudgetCents > 0 ? (
