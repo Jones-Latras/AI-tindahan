@@ -225,6 +225,16 @@ export default function ProduktoScreen() {
   const { t } = useAppLanguage();
   const router = useRouter();
   const { width: windowWidth } = useWindowDimensions();
+  const microLabelTextStyle = useMemo(
+    () => ({
+      fontFamily: theme.typography.label,
+      fontSize: 11,
+      fontWeight: "600" as const,
+      letterSpacing: 0.8,
+      textTransform: "uppercase" as const,
+    }),
+    [theme.typography.label],
+  );
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
   const [inventoryPools, setInventoryPools] = useState<InventoryPool[]>([]);
@@ -1069,9 +1079,7 @@ export default function ProduktoScreen() {
               numberOfLines={1}
               style={{
                 color: theme.colors.accent,
-                fontFamily: theme.typography.label,
-                fontSize: 9,
-                fontWeight: "600",
+                ...microLabelTextStyle,
               }}
             >
               {product.category || t("productCard.value.general")}
@@ -1112,7 +1120,7 @@ export default function ProduktoScreen() {
         </Pressable>
       );
     },
-    [catalogCardWidth, openEditModal, t, theme],
+    [catalogCardWidth, microLabelTextStyle, openEditModal, t, theme],
   );
 
   return (
@@ -1438,9 +1446,7 @@ export default function ProduktoScreen() {
                   <Text
                     style={{
                       color: theme.colors.textMuted,
-                      fontFamily: theme.typography.label,
-                      fontSize: 12,
-                      fontWeight: "600",
+                      ...microLabelTextStyle,
                       textAlign: "center",
                     }}
                   >

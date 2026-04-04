@@ -70,6 +70,13 @@ export function ProductCard({
 }: ProductCardProps) {
   const { theme } = useAppTheme();
   const { t } = useAppLanguage();
+  const microLabelTextStyle = {
+    fontFamily: theme.typography.label,
+    fontSize: 11,
+    fontWeight: "600" as const,
+    letterSpacing: 0.8,
+    textTransform: "uppercase" as const,
+  };
   const [imageFailed, setImageFailed] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
   const flipAnimation = useRef(new Animated.Value(0)).current;
@@ -333,9 +340,7 @@ export function ProductCard({
             numberOfLines={1}
             style={{
               color: stockStatus.textColor,
-              fontFamily: theme.typography.body,
-              fontSize: usesRegularTextSizing ? 12 : 11,
-              fontWeight: "600",
+              ...microLabelTextStyle,
             }}
           >
             {stockStatus.label}
@@ -409,9 +414,7 @@ export function ProductCard({
               numberOfLines={1}
               style={{
                 color: theme.colors.textMuted,
-                fontFamily: theme.typography.body,
-                fontSize: usesRegularTextSizing ? 12 : 11,
-                fontWeight: "600",
+                ...microLabelTextStyle,
               }}
             >
               {resolvedCategory}
@@ -432,9 +435,7 @@ export function ProductCard({
                 numberOfLines={1}
                 style={{
                   color: theme.colors.accent,
-                  fontFamily: theme.typography.body,
-                  fontSize: usesRegularTextSizing ? 12 : 11,
-                  fontWeight: "600",
+                  ...microLabelTextStyle,
                 }}
               >
                 {t("productCard.value.byWeight")}
@@ -592,11 +593,7 @@ export function ProductCard({
               <Text
                 style={{
                   color: theme.colors.textSoft,
-                  fontFamily: theme.typography.body,
-                  fontSize: 11,
-                  fontWeight: "600",
-                  letterSpacing: 0.4,
-                  textTransform: "uppercase",
+                  ...microLabelTextStyle,
                 }}
               >
                 {t("productCard.detail.productInfo")}

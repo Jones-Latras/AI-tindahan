@@ -52,10 +52,12 @@ function SettingsSection({ title, children }: SettingsSectionProps) {
     <View style={{ gap: theme.spacing.sm }}>
       <Text
         style={{
-          color: theme.colors.text,
-          fontFamily: theme.typography.body,
-          fontSize: 14,
+          color: theme.colors.textMuted,
+          fontFamily: theme.typography.label,
+          fontSize: 11,
           fontWeight: "600",
+          letterSpacing: 0.8,
+          textTransform: "uppercase",
         }}
       >
         {title}

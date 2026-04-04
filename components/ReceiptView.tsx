@@ -61,6 +61,13 @@ export function ReceiptView({
   date,
 }: Props) {
   const { theme } = useAppTheme();
+  const microLabelTextStyle = {
+    fontFamily: theme.typography.label,
+    fontSize: 11,
+    fontWeight: "600" as const,
+    letterSpacing: 0.8,
+    textTransform: "uppercase" as const,
+  };
 
   const fmt = (cents: number) => `PHP ${(cents / 100).toFixed(2)}`;
   const paymentLabel = formatPaymentLabel(paymentMethod);
@@ -85,11 +92,7 @@ export function ReceiptView({
             <Text
               style={{
                 color: "#667085",
-                fontFamily: theme.typography.body,
-                fontSize: 11,
-                fontWeight: "600",
-                letterSpacing: 1,
-                textTransform: "uppercase",
+                ...microLabelTextStyle,
               }}
             >
               Custom Store Receipt
@@ -128,9 +131,7 @@ export function ReceiptView({
               <Text
                 style={{
                   color: theme.colors.primary,
-                  fontFamily: theme.typography.body,
-                  fontSize: 11,
-                  fontWeight: "600",
+                  ...microLabelTextStyle,
                 }}
               >
                 Transaction #{saleId}
@@ -147,9 +148,7 @@ export function ReceiptView({
               <Text
                 style={{
                   color: "#344054",
-                  fontFamily: theme.typography.body,
-                  fontSize: 11,
-                  fontWeight: "600",
+                  ...microLabelTextStyle,
                 }}
               >
                 {paymentLabel}
@@ -168,7 +167,7 @@ export function ReceiptView({
             }}
           >
             <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12 }}>
-              <Text style={{ color: "#667085", fontFamily: theme.typography.body, fontSize: 12 }}>Date</Text>
+              <Text style={{ color: "#667085", ...microLabelTextStyle }}>Date</Text>
               <Text
                 style={{
                   color: "#101828",
@@ -183,7 +182,7 @@ export function ReceiptView({
               </Text>
             </View>
             <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12 }}>
-              <Text style={{ color: "#667085", fontFamily: theme.typography.body, fontSize: 12 }}>Items</Text>
+              <Text style={{ color: "#667085", ...microLabelTextStyle }}>Items</Text>
               <Text
                 style={{
                   color: "#101828",
@@ -203,10 +202,7 @@ export function ReceiptView({
             <Text
               style={{
                 color: "#667085",
-                fontFamily: theme.typography.body,
-                fontSize: 11,
-                fontWeight: "600",
-                textTransform: "uppercase",
+                ...microLabelTextStyle,
               }}
             >
               Item
@@ -214,10 +210,7 @@ export function ReceiptView({
             <Text
               style={{
                 color: "#667085",
-                fontFamily: theme.typography.body,
-                fontSize: 11,
-                fontWeight: "600",
-                textTransform: "uppercase",
+                ...microLabelTextStyle,
               }}
             >
               Amount
@@ -292,10 +285,7 @@ export function ReceiptView({
             <Text
               style={{
                 color: "#9A3412",
-                fontFamily: theme.typography.body,
-                fontSize: 11,
-                fontWeight: "600",
-                textTransform: "uppercase",
+                ...microLabelTextStyle,
               }}
             >
               Bottle Return Tracking
@@ -354,7 +344,7 @@ export function ReceiptView({
           }}
         >
           <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12 }}>
-            <Text style={{ color: "#344054", fontFamily: theme.typography.body, fontSize: 13 }}>Subtotal</Text>
+            <Text style={{ color: "#344054", ...microLabelTextStyle }}>Subtotal</Text>
             <Text style={{ color: "#101828", fontFamily: theme.typography.body, fontSize: 13, fontWeight: "600" }}>
               {fmt(subtotalCents)}
             </Text>
@@ -407,7 +397,7 @@ export function ReceiptView({
             }}
           >
             <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12 }}>
-              <Text style={{ color: "#D0D5DD", fontFamily: theme.typography.body, fontSize: 13 }}>Cash received</Text>
+              <Text style={{ color: "#D0D5DD", ...microLabelTextStyle }}>Cash received</Text>
               <Text style={{ color: "#FFFFFF", fontFamily: theme.typography.body, fontSize: 13, fontWeight: "600" }}>
                 {fmt(cashPaidCents)}
               </Text>
@@ -448,7 +438,7 @@ export function ReceiptView({
               padding: 14,
             }}
           >
-            <Text style={{ color: "#667085", fontFamily: theme.typography.body, fontSize: 13 }}>Paid via</Text>
+            <Text style={{ color: "#667085", ...microLabelTextStyle }}>Paid via</Text>
             <Text style={{ color: "#101828", fontFamily: theme.typography.body, fontSize: 13, fontWeight: "600" }}>
               {paymentLabel}
             </Text>

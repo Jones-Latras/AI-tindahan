@@ -104,6 +104,16 @@ export default function BentaScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { width: windowWidth } = useWindowDimensions();
+  const microLabelTextStyle = useMemo(
+    () => ({
+      fontFamily: theme.typography.label,
+      fontSize: 11,
+      fontWeight: "600" as const,
+      letterSpacing: 0.8,
+      textTransform: "uppercase" as const,
+    }),
+    [theme.typography.label],
+  );
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
@@ -941,9 +951,7 @@ export default function BentaScreen() {
               numberOfLines={1}
               style={{
                 color: theme.colors.accent,
-                fontFamily: theme.typography.label,
-                fontSize: 9,
-                fontWeight: "600",
+                ...microLabelTextStyle,
               }}
             >
               {product.category || t("productCard.value.general")}
@@ -984,7 +992,7 @@ export default function BentaScreen() {
         </Pressable>
       );
     },
-    [catalogCardWidth, getRemainingProductStock, handleAddToCart, openQuickEditModal, t, theme],
+    [catalogCardWidth, getRemainingProductStock, handleAddToCart, microLabelTextStyle, openQuickEditModal, t, theme],
   );
 
   return (
@@ -1245,9 +1253,7 @@ export default function BentaScreen() {
                   <Text
                     style={{
                       color: theme.colors.textMuted,
-                      fontFamily: theme.typography.label,
-                      fontSize: 12,
-                      fontWeight: "600",
+                      ...microLabelTextStyle,
                       textAlign: "center",
                     }}
                   >
@@ -1350,9 +1356,7 @@ export default function BentaScreen() {
               <Text
                 style={{
                   color: theme.colors.textMuted,
-                  fontFamily: theme.typography.body,
-                  fontSize: 14,
-                  fontWeight: "600",
+                  ...microLabelTextStyle,
                 }}
               >
                 Subtotal
@@ -1491,10 +1495,7 @@ export default function BentaScreen() {
                   <Text
                     style={{
                       color: theme.colors.textSoft,
-                      fontFamily: theme.typography.body,
-                      fontSize: 11,
-                      fontWeight: "600",
-                      textTransform: "uppercase",
+                      ...microLabelTextStyle,
                     }}
                   >
                     Selected
@@ -1852,9 +1853,7 @@ export default function BentaScreen() {
                 <Text
                   style={{
                     color: theme.colors.textMuted,
-                    fontFamily: theme.typography.body,
-                    fontSize: 13,
-                    fontWeight: "600",
+                    ...microLabelTextStyle,
                   }}
                 >
                   Subtotal
@@ -1988,10 +1987,7 @@ export default function BentaScreen() {
                     <Text
                       style={{
                         color: theme.colors.textSoft,
-                        fontFamily: theme.typography.body,
-                        fontSize: 11,
-                        fontWeight: "600",
-                        textTransform: "uppercase",
+                        ...microLabelTextStyle,
                       }}
                     >
                       Selected
