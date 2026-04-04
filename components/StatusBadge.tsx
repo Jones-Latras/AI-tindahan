@@ -35,9 +35,10 @@ export function StatusBadge({ label, tone = "neutral" }: StatusBadgeProps) {
       <Text
         style={{
           color: palette.color,
-          fontFamily: theme.typography.body,
-          fontSize: 12,
-          fontWeight: "700",
+          fontFamily: theme.typography.label,
+          fontSize: 11,
+          fontWeight: "600",
+          letterSpacing: 0.8,
         }}
       >
         {label}

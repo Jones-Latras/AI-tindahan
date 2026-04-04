@@ -19,11 +19,6 @@ export function SurfaceCard({ children, style }: SurfaceCardProps) {
           borderRadius: theme.radius.md,
           borderWidth: 1,
           padding: theme.spacing.lg,
-          shadowColor: theme.colors.shadow,
-          shadowOffset: { width: 0, height: 12 },
-          shadowOpacity: 1,
-          shadowRadius: 24,
-          elevation: 4,
         },
         style,
       ]}

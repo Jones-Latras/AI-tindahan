@@ -3,7 +3,7 @@ import { useFocusEffect } from "expo-router";
 import { useSQLiteContext } from "expo-sqlite";
 import Storage from "expo-sqlite/kv-store";
 import { useCallback, useMemo, useState } from "react";
-import { ActivityIndicator, Alert, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 
 import { ActionButton } from "@/components/ActionButton";
 import { EmptyState } from "@/components/EmptyState";
@@ -30,7 +30,6 @@ import {
   upsertExpenseBudget,
 } from "@/db/repositories";
 import type {
-  BudgetStatus,
   Expense,
   ExpenseBudget,
   ExpenseBudgetProgress,
@@ -67,6 +66,23 @@ const EXPENSE_CATEGORY_TRANSLATION_KEYS: Partial<Record<string, TranslationKey>>
 type CategoryModalTarget = "expense" | "budget";
 
 const HIDDEN_EXPENSE_CATEGORIES_KEY = "tindahan.expense-hidden-categories";
+const MONO_FONT_FAMILY = Platform.select({
+  android: "monospace",
+  default: "monospace",
+  ios: "Menlo",
+});
+const GASTOS_UI = {
+  accent: "#2a7d4f",
+  accentText: "#edf6ee",
+  badgeBg: "#152019",
+  border: "#1a2a1e",
+  card: "#111a14",
+  label: "#4a6352",
+  positive: "#5cce7e",
+  progressTrack: "#18231c",
+  spent: "#e88a4d",
+  text: "#edf6ee",
+};
 
 function normalizeSearchValue(value: string) {
   return value.trim().toLowerCase();
@@ -120,33 +136,6 @@ function formatBudgetCategoryLabel(
   return formatExpenseCategoryLabel(category, t);
 }
 
-function getBudgetStatusTone(status: BudgetStatus) {
-  if (status === "over") {
-    return "danger" as const;
-  }
-
-  if (status === "warning") {
-    return "warning" as const;
-  }
-
-  return "success" as const;
-}
-
-function getBudgetStatusLabel(
-  status: BudgetStatus,
-  t: (key: TranslationKey, params?: Record<string, number | string>) => string,
-) {
-  if (status === "over") {
-    return t("gastos.budget.status.over");
-  }
-
-  if (status === "warning") {
-    return t("gastos.budget.status.warning");
-  }
-
-  return t("gastos.budget.status.onTrack");
-}
-
 function formatBudgetMonthLabel(budgetMonth: string, locale: string) {
   const [yearString, monthString] = budgetMonth.split("-");
   const year = Number(yearString);
@@ -164,6 +153,54 @@ function getBudgetProgressWidth(usageRatio: number) {
 
 function getBudgetCategoryKey(category: string | null) {
   return category ?? "__overall__";
+}
+
+function getMicroLabelStyle(theme: ReturnType<typeof useAppTheme>["theme"]) {
+  return {
+    color: GASTOS_UI.label,
+    fontFamily: theme.typography.label,
+    fontSize: 11,
+    fontWeight: "600" as const,
+    letterSpacing: 0.8,
+    textTransform: "uppercase" as const,
+  };
+}
+
+function getExpensePrimaryLabel(
+  expense: Expense,
+  t: (key: TranslationKey, params?: Record<string, number | string>) => string,
+) {
+  return expense.description?.trim() || formatExpenseCategoryLabel(expense.category, t);
+}
+
+function getInitials(value: string) {
+  const cleaned = value.trim();
+
+  if (!cleaned) {
+    return "NA";
+  }
+
+  const parts = cleaned
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2);
+
+  if (parts.length === 1) {
+    return parts[0]!.slice(0, 2).toUpperCase();
+  }
+
+  return parts.map((part) => part[0]).join("").toUpperCase();
+}
+
+function getBudgetBalanceBadge(progress: ExpenseBudgetProgress) {
+  if (progress.budgetCents <= 0) {
+    return "0%";
+  }
+
+  const remainingRatio = progress.remainingCents / progress.budgetCents;
+  const percent = Math.round(Math.abs(remainingRatio) * 100);
+
+  return progress.remainingCents >= 0 ? `${percent}%` : `-${percent}%`;
 }
 
 export default function GastosScreen() {
@@ -201,6 +238,13 @@ export default function GastosScreen() {
   const compactCardStyle = {
     gap: theme.spacing.sm,
     padding: theme.spacing.md,
+  } as const;
+  const microLabelStyle = getMicroLabelStyle(theme);
+  const pillChipBaseStyle = {
+    borderRadius: theme.radius.pill,
+    borderWidth: 1,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: 10,
   } as const;
 
   const formatExpenseTimestamp = useCallback(
@@ -309,9 +353,35 @@ export default function GastosScreen() {
     () => formatBudgetMonthLabel(currentBudgetMonth, locale),
     [currentBudgetMonth, locale],
   );
-  const budgetStatusLabel = budgetSummary
-    ? getBudgetStatusLabel(budgetSummary.trackedStatus, t)
-    : t("gastos.budget.status.noBudget");
+  const summaryCards = useMemo(
+    () => [
+      {
+        key: "today",
+        label: t("gastos.summary.today"),
+        tone: GASTOS_UI.spent,
+        value: formatCurrencyFromCents(summary?.todayExpenseCents ?? 0),
+      },
+      {
+        key: "week",
+        label: t("gastos.summary.week"),
+        tone: GASTOS_UI.spent,
+        value: formatCurrencyFromCents(summary?.weekExpenseCents ?? 0),
+      },
+      {
+        key: "month",
+        label: t("gastos.summary.month"),
+        tone: GASTOS_UI.spent,
+        value: formatCurrencyFromCents(summary?.monthExpenseCents ?? 0),
+      },
+      {
+        key: "budget-left",
+        label: trackedRemainingCents >= 0 ? t("gastos.budget.summary.remaining") : t("gastos.budget.summary.over"),
+        tone: trackedRemainingCents >= 0 ? GASTOS_UI.positive : GASTOS_UI.spent,
+        value: formatCurrencyFromCents(Math.abs(trackedRemainingCents)),
+      },
+    ],
+    [summary?.monthExpenseCents, summary?.todayExpenseCents, summary?.weekExpenseCents, t, trackedRemainingCents],
+  );
 
   const openNewExpenseModal = useCallback(() => {
     const initialCategory = summary?.recentCategories[0] ?? filterCategories[0] ?? "other";
@@ -633,59 +703,71 @@ export default function GastosScreen() {
       }}
       style={({ pressed }) => ({ opacity: pressed ? 0.95 : 1 })}
     >
-      <SurfaceCard style={[compactCardStyle, { gap: theme.spacing.xs, padding: theme.spacing.sm }]}>
+      <SurfaceCard style={[compactCardStyle, { gap: theme.spacing.sm, padding: theme.spacing.sm }]}>
+        <View
+          style={{
+            alignItems: "center",
+            flexDirection: "row",
+            gap: theme.spacing.sm,
+            justifyContent: "space-between",
+          }}
+        >
+          <Text
+            style={{
+              color: theme.colors.text,
+              flex: 1,
+              fontFamily: theme.typography.label,
+              fontSize: 14,
+              fontWeight: "600",
+            }}
+          >
+            {formatBudgetCategoryLabel(progress.category, t)}
+          </Text>
+          <View
+            style={{
+              alignItems: "center",
+              backgroundColor: GASTOS_UI.badgeBg,
+              borderRadius: theme.radius.pill,
+              paddingHorizontal: 10,
+              paddingVertical: 6,
+            }}
+          >
+            <Text
+              style={[
+                microLabelStyle,
+                {
+                  color: progress.remainingCents < 0 ? GASTOS_UI.spent : GASTOS_UI.positive,
+                },
+              ]}
+            >
+              {getBudgetBalanceBadge(progress)}
+            </Text>
+          </View>
+        </View>
+
         <View
           style={{
             alignItems: "center",
             flexDirection: "row",
             justifyContent: "space-between",
-            gap: theme.spacing.sm,
           }}
         >
-          <View style={{ flex: 1, gap: theme.spacing.xs }}>
-            <View
-              style={{
-                alignItems: "center",
-                flexDirection: "row",
-                flexWrap: "wrap",
-                gap: theme.spacing.xs,
-              }}
-            >
-              <Text
-                style={{
-                  color: theme.colors.text,
-                  fontFamily: theme.typography.body,
-                  fontSize: 14,
-                  fontWeight: "700",
-                }}
-              >
-                {formatBudgetCategoryLabel(progress.category, t)}
-              </Text>
-              <StatusBadge
-                label={getBudgetStatusLabel(progress.status, t)}
-                tone={getBudgetStatusTone(progress.status)}
-              />
-            </View>
-            <Text
-              style={{
-                color: theme.colors.textMuted,
-                fontFamily: theme.typography.body,
-                fontSize: 13,
-              }}
-            >
-              {t("gastos.budget.row.spentOfBudget", {
-                budget: formatCurrencyFromCents(progress.budgetCents),
-                spent: formatCurrencyFromCents(progress.spentCents),
-              })}
-            </Text>
-          </View>
-
           <Text
             style={{
-              color: progress.remainingCents < 0 ? theme.colors.danger : theme.colors.primary,
-              fontFamily: theme.typography.display,
-              fontSize: 20,
-              fontWeight: "700",
+              color: theme.colors.textMuted,
+              fontFamily: theme.typography.body,
+              fontSize: 13,
+              fontWeight: "400",
+            }}
+          >
+            {`${formatCurrencyFromCents(progress.spentCents)} / ${formatCurrencyFromCents(progress.budgetCents)}`}
+          </Text>
+          <Text
+            style={{
+              color: progress.remainingCents < 0 ? GASTOS_UI.spent : GASTOS_UI.positive,
+              fontFamily: MONO_FONT_FAMILY,
+              fontSize: 14,
+              fontWeight: "600",
             }}
           >
             {progress.remainingCents >= 0
@@ -696,38 +778,21 @@ export default function GastosScreen() {
 
         <View
           style={{
-            backgroundColor: theme.colors.surfaceMuted,
+            backgroundColor: GASTOS_UI.progressTrack,
             borderRadius: theme.radius.pill,
-            height: 10,
+            height: 4,
             overflow: "hidden",
           }}
         >
           <View
             style={{
-              backgroundColor:
-                progress.status === "over"
-                  ? theme.colors.danger
-                  : progress.status === "warning"
-                    ? theme.colors.warning
-                    : theme.colors.success,
+              backgroundColor: progress.remainingCents < 0 ? GASTOS_UI.spent : GASTOS_UI.accent,
               borderRadius: theme.radius.pill,
               height: "100%",
               width: getBudgetProgressWidth(progress.usageRatio),
             }}
           />
         </View>
-
-        <Text
-          style={{
-            color: theme.colors.textSoft,
-            fontFamily: theme.typography.body,
-            fontSize: 12,
-          }}
-        >
-          {progress.remainingCents >= 0
-            ? t("gastos.budget.row.remaining", { amount: formatCurrencyFromCents(progress.remainingCents) })
-            : t("gastos.budget.row.over", { amount: formatCurrencyFromCents(Math.abs(progress.remainingCents)) })}
-        </Text>
       </SurfaceCard>
     </Pressable>
   );
@@ -740,9 +805,16 @@ export default function GastosScreen() {
           paddingBottom: 120,
           paddingTop: theme.spacing.md,
         }}
+        titleStyle={{
+          fontFamily: theme.typography.label,
+          fontSize: 28,
+          fontWeight: "600",
+          letterSpacing: 0.2,
+        }}
         title={t("gastos.title")}
       >
         <SurfaceCard style={compactCardStyle}>
+          <Text style={microLabelStyle}>{t("gastos.field.category")}</Text>
           <View style={{ alignItems: "center", flexDirection: "row", gap: theme.spacing.sm }}>
             <View
               style={{
@@ -780,8 +852,8 @@ export default function GastosScreen() {
               onPress={() => openNewBudgetModal()}
               style={({ pressed }) => ({
                 alignItems: "center",
-                backgroundColor: theme.colors.primaryMuted,
-                borderColor: theme.colors.primary,
+                backgroundColor: GASTOS_UI.badgeBg,
+                borderColor: GASTOS_UI.border,
                 borderRadius: theme.radius.pill,
                 borderWidth: 1,
                 height: 44,
@@ -790,7 +862,7 @@ export default function GastosScreen() {
                 width: 44,
               })}
             >
-              <Feather color={theme.colors.primary} name="target" size={16} />
+              <Feather color={GASTOS_UI.label} name="target" size={16} />
             </Pressable>
 
             <Pressable
@@ -798,7 +870,7 @@ export default function GastosScreen() {
               onPress={openNewExpenseModal}
               style={({ pressed }) => ({
                 alignItems: "center",
-                backgroundColor: theme.colors.primary,
+                backgroundColor: GASTOS_UI.accent,
                 borderRadius: theme.radius.pill,
                 height: 44,
                 justifyContent: "center",
@@ -806,7 +878,7 @@ export default function GastosScreen() {
                 width: 44,
               })}
             >
-              <Feather color={theme.colors.primaryText} name="plus" size={16} />
+              <Feather color={GASTOS_UI.accentText} name="plus" size={16} />
             </Pressable>
           </View>
 
@@ -816,22 +888,14 @@ export default function GastosScreen() {
                 key="all"
                 onPress={() => setSelectedCategory(null)}
                 style={({ pressed }) => ({
-                  backgroundColor: selectedCategory === null ? theme.colors.primaryMuted : theme.colors.surface,
-                  borderColor: selectedCategory === null ? theme.colors.primary : theme.colors.border,
-                  borderRadius: theme.radius.pill,
-                  borderWidth: 1,
+                  backgroundColor: selectedCategory === null ? GASTOS_UI.accent : GASTOS_UI.badgeBg,
+                  borderColor: selectedCategory === null ? GASTOS_UI.accent : GASTOS_UI.border,
                   opacity: pressed ? 0.92 : 1,
-                  paddingHorizontal: theme.spacing.md,
-                  paddingVertical: 10,
+                  ...pillChipBaseStyle,
                 })}
               >
                 <Text
-                  style={{
-                    color: selectedCategory === null ? theme.colors.primary : theme.colors.textMuted,
-                    fontFamily: theme.typography.body,
-                    fontSize: 13,
-                    fontWeight: "700",
-                  }}
+                  style={[microLabelStyle, { color: selectedCategory === null ? GASTOS_UI.accentText : GASTOS_UI.label }]}
                 >
                   {t("gastos.category.all")}
                 </Text>
@@ -845,22 +909,14 @@ export default function GastosScreen() {
                     key={category}
                     onPress={() => setSelectedCategory(category)}
                     style={({ pressed }) => ({
-                      backgroundColor: active ? theme.colors.primaryMuted : theme.colors.surface,
-                      borderColor: active ? theme.colors.primary : theme.colors.border,
-                      borderRadius: theme.radius.pill,
-                      borderWidth: 1,
+                      backgroundColor: active ? GASTOS_UI.accent : GASTOS_UI.badgeBg,
+                      borderColor: active ? GASTOS_UI.accent : GASTOS_UI.border,
                       opacity: pressed ? 0.92 : 1,
-                      paddingHorizontal: theme.spacing.md,
-                      paddingVertical: 10,
+                      ...pillChipBaseStyle,
                     })}
                   >
                     <Text
-                      style={{
-                        color: active ? theme.colors.primary : theme.colors.textMuted,
-                        fontFamily: theme.typography.body,
-                        fontSize: 13,
-                        fontWeight: "700",
-                      }}
+                      style={[microLabelStyle, { color: active ? GASTOS_UI.accentText : GASTOS_UI.label }]}
                     >
                       {formatExpenseCategoryLabel(category, t)}
                     </Text>
@@ -872,64 +928,23 @@ export default function GastosScreen() {
         </SurfaceCard>
 
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
-          {[
-            {
-              key: "today",
-              label: t("gastos.summary.today"),
-              tone: "warning" as const,
-              value: formatCurrencyFromCents(summary?.todayExpenseCents ?? 0),
-            },
-            {
-              key: "week",
-              label: t("gastos.summary.week"),
-              tone: "warning" as const,
-              value: formatCurrencyFromCents(summary?.weekExpenseCents ?? 0),
-            },
-            {
-              key: "month",
-              label: t("gastos.summary.month"),
-              tone: "primary" as const,
-              value: formatCurrencyFromCents(summary?.monthExpenseCents ?? 0),
-            },
-            {
-              key: "budget-left",
-              label: trackedRemainingCents >= 0 ? t("gastos.budget.summary.remaining") : t("gastos.budget.summary.over"),
-              tone: trackedRemainingCents >= 0 ? ("success" as const) : ("danger" as const),
-              value: formatCurrencyFromCents(Math.abs(trackedRemainingCents)),
-            },
-          ].map((item) => (
+          {summaryCards.map((item) => (
             <SurfaceCard
               key={item.key}
               style={{
                 flex: 1,
                 gap: theme.spacing.xs,
-                minWidth: "46%",
+                minWidth: "47%",
                 padding: theme.spacing.md,
               }}
             >
+              <Text style={microLabelStyle}>{item.label}</Text>
               <Text
                 style={{
-                  color: theme.colors.textMuted,
-                  fontFamily: theme.typography.body,
-                  fontSize: 12,
-                  fontWeight: "700",
-                }}
-              >
-                {item.label}
-              </Text>
-              <Text
-                style={{
-                  color:
-                    item.tone === "warning"
-                      ? theme.colors.warning
-                      : item.tone === "danger"
-                        ? theme.colors.danger
-                        : item.tone === "success"
-                          ? theme.colors.success
-                          : theme.colors.primary,
-                  fontFamily: theme.typography.display,
+                  color: item.tone,
+                  fontFamily: MONO_FONT_FAMILY,
                   fontSize: 20,
-                  fontWeight: "700",
+                  fontWeight: "600",
                 }}
               >
                 {item.value}
@@ -938,105 +953,69 @@ export default function GastosScreen() {
           ))}
         </View>
 
-        <SurfaceCard style={compactCardStyle}>
+        <SurfaceCard style={[compactCardStyle, { gap: theme.spacing.md }]}>
           <View
             style={{
-              alignItems: "center",
-              flexDirection: "row",
-              justifyContent: "space-between",
-              gap: theme.spacing.sm,
+              gap: theme.spacing.xs,
             }}
           >
-            <View style={{ flex: 1, gap: theme.spacing.xs }}>
-              <Text
-                style={{
-                  color: theme.colors.text,
-                  fontFamily: theme.typography.body,
-                  fontSize: 16,
-                  fontWeight: "700",
-                }}
-              >
-                {t("gastos.budget.title")}
-              </Text>
-              <Text
-                style={{
-                  color: theme.colors.textMuted,
-                  fontFamily: theme.typography.body,
-                  fontSize: 13,
-                  lineHeight: 18,
-                }}
-              >
-                {t("gastos.budget.subtitle")}
-              </Text>
-            </View>
-            <StatusBadge label={budgetStatusLabel} tone={budgetSummary ? getBudgetStatusTone(budgetSummary.trackedStatus) : "neutral"} />
-          </View>
-
-          <View style={{ alignItems: "center", flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
-            <StatusBadge label={currentBudgetMonthLabel} tone="neutral" />
-            {budgetSummary?.overallBudget ? (
-              <StatusBadge label={t("gastos.budget.summary.mode.overall")} tone="primary" />
-            ) : budgetSummary && budgetSummary.categoryBudgets.length > 0 ? (
-              <StatusBadge label={t("gastos.budget.summary.mode.category")} tone="primary" />
-            ) : null}
+            <Text style={microLabelStyle}>{currentBudgetMonthLabel}</Text>
+            <Text
+              style={{
+                color: theme.colors.text,
+                fontFamily: theme.typography.label,
+                fontSize: 18,
+                fontWeight: "600",
+              }}
+            >
+              {t("gastos.budget.title")}
+            </Text>
           </View>
 
           {budgetSummary && budgetSummary.trackedBudgetCents > 0 ? (
             <>
-              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
+              <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
                 {[
                   {
                     key: "budget",
                     label: t("gastos.budget.summary.budget"),
-                    tone: theme.colors.primary,
+                    tone: theme.colors.text,
                     value: formatCurrencyFromCents(budgetSummary.trackedBudgetCents),
                   },
                   {
                     key: "spent",
                     label: t("gastos.budget.summary.spent"),
-                    tone: theme.colors.warning,
+                    tone: GASTOS_UI.spent,
                     value: formatCurrencyFromCents(budgetSummary.totalSpentCents),
                   },
                   {
-                    key: "remaining",
+                    key: "left",
                     label:
                       budgetSummary.trackedRemainingCents >= 0
                         ? t("gastos.budget.summary.remaining")
                         : t("gastos.budget.summary.over"),
                     tone:
                       budgetSummary.trackedRemainingCents >= 0
-                        ? theme.colors.success
-                        : theme.colors.danger,
+                        ? GASTOS_UI.positive
+                        : GASTOS_UI.spent,
                     value: formatCurrencyFromCents(Math.abs(budgetSummary.trackedRemainingCents)),
                   },
                 ].map((item) => (
                   <View
                     key={item.key}
                     style={{
-                      backgroundColor: theme.colors.surfaceMuted,
-                      borderRadius: theme.radius.md,
                       flex: 1,
                       gap: theme.spacing.xs,
-                      minWidth: "30%",
-                      padding: theme.spacing.md,
+                      minWidth: 0,
                     }}
                   >
-                    <Text
-                      style={{
-                        color: theme.colors.textMuted,
-                        fontFamily: theme.typography.body,
-                        fontSize: 12,
-                        fontWeight: "700",
-                      }}
-                    >
-                      {item.label}
-                    </Text>
+                    <Text style={microLabelStyle}>{item.label}</Text>
                     <Text
                       style={{
                         color: item.tone,
-                        fontFamily: theme.typography.display,
+                        fontFamily: MONO_FONT_FAMILY,
                         fontSize: 18,
-                        fontWeight: "700",
+                        fontWeight: "600",
                       }}
                     >
                       {item.value}
@@ -1045,24 +1024,47 @@ export default function GastosScreen() {
                 ))}
               </View>
 
+              <View style={{ backgroundColor: theme.colors.border, height: 1 }} />
+
               {budgetSummary.unbudgetedSpentCents > 0 ? (
-                <StatusBadge
-                  label={t("gastos.budget.summary.unbudgeted", {
-                    amount: formatCurrencyFromCents(budgetSummary.unbudgetedSpentCents),
-                  })}
-                  tone="warning"
-                />
+                <View
+                  style={{
+                    alignItems: "center",
+                    alignSelf: "flex-start",
+                    backgroundColor: GASTOS_UI.badgeBg,
+                    borderRadius: theme.radius.pill,
+                    paddingHorizontal: 10,
+                    paddingVertical: 6,
+                  }}
+                >
+                  <Text style={[microLabelStyle, { color: GASTOS_UI.spent }]}>
+                    {t("gastos.budget.summary.unbudgeted", {
+                      amount: formatCurrencyFromCents(budgetSummary.unbudgetedSpentCents),
+                    })}
+                  </Text>
+                </View>
               ) : null}
 
               <View style={{ gap: theme.spacing.sm }}>
                 {budgetRows.map(renderBudgetRow)}
               </View>
 
-              <ActionButton
-                label={t("gastos.budget.addButton")}
+              <Pressable
                 onPress={() => openNewBudgetModal()}
-                variant="outline"
-              />
+                style={({ pressed }) => ({
+                  alignItems: "center",
+                  alignSelf: "flex-start",
+                  backgroundColor: GASTOS_UI.accent,
+                  borderRadius: theme.radius.pill,
+                  opacity: pressed ? 0.9 : 1,
+                  paddingHorizontal: theme.spacing.md,
+                  paddingVertical: 12,
+                })}
+              >
+                <Text style={[microLabelStyle, { color: GASTOS_UI.accentText }]}>
+                  {t("gastos.budget.addButton")}
+                </Text>
+              </Pressable>
             </>
           ) : (
             <View style={{ gap: theme.spacing.sm }}>
@@ -1076,14 +1078,31 @@ export default function GastosScreen() {
               >
                 {t("gastos.budget.emptyMessage")}
               </Text>
-              <ActionButton label={t("gastos.budget.addButton")} onPress={() => openNewBudgetModal()} />
+              <Pressable
+                onPress={() => openNewBudgetModal()}
+                style={({ pressed }) => ({
+                  alignItems: "center",
+                  alignSelf: "flex-start",
+                  backgroundColor: GASTOS_UI.accent,
+                  borderRadius: theme.radius.pill,
+                  opacity: pressed ? 0.9 : 1,
+                  paddingHorizontal: theme.spacing.md,
+                  paddingVertical: 12,
+                })}
+              >
+                <Text style={[microLabelStyle, { color: GASTOS_UI.accentText }]}>
+                  {t("gastos.budget.addButton")}
+                </Text>
+              </Pressable>
             </View>
           )}
         </SurfaceCard>
 
+        <Text style={microLabelStyle}>{t("home.analytics.transactions")}</Text>
+
         {loading ? (
           <SurfaceCard style={[compactCardStyle, { alignItems: "center" }]}>
-            <ActivityIndicator color={theme.colors.primary} />
+            <ActivityIndicator color={GASTOS_UI.accent} />
             <Text
               style={{
                 color: theme.colors.textMuted,
@@ -1116,52 +1135,57 @@ export default function GastosScreen() {
               <SurfaceCard style={[compactCardStyle, { gap: theme.spacing.xs }]}>
                 <View
                   style={{
-                    alignItems: "flex-start",
+                    alignItems: "center",
                     flexDirection: "row",
                     gap: theme.spacing.md,
                     justifyContent: "space-between",
                   }}
                 >
-                  <View style={{ flex: 1, gap: theme.spacing.xs }}>
-                    <View
-                      style={{
-                        alignItems: "center",
-                        columnGap: theme.spacing.sm,
-                        flexDirection: "row",
-                        flexWrap: "wrap",
-                        rowGap: theme.spacing.xs,
-                      }}
-                    >
-                      <StatusBadge label={formatExpenseCategoryLabel(expense.category, t)} tone="warning" />
-                      <Text
-                        style={{
-                          color: theme.colors.textMuted,
-                          fontFamily: theme.typography.body,
-                          fontSize: 13,
-                        }}
-                      >
-                        {formatExpenseTimestamp(expense.expenseDate)}
-                      </Text>
-                    </View>
+                  <View
+                    style={{
+                      alignItems: "center",
+                      backgroundColor: GASTOS_UI.badgeBg,
+                      borderRadius: theme.radius.pill,
+                      height: 40,
+                      justifyContent: "center",
+                      width: 40,
+                    }}
+                  >
+                    <Text style={[microLabelStyle, { color: GASTOS_UI.positive }]}>
+                      {getInitials(getExpensePrimaryLabel(expense, t))}
+                    </Text>
+                  </View>
 
+                  <View style={{ flex: 1, gap: 4 }}>
                     <Text
+                      numberOfLines={1}
                       style={{
                         color: theme.colors.text,
-                        fontFamily: theme.typography.body,
+                        fontFamily: theme.typography.label,
                         fontSize: 14,
-                        lineHeight: 20,
+                        fontWeight: "600",
                       }}
                     >
-                      {expense.description?.trim() || t("gastos.noDescription")}
+                      {getExpensePrimaryLabel(expense, t)}
+                    </Text>
+                    <Text
+                      numberOfLines={1}
+                      style={{
+                        color: theme.colors.textMuted,
+                        fontFamily: theme.typography.body,
+                        fontSize: 13,
+                      }}
+                    >
+                      {formatExpenseTimestamp(expense.expenseDate)}
                     </Text>
                   </View>
 
                   <Text
                     style={{
-                      color: theme.colors.warning,
-                      fontFamily: theme.typography.display,
-                      fontSize: 20,
-                      fontWeight: "700",
+                      color: GASTOS_UI.spent,
+                      fontFamily: MONO_FONT_FAMILY,
+                      fontSize: 18,
+                      fontWeight: "600",
                     }}
                   >
                     {formatCurrencyFromCents(expense.amountCents)}
