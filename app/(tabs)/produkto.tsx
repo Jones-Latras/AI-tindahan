@@ -5,13 +5,23 @@ import { useFocusEffect, useRouter } from "expo-router";
 import { useSQLiteContext } from "expo-sqlite";
 import Storage from "expo-sqlite/kv-store";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Alert, Image, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import {
+  ActivityIndicator,
+  Alert,
+  Image,
+  Platform,
+  Pressable,
+  ScrollView,
+  Text,
+  TextInput,
+  View,
+  useWindowDimensions,
+} from "react-native";
 
 import { ActionButton } from "@/components/ActionButton";
 import { EmptyState } from "@/components/EmptyState";
 import { InputField } from "@/components/InputField";
 import { ModalSheet } from "@/components/ModalSheet";
-import { ProductCard } from "@/components/ProductCard";
 import { Screen } from "@/components/Screen";
 import { SurfaceCard } from "@/components/SurfaceCard";
 import { useAppLanguage } from "@/contexts/LanguageContext";
@@ -41,11 +51,19 @@ import { centsToDisplayValue, parseCurrencyToCents } from "@/utils/money";
 import {
   computeProfitMargin,
   formatMarginPercent,
+  formatProductMinStockLabel,
   formatProductPriceLabel,
   formatWeightKg,
   roundWeightKg,
   resolveWeightBasedPricing,
 } from "@/utils/pricing";
+
+const CATALOG_GRID_GAP = 10;
+const MONO_FONT_FAMILY = Platform.select({
+  android: "monospace",
+  default: "monospace",
+  ios: "Menlo",
+});
 
 type ProductFormState = {
   name: string;
@@ -206,6 +224,7 @@ export default function ProduktoScreen() {
   const { theme } = useAppTheme();
   const { t } = useAppLanguage();
   const router = useRouter();
+  const { width: windowWidth } = useWindowDimensions();
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
   const [inventoryPools, setInventoryPools] = useState<InventoryPool[]>([]);
@@ -218,6 +237,7 @@ export default function ProduktoScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [pickingImage, setPickingImage] = useState(false);
+  const [catalogInfoProduct, setCatalogInfoProduct] = useState<Product | null>(null);
   const [photoSheetVisible, setPhotoSheetVisible] = useState(false);
   const [categoryModalVisible, setCategoryModalVisible] = useState(false);
   const [barcodeScannerVisible, setBarcodeScannerVisible] = useState(false);
@@ -242,6 +262,10 @@ export default function ProduktoScreen() {
     gap: theme.spacing.sm,
     padding: theme.spacing.sm,
   } as const;
+  const catalogCardWidth = useMemo(
+    () => Math.max(96, Math.floor((windowWidth - 44 - CATALOG_GRID_GAP * 2) / 3)),
+    [windowWidth],
+  );
   const resetRepackState = useCallback(() => {
     setRepackModalVisible(false);
     setRepackProducts([]);
@@ -938,6 +962,10 @@ export default function ProduktoScreen() {
     categories.length === 1
       ? t("produkto.savedCategory.single")
       : t("produkto.savedCategory.plural", { count: categories.length });
+  const catalogCountLabel =
+    visibleProducts.length === 1
+      ? t("produkto.catalogCount.single", { count: visibleProducts.length })
+      : t("produkto.catalogCount.plural", { count: visibleProducts.length });
   const showingLabel = selectedCategory
     ? t("produkto.showingCategory", { category: selectedCategory })
     : t("produkto.showingAll", { categoryCount: categoryCountLabel });
@@ -951,6 +979,143 @@ export default function ProduktoScreen() {
   const selectedRepackOutputProduct =
     repackProducts.find((product) => product.id === repackOutputProductId) ?? null;
 
+  const renderCatalogCard = useCallback(
+    (product: Product) => {
+      return (
+        <Pressable
+          key={product.id}
+          onPress={() => openEditModal(product)}
+          style={({ pressed }) => ({
+            backgroundColor: theme.colors.card,
+            borderColor: theme.colors.border,
+            borderRadius: theme.radius.md,
+            borderWidth: 1,
+            gap: theme.spacing.sm,
+            opacity: pressed ? 0.92 : 1,
+            overflow: "hidden",
+            padding: theme.spacing.sm,
+            width: catalogCardWidth,
+          })}
+        >
+          <View
+            style={{
+              aspectRatio: 1,
+              backgroundColor: theme.colors.surfaceMuted,
+              borderRadius: theme.radius.sm,
+              overflow: "hidden",
+              position: "relative",
+            }}
+          >
+            <Pressable
+              accessibilityLabel={t("productCard.accessibility.showDetails")}
+              hitSlop={6}
+              onPress={(event) => {
+                event.stopPropagation();
+                setCatalogInfoProduct(product);
+              }}
+              style={({ pressed }) => ({
+                alignItems: "center",
+                backgroundColor: theme.colors.card,
+                borderColor: theme.colors.border,
+                borderRadius: theme.radius.pill,
+                borderWidth: 1,
+                height: 22,
+                justifyContent: "center",
+                opacity: pressed ? 0.84 : 1,
+                position: "absolute",
+                right: 8,
+                top: 8,
+                width: 22,
+                zIndex: 2,
+              })}
+            >
+              <Feather color={theme.colors.textMuted} name="info" size={12} />
+            </Pressable>
+
+            {product.imageUri ? (
+              <Image
+                resizeMode="contain"
+                source={{ uri: product.imageUri }}
+                style={{
+                  alignSelf: "center",
+                  height: "85%",
+                  marginTop: "7.5%",
+                  width: "85%",
+                }}
+              />
+            ) : (
+              <View
+                style={{
+                  alignItems: "center",
+                  height: "100%",
+                  justifyContent: "center",
+                  width: "100%",
+                }}
+              >
+                <Feather color={theme.colors.textSoft} name="package" size={20} />
+              </View>
+            )}
+          </View>
+
+          <View
+            style={{
+              alignItems: "flex-start",
+              backgroundColor: theme.colors.accentMuted,
+              borderRadius: theme.radius.pill,
+              paddingHorizontal: 8,
+              paddingVertical: 5,
+            }}
+          >
+            <Text
+              numberOfLines={1}
+              style={{
+                color: theme.colors.accent,
+                fontFamily: theme.typography.label,
+                fontSize: 9,
+                fontWeight: "600",
+              }}
+            >
+              {product.category || t("productCard.value.general")}
+            </Text>
+          </View>
+
+          <View
+            style={{
+              justifyContent: "space-between",
+            }}
+          >
+            <View style={{ gap: 2, minWidth: 0 }}>
+              <Text
+                ellipsizeMode="tail"
+                numberOfLines={1}
+                style={{
+                  color: theme.colors.textMuted,
+                  fontFamily: theme.typography.body,
+                  fontSize: 12,
+                  lineHeight: 16,
+                }}
+              >
+                {product.name}
+              </Text>
+              <Text
+                numberOfLines={1}
+                style={{
+                  color: theme.colors.primary,
+                  fontFamily: MONO_FONT_FAMILY,
+                  fontSize: 13,
+                  fontWeight: "600",
+                }}
+              >
+                {formatProductPriceLabel(product)}
+              </Text>
+            </View>
+          </View>
+        </Pressable>
+      );
+    },
+    [catalogCardWidth, openEditModal, t, theme],
+  );
+
   return (
     <Screen title={t("produkto.title")}>
       <SurfaceCard style={compactCatalogControlsStyle}>
@@ -962,10 +1127,12 @@ export default function ProduktoScreen() {
             borderRadius: theme.radius.sm,
             borderWidth: 1,
             flexDirection: "row",
+            gap: theme.spacing.sm,
             minHeight: 52,
             paddingHorizontal: theme.spacing.md,
           }}
         >
+          <Feather color={theme.colors.textSoft} name="search" size={16} />
           <TextInput
             allowFontScaling={false}
             onChangeText={setSearchTerm}
@@ -1020,7 +1187,7 @@ export default function ProduktoScreen() {
                 key={`compact-${option.label}`}
                 onPress={() => setSelectedCategory(option.value)}
                 style={({ pressed }) => ({
-                  backgroundColor: active ? theme.colors.primary : theme.colors.surface,
+                  backgroundColor: active ? theme.colors.primaryMuted : theme.colors.surface,
                   borderColor: active ? theme.colors.primary : theme.colors.border,
                   borderRadius: theme.radius.pill,
                   borderWidth: 1,
@@ -1031,8 +1198,8 @@ export default function ProduktoScreen() {
               >
                 <Text
                   style={{
-                    color: active ? theme.colors.primaryText : theme.colors.text,
-                    fontFamily: theme.typography.body,
+                    color: active ? theme.colors.primary : theme.colors.text,
+                    fontFamily: theme.typography.label,
                     fontSize: 12,
                     fontWeight: "600",
                   }}
@@ -1202,7 +1369,28 @@ export default function ProduktoScreen() {
         </View>
       </SurfaceCard>
 
-      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.md }}>
+      <View
+        style={{
+          alignItems: "center",
+          flexDirection: "row",
+          justifyContent: "space-between",
+        }}
+      >
+        <Text
+          style={{
+            color: theme.colors.textSoft,
+            fontFamily: theme.typography.label,
+            fontSize: 11,
+            fontWeight: "600",
+            letterSpacing: 0.8,
+            textTransform: "uppercase",
+          }}
+        >
+          {catalogCountLabel}
+        </Text>
+      </View>
+
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: CATALOG_GRID_GAP }}>
         {loading ? (
           <SurfaceCard style={{ width: "100%" }}>
             <Text
@@ -1215,32 +1403,56 @@ export default function ProduktoScreen() {
               {t("produkto.loadingCatalog")}
             </Text>
           </SurfaceCard>
-        ) : products.length > 0 ? (
-          visibleProducts.length > 0 ? (
-            visibleProducts.map((product) => {
-              const availableStock = product.isWeightBased ? product.totalKgAvailable ?? 0 : product.stock;
-
-              return (
-                <ProductCard
-                  category={product.category}
-                  imageUri={product.imageUri}
-                  isWeightBased={product.isWeightBased}
-                  key={product.id}
-                  marginPercent={formatMarginPercent(computeProfitMargin(product.costPriceCents, product.priceCents))}
-                  minStock={product.minStock}
-                  name={product.name}
-                  onPress={() => openEditModal(product)}
-                  priceCents={product.priceCents}
-                  priceLabel={formatProductPriceLabel(product)}
-                  showInfoFlip
-                  stock={availableStock}
-                />
-              );
-            })
-          ) : (
-            <SurfaceCard style={{ width: "100%" }}>
-              <Text
-                style={{
+          ) : products.length > 0 ? (
+            visibleProducts.length > 0 ? (
+              <>
+                {visibleProducts.map(renderCatalogCard)}
+                <Pressable
+                  onPress={openCreateModal}
+                  style={({ pressed }) => ({
+                    alignItems: "center",
+                    backgroundColor: theme.colors.surface,
+                    borderColor: theme.colors.borderStrong,
+                    borderRadius: theme.radius.md,
+                    borderStyle: "dashed",
+                    borderWidth: 1,
+                    gap: theme.spacing.xs,
+                    justifyContent: "center",
+                    minHeight: catalogCardWidth + 74,
+                    opacity: pressed ? 0.86 : 1,
+                    padding: theme.spacing.md,
+                    width: catalogCardWidth,
+                  })}
+                >
+                  <View
+                    style={{
+                      alignItems: "center",
+                      backgroundColor: theme.colors.surfaceMuted,
+                      borderRadius: theme.radius.pill,
+                      height: 28,
+                      justifyContent: "center",
+                      width: 28,
+                    }}
+                  >
+                    <Feather color={theme.colors.textMuted} name="plus" size={16} />
+                  </View>
+                  <Text
+                    style={{
+                      color: theme.colors.textMuted,
+                      fontFamily: theme.typography.label,
+                      fontSize: 12,
+                      fontWeight: "600",
+                      textAlign: "center",
+                    }}
+                  >
+                    {t("produkto.addProductButton")}
+                  </Text>
+                </Pressable>
+              </>
+            ) : (
+              <SurfaceCard style={{ width: "100%" }}>
+                <Text
+                  style={{
                   color: theme.colors.textMuted,
                   fontFamily: theme.typography.body,
                   fontSize: 14,
@@ -1260,6 +1472,116 @@ export default function ProduktoScreen() {
           </View>
         )}
       </View>
+
+      <ModalSheet
+        footer={
+          <View style={{ gap: theme.spacing.sm }}>
+            <ActionButton label="Edit Product" onPress={() => {
+              if (catalogInfoProduct) {
+                setCatalogInfoProduct(null);
+                openEditModal(catalogInfoProduct);
+              }
+            }} />
+            <ActionButton label="Close" onPress={() => setCatalogInfoProduct(null)} variant="ghost" />
+          </View>
+        }
+        onClose={() => setCatalogInfoProduct(null)}
+        subtitle={catalogInfoProduct?.category || t("productCard.value.general")}
+        title={catalogInfoProduct?.name ?? "Product"}
+        visible={Boolean(catalogInfoProduct)}
+      >
+        {catalogInfoProduct ? (
+          <View style={{ gap: theme.spacing.sm }}>
+            <SurfaceCard style={{ gap: theme.spacing.sm, padding: theme.spacing.md }}>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", gap: theme.spacing.md }}>
+                <Text style={{ color: theme.colors.textMuted, fontFamily: theme.typography.body, fontSize: 13 }}>
+                  {t("productCard.detail.price")}
+                </Text>
+                <Text
+                  style={{
+                    color: theme.colors.primary,
+                    fontFamily: MONO_FONT_FAMILY,
+                    fontSize: 13,
+                    fontWeight: "600",
+                  }}
+                >
+                  {formatProductPriceLabel(catalogInfoProduct)}
+                </Text>
+              </View>
+
+              <View style={{ flexDirection: "row", justifyContent: "space-between", gap: theme.spacing.md }}>
+                <Text style={{ color: theme.colors.textMuted, fontFamily: theme.typography.body, fontSize: 13 }}>
+                  {t("productCard.detail.stock")}
+                </Text>
+                <Text
+                  style={{
+                    color: theme.colors.text,
+                    fontFamily: theme.typography.body,
+                    fontSize: 13,
+                    fontWeight: "600",
+                    textAlign: "right",
+                  }}
+                >
+                  {catalogInfoProduct.isWeightBased
+                    ? formatWeightKg(catalogInfoProduct.totalKgAvailable ?? 0)
+                    : catalogInfoProduct.stock}
+                </Text>
+              </View>
+
+              <View style={{ flexDirection: "row", justifyContent: "space-between", gap: theme.spacing.md }}>
+                <Text style={{ color: theme.colors.textMuted, fontFamily: theme.typography.body, fontSize: 13 }}>
+                  {t("productCard.detail.minStock")}
+                </Text>
+                <Text
+                  style={{
+                    color: theme.colors.text,
+                    fontFamily: theme.typography.body,
+                    fontSize: 13,
+                    fontWeight: "600",
+                    textAlign: "right",
+                  }}
+                >
+                  {formatProductMinStockLabel(catalogInfoProduct)}
+                </Text>
+              </View>
+
+              <View style={{ flexDirection: "row", justifyContent: "space-between", gap: theme.spacing.md }}>
+                <Text style={{ color: theme.colors.textMuted, fontFamily: theme.typography.body, fontSize: 13 }}>
+                  {t("productCard.detail.margin")}
+                </Text>
+                <Text
+                  style={{
+                    color: theme.colors.success,
+                    fontFamily: theme.typography.body,
+                    fontSize: 13,
+                    fontWeight: "600",
+                    textAlign: "right",
+                  }}
+                >
+                  {formatMarginPercent(computeProfitMargin(catalogInfoProduct.costPriceCents, catalogInfoProduct.priceCents))}
+                </Text>
+              </View>
+
+              <View style={{ flexDirection: "row", justifyContent: "space-between", gap: theme.spacing.md }}>
+                <Text style={{ color: theme.colors.textMuted, fontFamily: theme.typography.body, fontSize: 13 }}>
+                  {t("productCard.detail.barcode")}
+                </Text>
+                <Text
+                  style={{
+                    color: catalogInfoProduct.barcode ? theme.colors.text : theme.colors.textSoft,
+                    fontFamily: theme.typography.body,
+                    fontSize: 13,
+                    fontWeight: "600",
+                    textAlign: "right",
+                  }}
+                >
+                  {catalogInfoProduct.barcode || t("productCard.value.noBarcode")}
+                </Text>
+              </View>
+            </SurfaceCard>
+          </View>
+        ) : null}
+      </ModalSheet>
 
       <ModalSheet
         footer={

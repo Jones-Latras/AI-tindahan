@@ -953,13 +953,10 @@ export default function BentaScreen() {
 
           <View
             style={{
-              alignItems: "flex-end",
-              flexDirection: "row",
-              gap: theme.spacing.xs,
               justifyContent: "space-between",
             }}
           >
-            <View style={{ flex: 1, gap: 2, minWidth: 0 }}>
+            <View style={{ gap: 2, minWidth: 0 }}>
               <Text
                 ellipsizeMode="tail"
                 numberOfLines={1}
@@ -984,31 +981,6 @@ export default function BentaScreen() {
                 {formatProductPriceLabel(product)}
               </Text>
             </View>
-
-            <Pressable
-              accessibilityLabel={`Add ${product.name}`}
-              disabled={!canAdd}
-              hitSlop={6}
-              onPress={(event) => {
-                event.stopPropagation();
-                handleAddToCart(product);
-              }}
-              style={({ pressed }) => ({
-                alignItems: "center",
-                backgroundColor: canAdd ? theme.colors.primary : theme.colors.surfaceMuted,
-                borderRadius: 8,
-                height: 24,
-                justifyContent: "center",
-                opacity: pressed ? 0.88 : 1,
-                width: 24,
-              })}
-            >
-              <Feather
-                color={canAdd ? theme.colors.primaryText : theme.colors.textSoft}
-                name="plus"
-                size={14}
-              />
-            </Pressable>
           </View>
         </Pressable>
       );
