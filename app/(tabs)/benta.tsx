@@ -1,11 +1,24 @@
 import { Feather } from "@expo/vector-icons";
 import { CameraView, useCameraPermissions, type BarcodeScanningResult } from "expo-camera";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { useSQLiteContext } from "expo-sqlite";
 import Storage from "expo-sqlite/kv-store";
 import * as Sharing from "expo-sharing";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Alert, Animated, Easing, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import {
+  ActivityIndicator,
+  Alert,
+  Animated,
+  Easing,
+  Image,
+  Platform,
+  Pressable,
+  ScrollView,
+  Text,
+  TextInput,
+  View,
+  useWindowDimensions,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { captureRef } from "react-native-view-shot";
 
@@ -15,7 +28,6 @@ import { EmptyState } from "@/components/EmptyState";
 import { InputField } from "@/components/InputField";
 import { MilestoneCelebration } from "@/components/MilestoneCelebration";
 import { ModalSheet } from "@/components/ModalSheet";
-import { ProductCard } from "@/components/ProductCard";
 import { ReceiptView } from "@/components/ReceiptView";
 import { Screen } from "@/components/Screen";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -49,7 +61,13 @@ import {
 
 const QUICK_DISCOUNT_PERCENTS = [5, 10, 15, 20];
 const STORE_NAME_KEY = "tindahan.store-name";
-const PAYMENT_METHODS: Array<{ key: PaymentMethod; label: string }> = [
+const CATALOG_GRID_GAP = 10;
+const MONO_FONT_FAMILY = Platform.select({
+  android: "monospace",
+  default: "monospace",
+  ios: "Menlo",
+});
+const PAYMENT_METHODS: { key: PaymentMethod; label: string }[] = [
   { key: "cash", label: "Cash" },
   { key: "gcash", label: "GCash" },
   { key: "maya", label: "Maya" },
@@ -84,6 +102,8 @@ export default function BentaScreen() {
   const { theme } = useAppTheme();
   const { t } = useAppLanguage();
   const insets = useSafeAreaInsets();
+  const router = useRouter();
+  const { width: windowWidth } = useWindowDimensions();
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
@@ -112,20 +132,21 @@ export default function BentaScreen() {
   const [quickEditProduct, setQuickEditProduct] = useState<Product | null>(null);
   const [quickEditValue, setQuickEditValue] = useState("");
   const [savingQuickEdit, setSavingQuickEdit] = useState(false);
+  const [catalogInfoProduct, setCatalogInfoProduct] = useState<Product | null>(null);
   const [containerDecisionVisible, setContainerDecisionVisible] = useState(false);
   const [containerDecisions, setContainerDecisions] = useState<ContainerDecision[]>([]);
   const [receiptVisible, setReceiptVisible] = useState(false);
   const [sharingReceipt, setSharingReceipt] = useState(false);
   const [lastReceipt, setLastReceipt] = useState<{
     saleId: number;
-    items: Array<{
+    items: {
       name: string;
       quantity: number;
       weightKg: number | null;
       priceCents: number;
       lineTotalCents: number;
       isWeightBased: boolean;
-    }>;
+    }[];
     subtotalCents: number;
     discountCents: number;
     totalCents: number;
@@ -133,16 +154,15 @@ export default function BentaScreen() {
     changeCents: number;
     paymentMethod: string;
     date: string;
-    containerReturns: Array<{
+    containerReturns: {
       containerLabelSnapshot: string;
       quantityOut: number;
       quantityReturned: number;
       status: "open" | "partial" | "returned";
-    }>;
+    }[];
   } | null>(null);
   const [storeName, setStoreName] = useState("");
   const receiptCaptureRef = useRef<View>(null);
-  const cartActiveProgress = useRef(new Animated.Value(0)).current;
   const cartPulseScale = useRef(new Animated.Value(1)).current;
   const cartPulseLift = useRef(new Animated.Value(0)).current;
   const hasLoadedCatalogRef = useRef(false);
@@ -166,17 +186,12 @@ export default function BentaScreen() {
     gap: theme.spacing.sm,
     padding: theme.spacing.sm,
   } as const;
+  const catalogCardWidth = useMemo(
+    () => Math.max(96, Math.floor((windowWidth - 44 - CATALOG_GRID_GAP * 2) / 3)),
+    [windowWidth],
+  );
 
   const productById = useMemo(() => new Map(products.map((product) => [product.id, product])), [products]);
-  const cartSelectionCountByProductId = useMemo(() => {
-    const selectionCount = new Map<number, number>();
-
-    for (const item of cartItems) {
-      selectionCount.set(item.id, item.isWeightBased ? 1 : Math.max(1, Math.trunc(item.quantity)));
-    }
-
-    return selectionCount;
-  }, [cartItems]);
   const reservedQuantityByProductId = useMemo(() => {
     const reservedQuantity = new Map<number, number>();
 
@@ -282,18 +297,6 @@ export default function BentaScreen() {
     return () => clearTimeout(timeout);
   }, [loadScreenData]);
 
-  useEffect(() => {
-    cartActiveProgress.stopAnimation();
-
-    Animated.spring(cartActiveProgress, {
-      damping: 18,
-      mass: 0.85,
-      stiffness: 180,
-      toValue: cartItems.length > 0 ? 1 : 0,
-      useNativeDriver: true,
-    }).start();
-  }, [cartActiveProgress, cartItems.length]);
-
   const cashPaidCents = parseCurrencyToCents(cashInput);
   const hasValidCash = Number.isFinite(cashPaidCents);
 
@@ -336,6 +339,10 @@ export default function BentaScreen() {
   const changeCents = paymentMethod === "cash" && hasValidCash ? cashPaidCents - finalTotalCents : 0;
   const cartCountLabel =
     cartUnitCount === 1 ? t("benta.cartCount.single") : t("benta.cartCount.plural", { count: cartUnitCount });
+  const catalogCountLabel =
+    visibleProducts.length === 1
+      ? t("benta.catalogCount.single", { count: visibleProducts.length })
+      : t("benta.catalogCount.plural", { count: visibleProducts.length });
   const selectedCustomerName = selectedCustomer?.name ?? "";
   const selectedCustomerBalanceText = selectedCustomer ? formatCurrencyFromCents(selectedCustomer.balanceCents) : "";
   const isEnoughCash = paymentMethod === "cash" ? hasValidCash && cashPaidCents >= finalTotalCents : true;
@@ -344,7 +351,7 @@ export default function BentaScreen() {
   const isCheckoutReady =
     cartItems.length > 0 && isEnoughCash && (!requiresCustomer || Boolean(selectedCustomer));
   const floatingCartBottomOffset = getFloatingCartBottomOffset(insets.bottom);
-  const screenBottomPadding = floatingCartBottomOffset + (hasActiveCart ? 80 : 58);
+  const screenBottomPadding = floatingCartBottomOffset + 82;
 
   const triggerCartPulse = useCallback(() => {
     cartPulseScale.stopAnimation();
@@ -840,6 +847,175 @@ export default function BentaScreen() {
     ]);
   }, [cartItems.length, clearCart, t]);
 
+  const renderCatalogCard = useCallback(
+    (product: Product) => {
+      const availableStock = getRemainingProductStock(product);
+      const canAdd = availableStock > 0;
+
+      return (
+        <Pressable
+          key={product.id}
+          onLongPress={product.isWeightBased ? () => openQuickEditModal(product) : undefined}
+          onPress={() => handleAddToCart(product)}
+          style={({ pressed }) => ({
+            backgroundColor: theme.colors.card,
+            borderColor: theme.colors.border,
+            borderRadius: theme.radius.md,
+            borderWidth: 1,
+            gap: theme.spacing.sm,
+            opacity: pressed ? 0.92 : canAdd ? 1 : 0.72,
+            overflow: "hidden",
+            padding: theme.spacing.sm,
+            width: catalogCardWidth,
+          })}
+        >
+          <View
+            style={{
+              aspectRatio: 1,
+              backgroundColor: theme.colors.surfaceMuted,
+              borderRadius: theme.radius.sm,
+              overflow: "hidden",
+              position: "relative",
+            }}
+          >
+            <Pressable
+              accessibilityLabel={t("productCard.accessibility.showDetails")}
+              hitSlop={6}
+              onPress={(event) => {
+                event.stopPropagation();
+                setCatalogInfoProduct(product);
+              }}
+              style={({ pressed }) => ({
+                alignItems: "center",
+                backgroundColor: theme.colors.card,
+                borderColor: theme.colors.border,
+                borderRadius: theme.radius.pill,
+                borderWidth: 1,
+                height: 22,
+                justifyContent: "center",
+                opacity: pressed ? 0.84 : 1,
+                position: "absolute",
+                right: 8,
+                top: 8,
+                width: 22,
+                zIndex: 2,
+              })}
+            >
+              <Feather color={theme.colors.textMuted} name="info" size={12} />
+            </Pressable>
+
+            {product.imageUri ? (
+              <Image
+                resizeMode="contain"
+                source={{ uri: product.imageUri }}
+                style={{
+                  alignSelf: "center",
+                  height: "85%",
+                  marginTop: "7.5%",
+                  width: "85%",
+                }}
+              />
+            ) : (
+              <View
+                style={{
+                  alignItems: "center",
+                  height: "100%",
+                  justifyContent: "center",
+                  width: "100%",
+                }}
+              >
+                <Feather color={theme.colors.textSoft} name="package" size={20} />
+              </View>
+            )}
+          </View>
+
+          <View
+            style={{
+              alignItems: "flex-start",
+              backgroundColor: theme.colors.accentMuted,
+              borderRadius: theme.radius.pill,
+              paddingHorizontal: 8,
+              paddingVertical: 5,
+            }}
+          >
+            <Text
+              numberOfLines={1}
+              style={{
+                color: theme.colors.accent,
+                fontFamily: theme.typography.label,
+                fontSize: 9,
+                fontWeight: "600",
+              }}
+            >
+              {product.category || t("productCard.value.general")}
+            </Text>
+          </View>
+
+          <View
+            style={{
+              alignItems: "flex-end",
+              flexDirection: "row",
+              gap: theme.spacing.xs,
+              justifyContent: "space-between",
+            }}
+          >
+            <View style={{ flex: 1, gap: 2, minWidth: 0 }}>
+              <Text
+                ellipsizeMode="tail"
+                numberOfLines={1}
+                style={{
+                  color: theme.colors.textMuted,
+                  fontFamily: theme.typography.body,
+                  fontSize: 12,
+                  lineHeight: 16,
+                }}
+              >
+                {product.name}
+              </Text>
+              <Text
+                numberOfLines={1}
+                style={{
+                  color: theme.colors.primary,
+                  fontFamily: MONO_FONT_FAMILY,
+                  fontSize: 13,
+                  fontWeight: "600",
+                }}
+              >
+                {formatProductPriceLabel(product)}
+              </Text>
+            </View>
+
+            <Pressable
+              accessibilityLabel={`Add ${product.name}`}
+              disabled={!canAdd}
+              hitSlop={6}
+              onPress={(event) => {
+                event.stopPropagation();
+                handleAddToCart(product);
+              }}
+              style={({ pressed }) => ({
+                alignItems: "center",
+                backgroundColor: canAdd ? theme.colors.primary : theme.colors.surfaceMuted,
+                borderRadius: 8,
+                height: 24,
+                justifyContent: "center",
+                opacity: pressed ? 0.88 : 1,
+                width: 24,
+              })}
+            >
+              <Feather
+                color={canAdd ? theme.colors.primaryText : theme.colors.textSoft}
+                name="plus"
+                size={14}
+              />
+            </Pressable>
+          </View>
+        </Pressable>
+      );
+    },
+    [catalogCardWidth, getRemainingProductStock, handleAddToCart, openQuickEditModal, t, theme],
+  );
+
   return (
     <>
       <Screen
@@ -849,184 +1025,78 @@ export default function BentaScreen() {
           paddingTop: theme.spacing.md,
         }}
         overlay={
-          <>
-            <Animated.View
-              pointerEvents={hasActiveCart ? "none" : "auto"}
-              style={{
-                bottom: floatingCartBottomOffset,
-                opacity: cartActiveProgress.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [1, 0],
-                }),
-                position: "absolute",
-                right: theme.spacing.lg,
-                transform: [
-                  {
-                    scale: cartActiveProgress.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [1, 0.84],
-                    }),
-                  },
-                  {
-                    translateY: cartActiveProgress.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [0, 12],
-                    }),
-                  },
-                ],
-              }}
+          <Animated.View
+            style={{
+              bottom: floatingCartBottomOffset,
+              position: "absolute",
+              right: theme.spacing.lg,
+              transform: [{ translateY: cartPulseLift }, { scale: cartPulseScale }],
+            }}
+          >
+            <Pressable
+              accessibilityLabel={
+                hasActiveCart
+                  ? t("benta.cartBar.activeSummary", {
+                      count: cartCountLabel,
+                      total: formatCurrencyFromCents(finalTotalCents),
+                    })
+                  : t("benta.cartBar.emptyTitle")
+              }
+              onLongPress={hasActiveCart ? handleClearCart : undefined}
+              onPress={() => setCartSheetVisible(true)}
+              style={({ pressed }) => ({
+                alignItems: "center",
+                backgroundColor: hasActiveCart ? theme.colors.primary : theme.colors.card,
+                borderColor: hasActiveCart ? theme.colors.primary : theme.colors.border,
+                borderRadius: theme.radius.pill,
+                borderWidth: 1,
+                height: 58,
+                justifyContent: "center",
+                opacity: pressed ? 0.92 : 1,
+                shadowColor: theme.colors.shadow,
+                shadowOffset: { width: 0, height: 10 },
+                shadowOpacity: 1,
+                shadowRadius: 24,
+                width: 58,
+              })}
             >
-              <Pressable
-                accessibilityLabel={t("benta.cartBar.emptyTitle")}
-                onPress={() => setCartSheetVisible(true)}
-                style={({ pressed }) => ({
-                  alignItems: "center",
-                  backgroundColor: theme.colors.card,
-                  borderColor: theme.colors.border,
-                  borderRadius: theme.radius.pill,
-                  borderWidth: 1,
-                  height: 58,
-                  justifyContent: "center",
-                  opacity: pressed ? 0.94 : 1,
-                  shadowColor: theme.colors.shadow,
-                  shadowOffset: { width: 0, height: 8 },
-                  shadowOpacity: 1,
-                  shadowRadius: 18,
-                  elevation: 3,
-                  width: 58,
-                })}
-              >
-                <Feather color={theme.colors.textSoft} name="shopping-cart" size={20} />
-              </Pressable>
-            </Animated.View>
+              <Feather
+                color={hasActiveCart ? theme.colors.primaryText : theme.colors.textMuted}
+                name="shopping-cart"
+                size={20}
+              />
 
-            <Animated.View
-              pointerEvents={hasActiveCart ? "auto" : "none"}
-              style={{
-                bottom: floatingCartBottomOffset,
-                left: theme.spacing.lg,
-                opacity: cartActiveProgress,
-                position: "absolute",
-                right: theme.spacing.lg,
-                transform: [
-                  {
-                    translateY: Animated.add(
-                      cartPulseLift,
-                      cartActiveProgress.interpolate({
-                        inputRange: [0, 1],
-                        outputRange: [18, 0],
-                      }),
-                    ),
-                  },
-                  {
-                    scale: Animated.multiply(
-                      cartPulseScale,
-                      cartActiveProgress.interpolate({
-                        inputRange: [0, 1],
-                        outputRange: [0.94, 1],
-                      }),
-                    ),
-                  },
-                ],
-              }}
-            >
-              <View
-                style={{
-                  backgroundColor: theme.colors.primary,
-                  borderRadius: theme.radius.pill,
-                  paddingHorizontal: theme.spacing.sm,
-                  paddingVertical: theme.spacing.sm,
-                  shadowColor: theme.colors.shadow,
-                  shadowOffset: { width: 0, height: 10 },
-                  shadowOpacity: 1,
-                  shadowRadius: 20,
-                  elevation: 4,
-                }}
-              >
-                <View style={{ alignItems: "center", flexDirection: "row", gap: theme.spacing.sm }}>
-                  <Pressable
-                    onPress={() => setCartSheetVisible(true)}
-                    style={({ pressed }) => ({
-                      alignItems: "center",
-                      flex: 1,
-                      flexDirection: "row",
-                      gap: theme.spacing.md,
-                      opacity: pressed ? 0.96 : 1,
-                    })}
+              {cartUnitCount > 0 ? (
+                <View
+                  style={{
+                    alignItems: "center",
+                    backgroundColor: theme.colors.warning,
+                    borderColor: theme.colors.card,
+                    borderRadius: theme.radius.pill,
+                    borderWidth: 2,
+                    justifyContent: "center",
+                    minWidth: 22,
+                    paddingHorizontal: 5,
+                    position: "absolute",
+                    right: -3,
+                    top: -3,
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: theme.colors.primaryText,
+                      fontFamily: theme.typography.label,
+                      fontSize: 11,
+                      fontWeight: "600",
+                      lineHeight: 18,
+                    }}
                   >
-                    <View style={{ alignItems: "center", flex: 1, flexDirection: "row", gap: theme.spacing.sm }}>
-                      <Text
-                        style={{
-                          color: theme.colors.primaryText,
-                          fontFamily: theme.typography.body,
-                          fontSize: 14,
-                          fontWeight: "600",
-                        }}
-                      >
-                        {cartCountLabel}
-                      </Text>
-                      <Text
-                        style={{
-                          color: theme.colors.primaryText,
-                          fontFamily: theme.typography.body,
-                          fontSize: 14,
-                          opacity: 0.72,
-                        }}
-                      >
-                        |
-                      </Text>
-                      <Text
-                        style={{
-                          color: theme.colors.primaryText,
-                          fontFamily: theme.typography.display,
-                          fontSize: 18,
-                          fontWeight: "600",
-                        }}
-                      >
-                        {formatCurrencyFromCents(finalTotalCents)}
-                      </Text>
-                    </View>
-                    <View
-                      style={{
-                        backgroundColor: theme.colors.primaryText,
-                        borderRadius: theme.radius.pill,
-                        paddingHorizontal: theme.spacing.lg,
-                        paddingVertical: 10,
-                      }}
-                    >
-                      <Text
-                        style={{
-                          color: theme.colors.primary,
-                          fontFamily: theme.typography.body,
-                          fontSize: 12,
-                          fontWeight: "600",
-                        }}
-                      >
-                        {t("benta.cartBar.view")}
-                      </Text>
-                    </View>
-                  </Pressable>
-                  <Pressable
-                    accessibilityLabel={t("benta.cartBar.clear")}
-                    onPress={handleClearCart}
-                    style={({ pressed }) => ({
-                      alignItems: "center",
-                      backgroundColor: "rgba(255, 255, 255, 0.16)",
-                      borderColor: "rgba(255, 255, 255, 0.28)",
-                      borderRadius: theme.radius.pill,
-                      borderWidth: 1,
-                      height: 42,
-                      justifyContent: "center",
-                      opacity: pressed ? 0.82 : 1,
-                      width: 42,
-                    })}
-                  >
-                    <Feather color={theme.colors.primaryText} name="trash-2" size={18} />
-                  </Pressable>
+                    {cartUnitCount > 99 ? "99+" : cartUnitCount}
+                  </Text>
                 </View>
-              </View>
-            </Animated.View>
-          </>
+              ) : null}
+            </Pressable>
+          </Animated.View>
         }
         title={t("benta.title")}
       >
@@ -1039,15 +1109,17 @@ export default function BentaScreen() {
               borderRadius: theme.radius.sm,
               borderWidth: 1,
               flexDirection: "row",
+              gap: theme.spacing.sm,
               minHeight: 52,
               paddingLeft: theme.spacing.md,
               paddingRight: theme.spacing.xs,
             }}
           >
+            <Feather color={theme.colors.textSoft} name="search" size={16} />
             <TextInput
               allowFontScaling={false}
               onChangeText={setSearchTerm}
-              placeholder="Search or scan"
+              placeholder={t("benta.searchPlaceholder")}
               placeholderTextColor={theme.colors.textSoft}
               style={{
                 color: theme.colors.text,
@@ -1055,12 +1127,11 @@ export default function BentaScreen() {
                 fontFamily: theme.typography.body,
                 fontSize: 14,
                 minHeight: 50,
-                paddingRight: theme.spacing.sm,
               }}
               value={searchTerm}
             />
             <Pressable
-              accessibilityLabel="Scan barcode"
+              accessibilityLabel={t("benta.scanButton")}
               hitSlop={6}
               onPress={() => void handleOpenScanner()}
               style={({ pressed }) => ({
@@ -1087,7 +1158,7 @@ export default function BentaScreen() {
             }}
           >
             {[
-              { label: "All", value: null as string | null },
+              { label: t("benta.category.all"), value: null as string | null },
               ...categories.map((category) => ({ label: category, value: category })),
             ].map((option) => {
               const active = selectedCategory === option.value;
@@ -1097,7 +1168,7 @@ export default function BentaScreen() {
                   key={option.label}
                   onPress={() => setSelectedCategory(option.value)}
                   style={({ pressed }) => ({
-                    backgroundColor: active ? theme.colors.primary : theme.colors.surface,
+                    backgroundColor: active ? theme.colors.primaryMuted : theme.colors.surface,
                     borderColor: active ? theme.colors.primary : theme.colors.border,
                     borderRadius: theme.radius.pill,
                     borderWidth: 1,
@@ -1108,8 +1179,8 @@ export default function BentaScreen() {
                 >
                   <Text
                     style={{
-                      color: active ? theme.colors.primaryText : theme.colors.text,
-                      fontFamily: theme.typography.body,
+                      color: active ? theme.colors.primary : theme.colors.text,
+                      fontFamily: theme.typography.label,
                       fontSize: 12,
                       fontWeight: "600",
                     }}
@@ -1122,7 +1193,30 @@ export default function BentaScreen() {
           </ScrollView>
         </SurfaceCard>
 
-        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
+        <View
+          style={{
+            alignItems: "center",
+            flexDirection: "row",
+            justifyContent: "space-between",
+          }}
+        >
+          <Text
+            style={{
+              color: theme.colors.textSoft,
+              fontFamily: theme.typography.label,
+              fontSize: 11,
+              fontWeight: "600",
+              letterSpacing: 0.8,
+              textTransform: "uppercase",
+            }}
+          >
+            {catalogCountLabel}
+          </Text>
+
+          {refreshingCatalog && !loading ? <ActivityIndicator color={theme.colors.primary} size="small" /> : null}
+        </View>
+
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: CATALOG_GRID_GAP }}>
           {loading ? (
             <SurfaceCard style={[compactCardStyle, { width: "100%" }]}>
               <View
@@ -1140,40 +1234,56 @@ export default function BentaScreen() {
                     fontSize: 14,
                   }}
                 >
-                  Loading product catalog...
+                  {t("benta.catalog.loading")}
                 </Text>
               </View>
             </SurfaceCard>
           ) : products.length > 0 ? (
             visibleProducts.length > 0 ? (
-              visibleProducts.map((product) => {
-                const availableStock = getRemainingProductStock(product);
-
-                return (
-                  <ProductCard
-                    barcode={product.barcode}
-                    category={product.category}
-                    compact
-                    disabled={availableStock <= 0}
-                    enablePrimaryTapFeedback
-                    imageUri={product.imageUri}
-                    isWeightBased={product.isWeightBased}
-                    key={product.id}
-                    marginPercent={formatMarginPercent(computeProfitMargin(product.costPriceCents, product.priceCents))}
-                    minStock={product.minStock}
-                    name={product.name}
-                    onLongPress={product.isWeightBased ? () => openQuickEditModal(product) : undefined}
-                    onPress={() => handleAddToCart(product)}
-                    priceCents={product.priceCents}
-                    priceLabel={formatProductPriceLabel(product)}
-                    quantityBadgeCount={cartSelectionCountByProductId.get(product.id) ?? 0}
-                    showInfoFlip
-                    stock={availableStock}
-                    useRegularImageSizing
-                    useRegularTextSizing
-                  />
-                );
-              })
+              <>
+                {visibleProducts.map(renderCatalogCard)}
+                <Pressable
+                  onPress={() => router.navigate("/produkto")}
+                  style={({ pressed }) => ({
+                    alignItems: "center",
+                    backgroundColor: theme.colors.surface,
+                    borderColor: theme.colors.borderStrong,
+                    borderRadius: theme.radius.md,
+                    borderStyle: "dashed",
+                    borderWidth: 1,
+                    gap: theme.spacing.xs,
+                    justifyContent: "center",
+                    minHeight: catalogCardWidth + 74,
+                    opacity: pressed ? 0.86 : 1,
+                    padding: theme.spacing.md,
+                    width: catalogCardWidth,
+                  })}
+                >
+                  <View
+                    style={{
+                      alignItems: "center",
+                      backgroundColor: theme.colors.surfaceMuted,
+                      borderRadius: theme.radius.pill,
+                      height: 28,
+                      justifyContent: "center",
+                      width: 28,
+                    }}
+                  >
+                    <Feather color={theme.colors.textMuted} name="plus" size={16} />
+                  </View>
+                  <Text
+                    style={{
+                      color: theme.colors.textMuted,
+                      fontFamily: theme.typography.label,
+                      fontSize: 12,
+                      fontWeight: "600",
+                      textAlign: "center",
+                    }}
+                  >
+                    {t("benta.catalog.addProduct")}
+                  </Text>
+                </Pressable>
+              </>
             ) : (
               <SurfaceCard style={[compactCardStyle, { width: "100%" }]}>
                 <Text
@@ -1183,7 +1293,7 @@ export default function BentaScreen() {
                     fontSize: 14,
                   }}
                 >
-                  No products match this search or category yet.
+                  {t("benta.catalog.noMatches")}
                 </Text>
               </SurfaceCard>
             )
@@ -1601,6 +1711,104 @@ export default function BentaScreen() {
           </SurfaceCard>
         ) : null}
       </Screen>
+
+      <ModalSheet
+        footer={<ActionButton label="Close" onPress={() => setCatalogInfoProduct(null)} variant="ghost" />}
+        onClose={() => setCatalogInfoProduct(null)}
+        subtitle={catalogInfoProduct?.category || t("productCard.value.general")}
+        title={catalogInfoProduct?.name ?? "Product"}
+        visible={Boolean(catalogInfoProduct)}
+      >
+        {catalogInfoProduct ? (
+          <View style={{ gap: theme.spacing.sm }}>
+            <SurfaceCard style={{ gap: theme.spacing.sm, padding: theme.spacing.md }}>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", gap: theme.spacing.md }}>
+                <Text style={{ color: theme.colors.textMuted, fontFamily: theme.typography.body, fontSize: 13 }}>
+                  {t("productCard.detail.price")}
+                </Text>
+                <Text
+                  style={{
+                    color: theme.colors.primary,
+                    fontFamily: MONO_FONT_FAMILY,
+                    fontSize: 13,
+                    fontWeight: "600",
+                  }}
+                >
+                  {formatProductPriceLabel(catalogInfoProduct)}
+                </Text>
+              </View>
+
+              <View style={{ flexDirection: "row", justifyContent: "space-between", gap: theme.spacing.md }}>
+                <Text style={{ color: theme.colors.textMuted, fontFamily: theme.typography.body, fontSize: 13 }}>
+                  {t("productCard.detail.stock")}
+                </Text>
+                <Text
+                  style={{
+                    color: theme.colors.text,
+                    fontFamily: theme.typography.body,
+                    fontSize: 13,
+                    fontWeight: "600",
+                    textAlign: "right",
+                  }}
+                >
+                  {formatProductStockLabel(catalogInfoProduct)}
+                </Text>
+              </View>
+
+              <View style={{ flexDirection: "row", justifyContent: "space-between", gap: theme.spacing.md }}>
+                <Text style={{ color: theme.colors.textMuted, fontFamily: theme.typography.body, fontSize: 13 }}>
+                  {t("productCard.detail.minStock")}
+                </Text>
+                <Text
+                  style={{
+                    color: theme.colors.text,
+                    fontFamily: theme.typography.body,
+                    fontSize: 13,
+                    fontWeight: "600",
+                    textAlign: "right",
+                  }}
+                >
+                  {formatProductMinStockLabel(catalogInfoProduct)}
+                </Text>
+              </View>
+
+              <View style={{ flexDirection: "row", justifyContent: "space-between", gap: theme.spacing.md }}>
+                <Text style={{ color: theme.colors.textMuted, fontFamily: theme.typography.body, fontSize: 13 }}>
+                  {t("productCard.detail.margin")}
+                </Text>
+                <Text
+                  style={{
+                    color: theme.colors.success,
+                    fontFamily: theme.typography.body,
+                    fontSize: 13,
+                    fontWeight: "600",
+                    textAlign: "right",
+                  }}
+                >
+                  {formatMarginPercent(computeProfitMargin(catalogInfoProduct.costPriceCents, catalogInfoProduct.priceCents))}
+                </Text>
+              </View>
+
+              <View style={{ flexDirection: "row", justifyContent: "space-between", gap: theme.spacing.md }}>
+                <Text style={{ color: theme.colors.textMuted, fontFamily: theme.typography.body, fontSize: 13 }}>
+                  {t("productCard.detail.barcode")}
+                </Text>
+                <Text
+                  style={{
+                    color: catalogInfoProduct.barcode ? theme.colors.text : theme.colors.textSoft,
+                    fontFamily: theme.typography.body,
+                    fontSize: 13,
+                    fontWeight: "600",
+                    textAlign: "right",
+                  }}
+                >
+                  {catalogInfoProduct.barcode || t("productCard.value.noBarcode")}
+                </Text>
+              </View>
+            </SurfaceCard>
+          </View>
+        ) : null}
+      </ModalSheet>
 
       <ModalSheet
         footer={
