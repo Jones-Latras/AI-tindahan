@@ -7,6 +7,7 @@ import { ActivityIndicator, Alert, Pressable, Text, TextInput, View } from "reac
 
 import { languageDisplayNames } from "@/constants/translations";
 import { Screen } from "@/components/Screen";
+import { useAuth } from "@/contexts/AuthContext";
 import { useAppLanguage } from "@/contexts/LanguageContext";
 import { useAppTheme } from "@/contexts/ThemeContext";
 import { getStoreName, saveStoreName } from "@/db/repositories";
@@ -226,9 +227,11 @@ function SettingsRow({
 
 export default function SettingsScreen() {
   const db = useSQLiteContext();
+  const { activeStore, session, signOut, stores, user } = useAuth();
   const { theme, mode, toggleMode } = useAppTheme();
   const { language, toggleLanguage, t } = useAppLanguage();
   const supabaseReady = isSupabaseReady();
+  const canUseCloudSync = supabaseReady && Boolean(session?.user) && Boolean(activeStore);
   const [storeName, setStoreName] = useState("");
   const [storeNameDraft, setStoreNameDraft] = useState("");
   const [savingStoreName, setSavingStoreName] = useState(false);
@@ -258,7 +261,7 @@ export default function SettingsScreen() {
         setStoreName(nextStoreName);
         setStoreNameDraft(nextStoreName);
       })();
-      void getLastSyncTime().then(setLastSync);
+      void getLastSyncTime(db).then(setLastSync);
     }, [db]),
   );
 
@@ -313,6 +316,31 @@ export default function SettingsScreen() {
           tone={mode === "dark" ? "primary" : "warning"}
         />
       </SettingsSection>
+
+      {supabaseReady ? (
+        <SettingsSection title="Account">
+          <SettingsRow
+            icon="user"
+            subtitle={activeStore ? `Active store: ${activeStore.name}` : "Create a store before using cloud sync."}
+            title={user?.email ?? "Signed in"}
+            tone="primary"
+          />
+          <SettingsRow
+            icon="shield"
+            isLast={stores.length <= 1}
+            subtitle={stores.length > 1 ? `${stores.length} stores available for this account.` : "Single-store access is active."}
+            title={activeStore?.role ? `Role: ${activeStore.role}` : "No store membership yet"}
+          />
+          {stores.length > 1 ? (
+            <SettingsRow
+              icon="layers"
+              isLast
+              subtitle="Store switching UI is not added yet. The first linked store stays active."
+              title="Multiple stores detected"
+            />
+          ) : null}
+        </SettingsSection>
+      ) : null}
 
       <SettingsSection title={t("home.settings.store.title")}>
         <View style={{ gap: theme.spacing.sm, padding: theme.spacing.md }}>
@@ -410,7 +438,7 @@ export default function SettingsScreen() {
             right={
               <SettingsAction
                 busy={syncing}
-                disabled={syncing}
+                disabled={syncing || !canUseCloudSync}
                 label={syncing ? t("home.cloud.syncing") : t("home.cloud.backupNow")}
                 onPress={() => {
                   void (async () => {
@@ -418,7 +446,7 @@ export default function SettingsScreen() {
                     try {
                       const msg = await syncToCloud(db);
                       Alert.alert(t("home.cloud.backupTitle"), msg);
-                      setLastSync(await getLastSyncTime());
+                      setLastSync(await getLastSyncTime(db));
                     } catch (error) {
                       Alert.alert(t("home.cloud.backupFailed"), String(error));
                     } finally {
@@ -428,7 +456,15 @@ export default function SettingsScreen() {
                 }}
               />
             }
-            subtitle={lastSync ? t("home.cloud.lastBackup", { time: lastSync }) : t("home.cloud.none")}
+            subtitle={
+              !session?.user
+                ? "Sign in to enable cloud backup."
+                : !activeStore
+                  ? "Create a store before backing up."
+                  : lastSync
+                    ? t("home.cloud.lastBackup", { time: lastSync })
+                    : t("home.cloud.none")
+            }
             title={t("home.settings.backup.title")}
             tone="primary"
           />
@@ -437,7 +473,7 @@ export default function SettingsScreen() {
             isLast
             right={
               <SettingsAction
-                disabled={syncing}
+                disabled={syncing || !canUseCloudSync}
                 label={t("home.cloud.confirmRestore")}
                 onPress={() => {
                   Alert.alert(
@@ -454,7 +490,7 @@ export default function SettingsScreen() {
                             try {
                               const msg = await restoreFromCloud(db);
                               Alert.alert(t("home.cloud.restoreResult"), msg);
-                              setLastSync(await getLastSyncTime());
+                              setLastSync(await getLastSyncTime(db));
                             } catch (error) {
                               Alert.alert(t("home.cloud.restoreFailed"), String(error));
                             } finally {
@@ -470,6 +506,29 @@ export default function SettingsScreen() {
               />
             }
             title={t("home.cloud.restore")}
+          />
+        </SettingsSection>
+      ) : null}
+
+      {supabaseReady ? (
+        <SettingsSection title="Session">
+          <SettingsRow
+            icon="log-out"
+            isLast
+            right={
+              <SettingsAction
+                label="Sign out"
+                onPress={() => {
+                  void (async () => {
+                    await signOut();
+                  })();
+                }}
+                tone="secondary"
+              />
+            }
+            subtitle="This device will keep local data, but cloud actions will require sign-in again."
+            title="End this session"
+            tone="warning"
           />
         </SettingsSection>
       ) : null}

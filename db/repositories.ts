@@ -7,6 +7,7 @@ import {
   roundWeightKg,
   resolveWeightBasedPricing,
 } from "@/utils/pricing";
+import { createSyncId } from "@/utils/id";
 import { sanitizeOptionalText, sanitizePhone, sanitizeText } from "@/utils/validation";
 import type {
   AnalyticsTimeframe,
@@ -702,6 +703,8 @@ export type CheckoutResult = {
 };
 
 export const STORE_NAME_SETTING_KEY = "store_name";
+export const ACTIVE_STORE_ID_METADATA_KEY = "active_store_id";
+export const AUTH_USER_ID_METADATA_KEY = "auth_user_id";
 
 function buildProductSelectQuery(whereClause = "", orderByClause = "ORDER BY p.name ASC") {
   return `
@@ -1097,16 +1100,18 @@ export async function saveProduct(db: SQLiteDatabase, input: ProductInput, produ
               base_unit_label,
               quantity_available,
               reorder_threshold,
+              sync_id,
               created_at,
               updated_at,
               synced
             )
-            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0)
+            VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0)
           `,
           inventoryPoolName,
           inventoryPoolBaseUnitLabel,
           inventoryPoolQuantityAvailable ?? 0,
           inventoryPoolReorderThreshold ?? 0,
+          createSyncId(),
         );
 
         nextInventoryPoolId = Number(poolResult.lastInsertRowId);
@@ -1199,9 +1204,10 @@ export async function saveProduct(db: SQLiteDatabase, input: ProductInput, produ
             has_container_return,
             container_label,
             container_deposit_cents,
-            default_container_quantity_per_sale
+            default_container_quantity_per_sale,
+            sync_id
           )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         name,
         priceCents,
@@ -1225,6 +1231,7 @@ export async function saveProduct(db: SQLiteDatabase, input: ProductInput, produ
         containerLabel,
         containerDepositCents,
         defaultContainerQuantityPerSale,
+        createSyncId(),
       );
 
       nextProductId = Number(result.lastInsertRowId);
@@ -1239,10 +1246,11 @@ export async function saveProduct(db: SQLiteDatabase, input: ProductInput, produ
             units_per_sale,
             display_unit_label,
             is_primary_restock_product,
+            sync_id,
             created_at,
             synced
           )
-          VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, 0)
+          VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, 0)
           ON CONFLICT(product_id) DO UPDATE SET
             inventory_pool_id = excluded.inventory_pool_id,
             units_per_sale = excluded.units_per_sale,
@@ -1255,6 +1263,7 @@ export async function saveProduct(db: SQLiteDatabase, input: ProductInput, produ
         linkedUnitsPerSale,
         linkedDisplayUnitLabel,
         isPrimaryRestockProduct ? 1 : 0,
+        createSyncId(),
       );
 
       if (isPrimaryRestockProduct) {
@@ -1455,11 +1464,12 @@ export async function recordRepackSession(db: SQLiteDatabase, input: RepackSessi
           source_quantity_used,
           output_units_created,
           wastage_units,
+          sync_id,
           created_at,
           note,
           synced
         )
-        VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, 0)
+        VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, 0)
       `,
       sourceLink.inventory_pool_id,
       input.sourceProductId,
@@ -1467,6 +1477,7 @@ export async function recordRepackSession(db: SQLiteDatabase, input: RepackSessi
       input.sourceQuantityUsed,
       input.outputUnitsCreated,
       wastageUnits,
+      createSyncId(),
       note,
     );
   });
@@ -1484,6 +1495,39 @@ export async function getAppSetting(db: SQLiteDatabase, key: string) {
   );
 
   return row?.value ?? null;
+}
+
+async function getLocalMetadata(db: SQLiteDatabase, key: string) {
+  const row = await db.getFirstAsync<{ value: string }>(
+    `
+      SELECT value
+      FROM local_metadata
+      WHERE key = ?
+      LIMIT 1
+    `,
+    key,
+  );
+
+  return row?.value ?? null;
+}
+
+async function setLocalMetadata(db: SQLiteDatabase, key: string, value: string | null) {
+  if (value == null || value.trim().length === 0) {
+    await db.runAsync("DELETE FROM local_metadata WHERE key = ?", key);
+    return;
+  }
+
+  await db.runAsync(
+    `
+      INSERT INTO local_metadata (key, value, updated_at)
+      VALUES (?, ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(key) DO UPDATE SET
+        value = excluded.value,
+        updated_at = CURRENT_TIMESTAMP
+    `,
+    key,
+    value,
+  );
 }
 
 async function setAppSetting(db: SQLiteDatabase, key: string, value: string) {
@@ -1504,6 +1548,29 @@ async function setAppSetting(db: SQLiteDatabase, key: string, value: string) {
 export async function getStoreName(db: SQLiteDatabase) {
   const value = await getAppSetting(db, STORE_NAME_SETTING_KEY);
   return value?.trim() || null;
+}
+
+export async function getActiveStoreId(db: SQLiteDatabase) {
+  return getLocalMetadata(db, ACTIVE_STORE_ID_METADATA_KEY);
+}
+
+export async function saveActiveStoreId(db: SQLiteDatabase, storeId: string | null) {
+  await setLocalMetadata(db, ACTIVE_STORE_ID_METADATA_KEY, storeId?.trim() ?? null);
+}
+
+export async function getAuthenticatedUserId(db: SQLiteDatabase) {
+  return getLocalMetadata(db, AUTH_USER_ID_METADATA_KEY);
+}
+
+export async function saveAuthenticatedUserId(db: SQLiteDatabase, userId: string | null) {
+  await setLocalMetadata(db, AUTH_USER_ID_METADATA_KEY, userId?.trim() ?? null);
+}
+
+export async function clearAuthMetadata(db: SQLiteDatabase) {
+  await Promise.all([
+    setLocalMetadata(db, ACTIVE_STORE_ID_METADATA_KEY, null),
+    setLocalMetadata(db, AUTH_USER_ID_METADATA_KEY, null),
+  ]);
 }
 
 export async function saveStoreName(db: SQLiteDatabase, storeName: string) {
@@ -1667,16 +1734,18 @@ export async function addExpense(db: SQLiteDatabase, input: ExpenseInput) {
         amount_cents,
         description,
         expense_date,
+        sync_id,
         created_at,
         updated_at,
         synced
       )
-      VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0)
+      VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0)
     `,
     category,
     input.amountCents,
     description,
     expenseDate,
+    createSyncId(),
   );
 
   return Number(result.lastInsertRowId);
@@ -1906,11 +1975,12 @@ export async function createRestockListFromThresholds(
   await db.withExclusiveTransactionAsync(async (txn) => {
     const result = await txn.runAsync(
       `
-        INSERT INTO restock_lists (title, status, created_at, synced)
-        VALUES (?, 'open', ?, 0)
+        INSERT INTO restock_lists (title, status, created_at, sync_id, synced)
+        VALUES (?, 'open', ?, ?, 0)
       `,
       safeTitle,
       createdAt.toISOString(),
+      createSyncId(),
     );
 
     restockListId = Number(result.lastInsertRowId);
@@ -1932,9 +2002,10 @@ export async function createRestockListFromThresholds(
             is_checked,
             checked_at,
             note,
+            sync_id,
             synced
           )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, NULL, 0)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, NULL, ?, 0)
         `,
         restockListId,
         product.id,
@@ -1944,6 +2015,7 @@ export async function createRestockListFromThresholds(
         product.minStock,
         computeSuggestedRestockQuantity(product),
         product.isWeightBased ? 1 : 0,
+        createSyncId(),
       );
     }
   });
@@ -2702,7 +2774,7 @@ export async function saveCustomer(db: SQLiteDatabase, input: CustomerInput, cus
     await db.runAsync(
       `
         UPDATE customers
-        SET name = ?, phone = ?, trust_score = ?
+        SET name = ?, phone = ?, trust_score = ?, synced = 0
         WHERE id = ?
       `,
       name,
@@ -2715,12 +2787,13 @@ export async function saveCustomer(db: SQLiteDatabase, input: CustomerInput, cus
 
   const result = await db.runAsync(
     `
-      INSERT INTO customers (name, phone, trust_score)
-      VALUES (?, ?, ?)
+      INSERT INTO customers (name, phone, trust_score, sync_id, synced)
+      VALUES (?, ?, ?, ?, 0)
     `,
     name,
     phone,
     trustScore,
+    createSyncId(),
   );
 
   return Number(result.lastInsertRowId);
@@ -2730,7 +2803,7 @@ export async function updateCustomerTrustScore(db: SQLiteDatabase, customerId: n
   await db.runAsync(
     `
       UPDATE customers
-      SET trust_score = ?
+      SET trust_score = ?, synced = 0
       WHERE id = ?
     `,
     trustScore,
@@ -2786,12 +2859,13 @@ export async function addUtangEntry(db: SQLiteDatabase, input: UtangInput) {
 
   const result = await db.runAsync(
     `
-      INSERT INTO utang (customer_id, amount_cents, amount_paid_cents, description)
-      VALUES (?, ?, 0, ?)
+      INSERT INTO utang (customer_id, amount_cents, amount_paid_cents, description, sync_id, synced)
+      VALUES (?, ?, 0, ?, ?, 0)
     `,
     input.customerId,
     input.amountCents,
     description,
+    createSyncId(),
   );
 
   return Number(result.lastInsertRowId);
@@ -2996,13 +3070,15 @@ export async function applyUtangPayment(db: SQLiteDatabase, utangId: number, pay
           amount_cents,
           note,
           source,
+          sync_id,
           synced
         )
-        VALUES (?, ?, ?, NULL, 'manual', 0)
+        VALUES (?, ?, ?, NULL, 'manual', ?, 0)
       `,
       utangId,
       entry.customer_id,
       safePayment,
+      createSyncId(),
     );
 
     await txn.runAsync(
@@ -3167,8 +3243,17 @@ export async function checkoutSale(db: SQLiteDatabase, input: CheckoutInput): Pr
 
     const saleResult = await txn.runAsync(
       `
-        INSERT INTO sales (total_cents, cash_paid_cents, change_given_cents, discount_cents, payment_method, customer_id)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO sales (
+          total_cents,
+          cash_paid_cents,
+          change_given_cents,
+          discount_cents,
+          payment_method,
+          customer_id,
+          sync_id,
+          synced
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, 0)
       `,
       input.totalCents,
       cashPaidCents,
@@ -3176,6 +3261,7 @@ export async function checkoutSale(db: SQLiteDatabase, input: CheckoutInput): Pr
       input.discountCents,
       input.paymentMethod,
       input.customerId ?? null,
+      createSyncId(),
     );
 
     saleId = Number(saleResult.lastInsertRowId);
@@ -3193,9 +3279,11 @@ export async function checkoutSale(db: SQLiteDatabase, input: CheckoutInput): Pr
             is_weight_based,
             weight_kg,
             line_total_cents,
-            line_cost_total_cents
+            line_cost_total_cents,
+            sync_id,
+            synced
           )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
         `,
         saleId,
         item.id,
@@ -3207,6 +3295,7 @@ export async function checkoutSale(db: SQLiteDatabase, input: CheckoutInput): Pr
         item.weightKg,
         item.lineTotalCents,
         item.lineCostTotalCents,
+        createSyncId(),
       );
 
       const productInventory = await txn.getFirstAsync<{
@@ -3276,12 +3365,13 @@ export async function checkoutSale(db: SQLiteDatabase, input: CheckoutInput): Pr
               container_label_snapshot,
               quantity_out,
               quantity_returned,
+              sync_id,
               created_at,
               last_returned_at,
               status,
               synced
             )
-            VALUES (?, ?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP, NULL, 'open', 0)
+            VALUES (?, ?, ?, ?, ?, ?, 0, ?, CURRENT_TIMESTAMP, NULL, 'open', 0)
           `,
           saleId,
           input.customerId ?? null,
@@ -3289,6 +3379,7 @@ export async function checkoutSale(db: SQLiteDatabase, input: CheckoutInput): Pr
           item.name,
           containerReturn.containerLabel,
           containerReturn.quantityOut,
+          createSyncId(),
         );
 
         createdContainerReturns.push({
@@ -3310,12 +3401,13 @@ export async function checkoutSale(db: SQLiteDatabase, input: CheckoutInput): Pr
     if (input.paymentMethod === "utang" && input.customerId) {
       await txn.runAsync(
         `
-          INSERT INTO utang (customer_id, amount_cents, amount_paid_cents, description)
-          VALUES (?, ?, 0, ?)
+          INSERT INTO utang (customer_id, amount_cents, amount_paid_cents, description, sync_id, synced)
+          VALUES (?, ?, 0, ?, ?, 0)
         `,
         input.customerId,
         input.totalCents,
         utangDescription || fallbackUtangDescription || `POS sale #${saleId}`,
+        createSyncId(),
       );
     }
   });

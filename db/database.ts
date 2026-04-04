@@ -1,7 +1,41 @@
 import type { SQLiteDatabase } from "expo-sqlite";
 
+import { createSyncId } from "@/utils/id";
+
 export const DATABASE_NAME = "tindahan-ai.db";
-export const DATABASE_VERSION = 13;
+export const DATABASE_VERSION = 14;
+
+const SYNC_ID_TABLES = [
+  "products",
+  "sales",
+  "sale_items",
+  "customers",
+  "utang",
+  "utang_payments",
+  "expenses",
+  "restock_lists",
+  "restock_list_items",
+  "inventory_pools",
+  "product_inventory_links",
+  "repack_sessions",
+  "container_return_events",
+] as const;
+
+async function backfillSyncIds(db: SQLiteDatabase) {
+  for (const table of SYNC_ID_TABLES) {
+    const rows = await db.getAllAsync<{ id: number }>(
+      `SELECT id FROM ${table} WHERE sync_id IS NULL OR TRIM(sync_id) = ''`,
+    );
+
+    for (const row of rows) {
+      await db.runAsync(
+        `UPDATE ${table} SET sync_id = ?, synced = 0 WHERE id = ?`,
+        createSyncId(),
+        row.id,
+      );
+    }
+  }
+}
 
 export async function migrateDbIfNeeded(db: SQLiteDatabase) {
   await db.execAsync("PRAGMA journal_mode = WAL;");
@@ -545,6 +579,66 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
     `);
 
     currentVersion = 13;
+  }
+
+  if (currentVersion < 14) {
+    await db.execAsync(`
+      ALTER TABLE products ADD COLUMN sync_id TEXT;
+      ALTER TABLE sales ADD COLUMN sync_id TEXT;
+      ALTER TABLE sale_items ADD COLUMN sync_id TEXT;
+      ALTER TABLE customers ADD COLUMN sync_id TEXT;
+      ALTER TABLE utang ADD COLUMN sync_id TEXT;
+      ALTER TABLE utang_payments ADD COLUMN sync_id TEXT;
+      ALTER TABLE expenses ADD COLUMN sync_id TEXT;
+      ALTER TABLE restock_lists ADD COLUMN sync_id TEXT;
+      ALTER TABLE restock_list_items ADD COLUMN sync_id TEXT;
+      ALTER TABLE inventory_pools ADD COLUMN sync_id TEXT;
+      ALTER TABLE product_inventory_links ADD COLUMN sync_id TEXT;
+      ALTER TABLE repack_sessions ADD COLUMN sync_id TEXT;
+      ALTER TABLE container_return_events ADD COLUMN sync_id TEXT;
+
+      CREATE TABLE IF NOT EXISTS local_metadata (
+        key TEXT PRIMARY KEY NOT NULL,
+        value TEXT NOT NULL,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_products_sync_id ON products(sync_id);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_sales_sync_id ON sales(sync_id);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_sale_items_sync_id ON sale_items(sync_id);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_customers_sync_id ON customers(sync_id);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_utang_sync_id ON utang(sync_id);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_utang_payments_sync_id ON utang_payments(sync_id);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_expenses_sync_id ON expenses(sync_id);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_restock_lists_sync_id ON restock_lists(sync_id);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_restock_list_items_sync_id ON restock_list_items(sync_id);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_inventory_pools_sync_id ON inventory_pools(sync_id);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_product_inventory_links_sync_id ON product_inventory_links(sync_id);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_repack_sessions_sync_id ON repack_sessions(sync_id);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_container_return_events_sync_id ON container_return_events(sync_id);
+      CREATE INDEX IF NOT EXISTS idx_local_metadata_updated_at ON local_metadata(updated_at DESC);
+
+      UPDATE products SET synced = 0;
+      UPDATE sales SET synced = 0;
+      UPDATE sale_items SET synced = 0;
+      UPDATE customers SET synced = 0;
+      UPDATE utang SET synced = 0;
+      UPDATE utang_payments SET synced = 0;
+      UPDATE expenses SET synced = 0;
+      UPDATE restock_lists SET synced = 0;
+      UPDATE restock_list_items SET synced = 0;
+      UPDATE inventory_pools SET synced = 0;
+      UPDATE product_inventory_links SET synced = 0;
+      UPDATE repack_sessions SET synced = 0;
+      UPDATE container_return_events SET synced = 0;
+      UPDATE app_settings SET synced = 0;
+    `);
+
+    currentVersion = 14;
+  }
+
+  if (currentVersion >= 14) {
+    await backfillSyncIds(db);
   }
 
   await db.execAsync(`PRAGMA user_version = ${currentVersion};`);

@@ -1,123 +1,131 @@
-/**
- * Lightweight Supabase REST client using fetch.
- * We only need upsert + select + simple storage uploads -- no realtime, no auth.
- * This avoids the Metro bundler issue with @supabase/realtime-js.
- */
+import * as SecureStore from "expo-secure-store";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL ?? "";
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? "";
-
-const REST_URL = `${supabaseUrl}/rest/v1`;
-const STORAGE_URL = `${supabaseUrl}/storage/v1`;
 const FUNCTIONS_URL = `${supabaseUrl}/functions/v1`;
+const PRODUCT_IMAGE_BUCKET = "product-images";
+
+type FilterValue = string | number | boolean | null;
+
+const secureStoreAdapter = {
+  getItem: (key: string) => SecureStore.getItemAsync(key),
+  setItem: (key: string, value: string) => SecureStore.setItemAsync(key, value),
+  removeItem: (key: string) => SecureStore.deleteItemAsync(key),
+};
+
+let supabaseClient: SupabaseClient | null = null;
 
 export function isSupabaseReady() {
   return Boolean(supabaseUrl && supabaseAnonKey);
 }
 
-const headers = () => ({
-  apikey: supabaseAnonKey,
-  Authorization: `Bearer ${supabaseAnonKey}`,
-  "Content-Type": "application/json",
-  Prefer: "return=minimal",
-});
+export function getSupabaseClient() {
+  if (!isSupabaseReady()) {
+    throw new Error("Supabase is not configured. Add your project URL and anon key to .env.");
+  }
 
-const storageHeaders = (contentType?: string) => ({
-  apikey: supabaseAnonKey,
-  Authorization: `Bearer ${supabaseAnonKey}`,
-  ...(contentType ? { "Content-Type": contentType } : {}),
-});
+  if (!supabaseClient) {
+    supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
+      auth: {
+        autoRefreshToken: true,
+        detectSessionInUrl: false,
+        persistSession: true,
+        storage: secureStoreAdapter,
+      },
+    });
+  }
 
-const functionHeaders = () => ({
-  apikey: supabaseAnonKey,
-  Authorization: `Bearer ${supabaseAnonKey}`,
-  "Content-Type": "application/json",
-});
-
-function encodeStoragePath(path: string) {
-  return path
-    .split("/")
-    .filter(Boolean)
-    .map((segment) => encodeURIComponent(segment))
-    .join("/");
+  return supabaseClient;
 }
 
-/**
- * Upsert rows into a Supabase table (uses PostgREST).
- * Resolves conflicts on the `id` column by default.
- */
+function applyEqualsFilters(query: any, filters?: Record<string, FilterValue>) {
+  let nextQuery = query;
+
+  if (!filters) {
+    return nextQuery;
+  }
+
+  for (const [column, value] of Object.entries(filters)) {
+    if (value == null) {
+      nextQuery = nextQuery.is(column, null);
+      continue;
+    }
+
+    nextQuery = nextQuery.eq(column, value);
+  }
+
+  return nextQuery;
+}
+
+export async function getSupabaseSession() {
+  const client = getSupabaseClient();
+  const { data, error } = await client.auth.getSession();
+
+  if (error) {
+    throw error;
+  }
+
+  return data.session;
+}
+
+export async function getSupabaseAccessToken() {
+  const session = await getSupabaseSession();
+  return session?.access_token ?? null;
+}
+
 export async function supabaseUpsert(
   table: string,
   rows: Record<string, unknown>[],
-  onConflict = "id",
-): Promise<void> {
-  if (rows.length === 0) return;
+  onConflict = "store_id,sync_id",
+) {
+  if (rows.length === 0) {
+    return;
+  }
 
-  const response = await fetch(`${REST_URL}/${table}`, {
-    method: "POST",
-    headers: {
-      ...headers(),
-      Prefer: "resolution=merge-duplicates",
-      "On-Conflict": onConflict,
-    },
-    body: JSON.stringify(rows),
+  const client = getSupabaseClient();
+  const { error } = await client.from(table).upsert(rows, {
+    ignoreDuplicates: false,
+    onConflict,
   });
 
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`Supabase upsert to "${table}" failed (${response.status}): ${body}`);
+  if (error) {
+    throw new Error(`Supabase upsert to "${table}" failed: ${error.message}`);
   }
 }
 
-/**
- * Select all rows from a Supabase table.
- */
 export async function supabaseSelectAll<T = Record<string, unknown>>(
   table: string,
-): Promise<T[]> {
-  const response = await fetch(`${REST_URL}/${table}?select=*`, {
-    method: "GET",
-    headers: {
-      ...headers(),
-      Prefer: "return=representation",
-    },
-  });
+  filters?: Record<string, FilterValue>,
+) {
+  const client = getSupabaseClient();
+  const query = applyEqualsFilters(client.from(table).select("*"), filters);
+  const { data, error } = await query;
 
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`Supabase select from "${table}" failed (${response.status}): ${body}`);
+  if (error) {
+    throw new Error(`Supabase select from "${table}" failed: ${error.message}`);
   }
 
-  return (await response.json()) as T[];
-}
-
-export function getSupabaseStoragePublicUrl(bucket: string, path: string) {
-  return `${STORAGE_URL}/object/public/${encodeURIComponent(bucket)}/${encodeStoragePath(path)}`;
+  return (data ?? []) as T[];
 }
 
 export async function supabaseUploadStorageObject(
-  bucket: string,
   path: string,
   fileBytes: ArrayBuffer,
   contentType: string,
-): Promise<string> {
-  const response = await fetch(
-    `${STORAGE_URL}/object/${encodeURIComponent(bucket)}/${encodeStoragePath(path)}`,
-    {
-      method: "POST",
-      headers: storageHeaders(contentType),
-      body: fileBytes,
-    },
-  );
+) {
+  const client = getSupabaseClient();
+  const { error } = await client.storage.from(PRODUCT_IMAGE_BUCKET).upload(path, fileBytes, {
+    contentType,
+    upsert: true,
+  });
 
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(
-      `Supabase storage upload failed (${response.status}). Make sure the "${bucket}" bucket exists and has upload policies. ${body}`,
-    );
+  if (error) {
+    throw new Error(`Supabase storage upload failed: ${error.message}`);
   }
 
-  return getSupabaseStoragePublicUrl(bucket, path);
+  const { data } = client.storage.from(PRODUCT_IMAGE_BUCKET).getPublicUrl(path);
+  return data.publicUrl;
 }
 
 export async function invokeSupabaseFunction<T = unknown>(
@@ -126,10 +134,20 @@ export async function invokeSupabaseFunction<T = unknown>(
   options?: {
     signal?: AbortSignal;
   },
-): Promise<T> {
+) {
+  const accessToken = await getSupabaseAccessToken();
+
+  if (!accessToken) {
+    throw new Error("Sign in before calling Supabase functions.");
+  }
+
   const response = await fetch(`${FUNCTIONS_URL}/${functionName}`, {
     method: "POST",
-    headers: functionHeaders(),
+    headers: {
+      apikey: supabaseAnonKey,
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
     body: JSON.stringify(payload),
     signal: options?.signal,
   });

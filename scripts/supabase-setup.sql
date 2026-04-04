@@ -1,268 +1,364 @@
--- Run this in the Supabase SQL Editor to create the backup tables.
--- These mirror the local SQLite schema for cloud sync.
+-- Run this in the Supabase SQL Editor for the multi-user store-scoped sync model.
 
-CREATE TABLE IF NOT EXISTS products (
-  id BIGINT PRIMARY KEY,
-  name TEXT NOT NULL,
-  price_cents INTEGER NOT NULL,
-  cost_price_cents INTEGER NOT NULL DEFAULT 0,
-  stock INTEGER NOT NULL DEFAULT 0,
-  category TEXT,
-  barcode TEXT,
-  image_uri TEXT,
-  min_stock NUMERIC(10,4) NOT NULL DEFAULT 5,
-  is_weight_based BOOLEAN NOT NULL DEFAULT false,
-  pricing_mode TEXT NOT NULL DEFAULT 'direct',
-  pricing_strategy TEXT NOT NULL DEFAULT 'manual',
-  total_kg_available NUMERIC(10,4),
-  cost_price_total_cents INTEGER,
-  selling_price_total_cents INTEGER,
-  cost_price_per_kg_cents INTEGER,
-  selling_price_per_kg_cents INTEGER,
-  target_margin_percent NUMERIC(10,4),
-  computed_price_per_kg_cents INTEGER,
-  has_container_return BOOLEAN NOT NULL DEFAULT false,
-  container_label TEXT,
-  container_deposit_cents INTEGER NOT NULL DEFAULT 0,
-  default_container_quantity_per_sale INTEGER NOT NULL DEFAULT 1,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+create extension if not exists "pgcrypto";
+
+create table if not exists profiles (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  email text not null default '',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
 );
 
-ALTER TABLE products ADD COLUMN IF NOT EXISTS image_uri TEXT;
-ALTER TABLE products ADD COLUMN IF NOT EXISTS min_stock NUMERIC(10,4) NOT NULL DEFAULT 5;
-ALTER TABLE products ADD COLUMN IF NOT EXISTS is_weight_based BOOLEAN NOT NULL DEFAULT false;
-ALTER TABLE products ADD COLUMN IF NOT EXISTS pricing_mode TEXT NOT NULL DEFAULT 'direct';
-ALTER TABLE products ADD COLUMN IF NOT EXISTS pricing_strategy TEXT NOT NULL DEFAULT 'manual';
-ALTER TABLE products ADD COLUMN IF NOT EXISTS total_kg_available NUMERIC(10,4);
-ALTER TABLE products ADD COLUMN IF NOT EXISTS cost_price_total_cents INTEGER;
-ALTER TABLE products ADD COLUMN IF NOT EXISTS selling_price_total_cents INTEGER;
-ALTER TABLE products ADD COLUMN IF NOT EXISTS cost_price_per_kg_cents INTEGER;
-ALTER TABLE products ADD COLUMN IF NOT EXISTS selling_price_per_kg_cents INTEGER;
-ALTER TABLE products ADD COLUMN IF NOT EXISTS target_margin_percent NUMERIC(10,4);
-ALTER TABLE products ADD COLUMN IF NOT EXISTS computed_price_per_kg_cents INTEGER;
-ALTER TABLE products ADD COLUMN IF NOT EXISTS has_container_return BOOLEAN NOT NULL DEFAULT false;
-ALTER TABLE products ADD COLUMN IF NOT EXISTS container_label TEXT;
-ALTER TABLE products ADD COLUMN IF NOT EXISTS container_deposit_cents INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE products ADD COLUMN IF NOT EXISTS default_container_quantity_per_sale INTEGER NOT NULL DEFAULT 1;
-ALTER TABLE products ALTER COLUMN min_stock TYPE NUMERIC(10,4);
-
-CREATE TABLE IF NOT EXISTS inventory_pools (
-  id BIGINT PRIMARY KEY,
-  name TEXT NOT NULL,
-  base_unit_label TEXT NOT NULL,
-  quantity_available NUMERIC(10,4) NOT NULL DEFAULT 0,
-  reorder_threshold NUMERIC(10,4) NOT NULL DEFAULT 0,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+create table if not exists stores (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  owner_user_id uuid not null references auth.users(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
 );
 
-CREATE TABLE IF NOT EXISTS product_inventory_links (
-  id BIGINT PRIMARY KEY,
-  product_id BIGINT NOT NULL UNIQUE REFERENCES products(id) ON DELETE CASCADE,
-  inventory_pool_id BIGINT NOT NULL REFERENCES inventory_pools(id) ON DELETE CASCADE,
-  units_per_sale NUMERIC(10,4) NOT NULL,
-  display_unit_label TEXT NOT NULL,
-  is_primary_restock_product BOOLEAN NOT NULL DEFAULT false,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+create table if not exists store_memberships (
+  store_id uuid not null references stores(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  role text not null default 'viewer' check (role in ('owner', 'manager', 'staff', 'viewer')),
+  created_at timestamptz not null default now(),
+  primary key (store_id, user_id)
 );
 
-CREATE TABLE IF NOT EXISTS repack_sessions (
-  id BIGINT PRIMARY KEY,
-  inventory_pool_id BIGINT NOT NULL REFERENCES inventory_pools(id) ON DELETE CASCADE,
-  source_product_id BIGINT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
-  output_product_id BIGINT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
-  source_quantity_used NUMERIC(10,4) NOT NULL,
-  output_units_created NUMERIC(10,4) NOT NULL,
-  wastage_units NUMERIC(10,4) NOT NULL DEFAULT 0,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  note TEXT
+create or replace function public.is_store_member(target_store_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.store_memberships sm
+    where sm.store_id = target_store_id
+      and sm.user_id = auth.uid()
+  );
+$$;
+
+create table if not exists customers (
+  sync_id uuid primary key,
+  store_id uuid not null references stores(id) on delete cascade,
+  name text not null,
+  phone text not null default '',
+  trust_score text not null default 'Bago',
+  created_at timestamptz not null default now(),
+  unique (store_id, sync_id)
 );
 
-CREATE TABLE IF NOT EXISTS container_return_events (
-  id BIGINT PRIMARY KEY,
-  sale_id BIGINT NOT NULL REFERENCES sales(id) ON DELETE CASCADE,
-  customer_id BIGINT REFERENCES customers(id) ON DELETE SET NULL,
-  product_id BIGINT REFERENCES products(id) ON DELETE SET NULL,
-  product_name_snapshot TEXT NOT NULL,
-  container_label_snapshot TEXT NOT NULL,
-  quantity_out INTEGER NOT NULL,
-  quantity_returned INTEGER NOT NULL DEFAULT 0,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  last_returned_at TIMESTAMPTZ,
-  status TEXT NOT NULL DEFAULT 'open'
+create table if not exists products (
+  sync_id uuid primary key,
+  store_id uuid not null references stores(id) on delete cascade,
+  name text not null,
+  price_cents integer not null,
+  cost_price_cents integer not null default 0,
+  stock integer not null default 0,
+  category text,
+  barcode text,
+  image_uri text,
+  min_stock numeric(10,4) not null default 5,
+  is_weight_based boolean not null default false,
+  pricing_mode text not null default 'direct',
+  pricing_strategy text not null default 'manual',
+  total_kg_available numeric(10,4),
+  cost_price_total_cents integer,
+  selling_price_total_cents integer,
+  cost_price_per_kg_cents integer,
+  selling_price_per_kg_cents integer,
+  target_margin_percent numeric(10,4),
+  computed_price_per_kg_cents integer,
+  has_container_return boolean not null default false,
+  container_label text,
+  container_deposit_cents integer not null default 0,
+  default_container_quantity_per_sale integer not null default 1,
+  created_at timestamptz not null default now(),
+  unique (store_id, sync_id)
 );
 
-CREATE TABLE IF NOT EXISTS customers (
-  id BIGINT PRIMARY KEY,
-  name TEXT NOT NULL,
-  phone TEXT NOT NULL DEFAULT '',
-  trust_score TEXT NOT NULL DEFAULT 'Bago',
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+create table if not exists inventory_pools (
+  sync_id uuid primary key,
+  store_id uuid not null references stores(id) on delete cascade,
+  name text not null,
+  base_unit_label text not null,
+  quantity_available numeric(10,4) not null default 0,
+  reorder_threshold numeric(10,4) not null default 0,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (store_id, sync_id)
 );
 
-CREATE TABLE IF NOT EXISTS sales (
-  id BIGINT PRIMARY KEY,
-  total_cents INTEGER NOT NULL,
-  cash_paid_cents INTEGER NOT NULL DEFAULT 0,
-  change_given_cents INTEGER NOT NULL DEFAULT 0,
-  discount_cents INTEGER NOT NULL DEFAULT 0,
-  payment_method TEXT NOT NULL DEFAULT 'cash',
-  customer_id BIGINT REFERENCES customers(id) ON DELETE SET NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+create table if not exists app_settings (
+  store_id uuid not null references stores(id) on delete cascade,
+  key text not null,
+  value text not null,
+  updated_at timestamptz not null default now(),
+  primary key (store_id, key)
 );
 
-CREATE TABLE IF NOT EXISTS sale_items (
-  id BIGINT PRIMARY KEY,
-  sale_id BIGINT NOT NULL REFERENCES sales(id) ON DELETE CASCADE,
-  product_id BIGINT,
-  product_name TEXT NOT NULL,
-  unit_price_cents INTEGER NOT NULL,
-  unit_cost_cents INTEGER NOT NULL DEFAULT 0,
-  quantity INTEGER NOT NULL DEFAULT 1,
-  is_weight_based BOOLEAN NOT NULL DEFAULT false,
-  weight_kg NUMERIC(10,4),
-  line_total_cents INTEGER NOT NULL DEFAULT 0,
-  line_cost_total_cents INTEGER NOT NULL DEFAULT 0
+create table if not exists sales (
+  sync_id uuid primary key,
+  store_id uuid not null references stores(id) on delete cascade,
+  total_cents integer not null,
+  cash_paid_cents integer not null default 0,
+  change_given_cents integer not null default 0,
+  discount_cents integer not null default 0,
+  payment_method text not null default 'cash',
+  customer_sync_id uuid references customers(sync_id) on delete set null,
+  created_at timestamptz not null default now(),
+  unique (store_id, sync_id)
 );
 
-ALTER TABLE sale_items ADD COLUMN IF NOT EXISTS is_weight_based BOOLEAN NOT NULL DEFAULT false;
-ALTER TABLE sale_items ADD COLUMN IF NOT EXISTS weight_kg NUMERIC(10,4);
-ALTER TABLE sale_items ADD COLUMN IF NOT EXISTS line_total_cents INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE sale_items ADD COLUMN IF NOT EXISTS line_cost_total_cents INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE sale_items ALTER COLUMN product_id DROP NOT NULL;
-
-CREATE TABLE IF NOT EXISTS utang (
-  id BIGINT PRIMARY KEY,
-  customer_id BIGINT NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
-  amount_cents INTEGER NOT NULL,
-  amount_paid_cents INTEGER NOT NULL DEFAULT 0,
-  description TEXT,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  paid_at TIMESTAMPTZ
+create table if not exists expenses (
+  sync_id uuid primary key,
+  store_id uuid not null references stores(id) on delete cascade,
+  category text not null,
+  amount_cents integer not null,
+  description text,
+  expense_date timestamptz not null default now(),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (store_id, sync_id)
 );
 
-CREATE TABLE IF NOT EXISTS utang_payments (
-  id BIGINT PRIMARY KEY,
-  utang_id BIGINT NOT NULL REFERENCES utang(id) ON DELETE CASCADE,
-  customer_id BIGINT NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
-  amount_cents INTEGER NOT NULL,
-  note TEXT,
-  source TEXT NOT NULL DEFAULT 'manual',
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+create table if not exists restock_lists (
+  sync_id uuid primary key,
+  store_id uuid not null references stores(id) on delete cascade,
+  title text not null,
+  status text not null default 'open',
+  created_at timestamptz not null default now(),
+  completed_at timestamptz,
+  unique (store_id, sync_id)
 );
 
-CREATE TABLE IF NOT EXISTS expenses (
-  id BIGINT PRIMARY KEY,
-  category TEXT NOT NULL,
-  amount_cents INTEGER NOT NULL,
-  description TEXT,
-  expense_date TIMESTAMPTZ NOT NULL DEFAULT now(),
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+create table if not exists utang (
+  sync_id uuid primary key,
+  store_id uuid not null references stores(id) on delete cascade,
+  customer_sync_id uuid not null references customers(sync_id) on delete cascade,
+  amount_cents integer not null,
+  amount_paid_cents integer not null default 0,
+  description text,
+  created_at timestamptz not null default now(),
+  paid_at timestamptz,
+  unique (store_id, sync_id)
 );
 
-CREATE TABLE IF NOT EXISTS restock_lists (
-  id BIGINT PRIMARY KEY,
-  title TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'open',
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  completed_at TIMESTAMPTZ
+create table if not exists product_inventory_links (
+  sync_id uuid primary key,
+  store_id uuid not null references stores(id) on delete cascade,
+  product_sync_id uuid not null references products(sync_id) on delete cascade,
+  inventory_pool_sync_id uuid not null references inventory_pools(sync_id) on delete cascade,
+  units_per_sale numeric(10,4) not null,
+  display_unit_label text not null,
+  is_primary_restock_product boolean not null default false,
+  created_at timestamptz not null default now(),
+  unique (store_id, sync_id)
 );
 
-CREATE TABLE IF NOT EXISTS restock_list_items (
-  id BIGINT PRIMARY KEY,
-  restock_list_id BIGINT NOT NULL REFERENCES restock_lists(id) ON DELETE CASCADE,
-  product_id BIGINT REFERENCES products(id) ON DELETE SET NULL,
-  product_name_snapshot TEXT NOT NULL,
-  category_snapshot TEXT,
-  current_stock_snapshot NUMERIC(10,4) NOT NULL DEFAULT 0,
-  min_stock_snapshot NUMERIC(10,4) NOT NULL DEFAULT 0,
-  suggested_quantity NUMERIC(10,4) NOT NULL DEFAULT 0,
-  is_weight_based_snapshot BOOLEAN NOT NULL DEFAULT false,
-  is_checked BOOLEAN NOT NULL DEFAULT false,
-  checked_at TIMESTAMPTZ,
-  note TEXT
+create table if not exists sale_items (
+  sync_id uuid primary key,
+  store_id uuid not null references stores(id) on delete cascade,
+  sale_sync_id uuid not null references sales(sync_id) on delete cascade,
+  product_sync_id uuid references products(sync_id) on delete set null,
+  product_name text not null,
+  unit_price_cents integer not null,
+  unit_cost_cents integer not null default 0,
+  quantity integer not null default 1,
+  is_weight_based boolean not null default false,
+  weight_kg numeric(10,4),
+  line_total_cents integer not null default 0,
+  line_cost_total_cents integer not null default 0,
+  unique (store_id, sync_id)
 );
 
-CREATE TABLE IF NOT EXISTS app_settings (
-  key TEXT PRIMARY KEY,
-  value TEXT NOT NULL,
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+create table if not exists container_return_events (
+  sync_id uuid primary key,
+  store_id uuid not null references stores(id) on delete cascade,
+  sale_sync_id uuid not null references sales(sync_id) on delete cascade,
+  customer_sync_id uuid references customers(sync_id) on delete set null,
+  product_sync_id uuid references products(sync_id) on delete set null,
+  product_name_snapshot text not null,
+  container_label_snapshot text not null,
+  quantity_out integer not null,
+  quantity_returned integer not null default 0,
+  created_at timestamptz not null default now(),
+  last_returned_at timestamptz,
+  status text not null default 'open',
+  unique (store_id, sync_id)
 );
 
--- Enable Row Level Security (allow all for anon key -- single-user app)
-ALTER TABLE products ENABLE ROW LEVEL SECURITY;
-ALTER TABLE inventory_pools ENABLE ROW LEVEL SECURITY;
-ALTER TABLE product_inventory_links ENABLE ROW LEVEL SECURITY;
-ALTER TABLE repack_sessions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE container_return_events ENABLE ROW LEVEL SECURITY;
-ALTER TABLE customers ENABLE ROW LEVEL SECURITY;
-ALTER TABLE sales ENABLE ROW LEVEL SECURITY;
-ALTER TABLE sale_items ENABLE ROW LEVEL SECURITY;
-ALTER TABLE utang ENABLE ROW LEVEL SECURITY;
-ALTER TABLE utang_payments ENABLE ROW LEVEL SECURITY;
-ALTER TABLE expenses ENABLE ROW LEVEL SECURITY;
-ALTER TABLE restock_lists ENABLE ROW LEVEL SECURITY;
-ALTER TABLE restock_list_items ENABLE ROW LEVEL SECURITY;
-ALTER TABLE app_settings ENABLE ROW LEVEL SECURITY;
+create table if not exists repack_sessions (
+  sync_id uuid primary key,
+  store_id uuid not null references stores(id) on delete cascade,
+  inventory_pool_sync_id uuid not null references inventory_pools(sync_id) on delete cascade,
+  source_product_sync_id uuid not null references products(sync_id) on delete cascade,
+  output_product_sync_id uuid not null references products(sync_id) on delete cascade,
+  source_quantity_used numeric(10,4) not null,
+  output_units_created numeric(10,4) not null,
+  wastage_units numeric(10,4) not null default 0,
+  created_at timestamptz not null default now(),
+  note text,
+  unique (store_id, sync_id)
+);
 
-DROP POLICY IF EXISTS "Allow all" ON products;
-DROP POLICY IF EXISTS "Allow all" ON inventory_pools;
-DROP POLICY IF EXISTS "Allow all" ON product_inventory_links;
-DROP POLICY IF EXISTS "Allow all" ON repack_sessions;
-DROP POLICY IF EXISTS "Allow all" ON container_return_events;
-DROP POLICY IF EXISTS "Allow all" ON customers;
-DROP POLICY IF EXISTS "Allow all" ON sales;
-DROP POLICY IF EXISTS "Allow all" ON sale_items;
-DROP POLICY IF EXISTS "Allow all" ON utang;
-DROP POLICY IF EXISTS "Allow all" ON utang_payments;
-DROP POLICY IF EXISTS "Allow all" ON expenses;
-DROP POLICY IF EXISTS "Allow all" ON restock_lists;
-DROP POLICY IF EXISTS "Allow all" ON restock_list_items;
-DROP POLICY IF EXISTS "Allow all" ON app_settings;
+create table if not exists restock_list_items (
+  sync_id uuid primary key,
+  store_id uuid not null references stores(id) on delete cascade,
+  restock_list_sync_id uuid not null references restock_lists(sync_id) on delete cascade,
+  product_sync_id uuid references products(sync_id) on delete set null,
+  product_name_snapshot text not null,
+  category_snapshot text,
+  current_stock_snapshot numeric(10,4) not null default 0,
+  min_stock_snapshot numeric(10,4) not null default 0,
+  suggested_quantity numeric(10,4) not null default 0,
+  is_weight_based_snapshot boolean not null default false,
+  is_checked boolean not null default false,
+  checked_at timestamptz,
+  note text,
+  unique (store_id, sync_id)
+);
 
-CREATE POLICY "Allow all" ON products FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow all" ON inventory_pools FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow all" ON product_inventory_links FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow all" ON repack_sessions FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow all" ON container_return_events FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow all" ON customers FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow all" ON sales FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow all" ON sale_items FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow all" ON utang FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow all" ON utang_payments FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow all" ON expenses FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow all" ON restock_lists FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow all" ON restock_list_items FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow all" ON app_settings FOR ALL USING (true) WITH CHECK (true);
+create table if not exists utang_payments (
+  sync_id uuid primary key,
+  store_id uuid not null references stores(id) on delete cascade,
+  utang_sync_id uuid not null references utang(sync_id) on delete cascade,
+  customer_sync_id uuid not null references customers(sync_id) on delete cascade,
+  amount_cents integer not null,
+  note text,
+  source text not null default 'manual',
+  created_at timestamptz not null default now(),
+  unique (store_id, sync_id)
+);
 
--- Public bucket for compressed product photos stored during cloud backup.
-INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-VALUES (
+alter table profiles enable row level security;
+alter table stores enable row level security;
+alter table store_memberships enable row level security;
+alter table customers enable row level security;
+alter table products enable row level security;
+alter table inventory_pools enable row level security;
+alter table app_settings enable row level security;
+alter table sales enable row level security;
+alter table expenses enable row level security;
+alter table restock_lists enable row level security;
+alter table utang enable row level security;
+alter table product_inventory_links enable row level security;
+alter table sale_items enable row level security;
+alter table container_return_events enable row level security;
+alter table repack_sessions enable row level security;
+alter table restock_list_items enable row level security;
+alter table utang_payments enable row level security;
+
+drop policy if exists "profiles self access" on profiles;
+create policy "profiles self access" on profiles
+for all using (user_id = auth.uid()) with check (user_id = auth.uid());
+
+drop policy if exists "stores member access" on stores;
+create policy "stores member access" on stores
+for select using (public.is_store_member(id));
+drop policy if exists "stores owner insert" on stores;
+create policy "stores owner insert" on stores
+for insert with check (owner_user_id = auth.uid());
+drop policy if exists "stores owner update" on stores;
+create policy "stores owner update" on stores
+for update using (owner_user_id = auth.uid()) with check (owner_user_id = auth.uid());
+drop policy if exists "stores owner delete" on stores;
+create policy "stores owner delete" on stores
+for delete using (owner_user_id = auth.uid());
+
+drop policy if exists "memberships member view" on store_memberships;
+create policy "memberships member view" on store_memberships
+for select using (user_id = auth.uid() or public.is_store_member(store_id));
+drop policy if exists "memberships self insert" on store_memberships;
+create policy "memberships self insert" on store_memberships
+for insert with check (
+  user_id = auth.uid()
+  and exists (
+    select 1 from stores s
+    where s.id = store_memberships.store_id
+      and s.owner_user_id = auth.uid()
+  )
+);
+
+drop policy if exists "customers members access" on customers;
+create policy "customers members access" on customers for all
+using (public.is_store_member(store_id)) with check (public.is_store_member(store_id));
+drop policy if exists "products members access" on products;
+create policy "products members access" on products for all
+using (public.is_store_member(store_id)) with check (public.is_store_member(store_id));
+drop policy if exists "inventory pools members access" on inventory_pools;
+create policy "inventory pools members access" on inventory_pools for all
+using (public.is_store_member(store_id)) with check (public.is_store_member(store_id));
+drop policy if exists "app settings members access" on app_settings;
+create policy "app settings members access" on app_settings for all
+using (public.is_store_member(store_id)) with check (public.is_store_member(store_id));
+drop policy if exists "sales members access" on sales;
+create policy "sales members access" on sales for all
+using (public.is_store_member(store_id)) with check (public.is_store_member(store_id));
+drop policy if exists "expenses members access" on expenses;
+create policy "expenses members access" on expenses for all
+using (public.is_store_member(store_id)) with check (public.is_store_member(store_id));
+drop policy if exists "restock lists members access" on restock_lists;
+create policy "restock lists members access" on restock_lists for all
+using (public.is_store_member(store_id)) with check (public.is_store_member(store_id));
+drop policy if exists "utang members access" on utang;
+create policy "utang members access" on utang for all
+using (public.is_store_member(store_id)) with check (public.is_store_member(store_id));
+drop policy if exists "product inventory links members access" on product_inventory_links;
+create policy "product inventory links members access" on product_inventory_links for all
+using (public.is_store_member(store_id)) with check (public.is_store_member(store_id));
+drop policy if exists "sale items members access" on sale_items;
+create policy "sale items members access" on sale_items for all
+using (public.is_store_member(store_id)) with check (public.is_store_member(store_id));
+drop policy if exists "container return members access" on container_return_events;
+create policy "container return members access" on container_return_events for all
+using (public.is_store_member(store_id)) with check (public.is_store_member(store_id));
+drop policy if exists "repack sessions members access" on repack_sessions;
+create policy "repack sessions members access" on repack_sessions for all
+using (public.is_store_member(store_id)) with check (public.is_store_member(store_id));
+drop policy if exists "restock list items members access" on restock_list_items;
+create policy "restock list items members access" on restock_list_items for all
+using (public.is_store_member(store_id)) with check (public.is_store_member(store_id));
+drop policy if exists "utang payments members access" on utang_payments;
+create policy "utang payments members access" on utang_payments for all
+using (public.is_store_member(store_id)) with check (public.is_store_member(store_id));
+
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values (
   'product-images',
   'product-images',
   true,
   5242880,
-  ARRAY['image/jpeg', 'image/png', 'image/webp']
+  array['image/jpeg', 'image/png', 'image/webp']
 )
-ON CONFLICT (id) DO UPDATE
-SET public = EXCLUDED.public,
-    file_size_limit = EXCLUDED.file_size_limit,
-    allowed_mime_types = EXCLUDED.allowed_mime_types;
+on conflict (id) do update
+set public = excluded.public,
+    file_size_limit = excluded.file_size_limit,
+    allowed_mime_types = excluded.allowed_mime_types;
 
-DROP POLICY IF EXISTS "Product images are public" ON storage.objects;
-DROP POLICY IF EXISTS "Product images can be uploaded" ON storage.objects;
-DROP POLICY IF EXISTS "Product images can be updated" ON storage.objects;
+drop policy if exists "product images are public" on storage.objects;
+create policy "product images are public"
+on storage.objects for select
+using (bucket_id = 'product-images');
 
-CREATE POLICY "Product images are public"
-ON storage.objects FOR SELECT
-USING (bucket_id = 'product-images');
+drop policy if exists "product images member upload" on storage.objects;
+create policy "product images member upload"
+on storage.objects for insert
+with check (
+  bucket_id = 'product-images'
+  and public.is_store_member(((storage.foldername(name))[1])::uuid)
+);
 
-CREATE POLICY "Product images can be uploaded"
-ON storage.objects FOR INSERT
-WITH CHECK (bucket_id = 'product-images');
-
-CREATE POLICY "Product images can be updated"
-ON storage.objects FOR UPDATE
-USING (bucket_id = 'product-images')
-WITH CHECK (bucket_id = 'product-images');
+drop policy if exists "product images member update" on storage.objects;
+create policy "product images member update"
+on storage.objects for update
+using (
+  bucket_id = 'product-images'
+  and public.is_store_member(((storage.foldername(name))[1])::uuid)
+)
+with check (
+  bucket_id = 'product-images'
+  and public.is_store_member(((storage.foldername(name))[1])::uuid)
+);

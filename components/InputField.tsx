@@ -10,6 +10,7 @@ type InputFieldProps = {
   keyboardType?: "default" | "number-pad" | "decimal-pad" | "phone-pad";
   multiline?: boolean;
   error?: string | null;
+  secureTextEntry?: boolean;
 };
 
 export function InputField({
@@ -20,6 +21,7 @@ export function InputField({
   keyboardType = "default",
   multiline = false,
   error,
+  secureTextEntry = false,
 }: InputFieldProps) {
   const { theme } = useAppTheme();
 
@@ -41,6 +43,7 @@ export function InputField({
         onChangeText={onChangeText}
         placeholder={placeholder}
         placeholderTextColor={theme.colors.textSoft}
+        secureTextEntry={secureTextEntry}
         style={{
           backgroundColor: theme.colors.surface,
           borderColor: error ? theme.colors.danger : theme.colors.border,

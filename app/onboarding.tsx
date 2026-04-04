@@ -17,6 +17,7 @@ import { LanguageToggle } from "@/components/LanguageToggle";
 import { useAppLanguage } from "@/contexts/LanguageContext";
 import { useAppTheme } from "@/contexts/ThemeContext";
 import { saveStoreName } from "@/db/repositories";
+import { isSupabaseReady } from "@/utils/supabase";
 
 export const ONBOARDED_KEY = "tindahan.has-onboarded";
 export const STORE_NAME_KEY = "tindahan.store-name";
@@ -89,12 +90,12 @@ export default function OnboardingScreen() {
       await Storage.setItem(OWNER_NAME_KEY, ownerName.trim());
     }
     await Storage.setItem(ONBOARDED_KEY, "true");
-    router.replace("/(tabs)");
+    router.replace(isSupabaseReady() ? "/sign-in" : "/(tabs)");
   }, [db, ownerName, router, storeName]);
 
   const handleSkip = useCallback(async () => {
     await Storage.setItem(ONBOARDED_KEY, "true");
-    router.replace("/(tabs)");
+    router.replace(isSupabaseReady() ? "/sign-in" : "/(tabs)");
   }, [router]);
 
   return (

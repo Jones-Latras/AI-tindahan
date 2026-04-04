@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -24,6 +25,55 @@ serve(async (request) => {
       { error: "Method not allowed." },
       {
         status: 405,
+        headers: corsHeaders,
+      },
+    );
+  }
+
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")?.trim();
+  const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")?.trim();
+  const authHeader = request.headers.get("Authorization") ?? "";
+  const accessToken = authHeader.replace(/^Bearer\s+/i, "").trim();
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    return Response.json(
+      { error: "Missing Supabase environment variables." },
+      {
+        status: 500,
+        headers: corsHeaders,
+      },
+    );
+  }
+
+  if (!accessToken) {
+    return Response.json(
+      { error: "Missing access token." },
+      {
+        status: 401,
+        headers: corsHeaders,
+      },
+    );
+  }
+
+  const authClient = createClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+    global: {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
+  });
+
+  const { data: authData, error: authError } = await authClient.auth.getUser(accessToken);
+
+  if (authError || !authData.user) {
+    return Response.json(
+      { error: "Unauthorized request." },
+      {
+        status: 401,
         headers: corsHeaders,
       },
     );

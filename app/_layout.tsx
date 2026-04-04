@@ -7,14 +7,17 @@ import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Animated, Easing, Text, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
+import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { LanguageProvider, useAppLanguage } from "@/contexts/LanguageContext";
 import { ThemeProvider, useAppTheme } from "@/contexts/ThemeContext";
 import { DATABASE_NAME, migrateDbIfNeeded } from "@/db/database";
 import { ONBOARDED_KEY } from "@/app/onboarding";
+import { isSupabaseReady } from "@/utils/supabase";
 
 function AppShell() {
   const { isReady, mode, theme } = useAppTheme();
   const { isReady: isLanguageReady, t } = useAppLanguage();
+  const { isReady: isAuthReady, needsStoreSetup, session } = useAuth();
   const [hasOnboarded, setHasOnboarded] = useState<boolean | null>(null);
   const [showIntroOverlay, setShowIntroOverlay] = useState(false);
   const hasPlayedIntro = useRef(false);
@@ -27,7 +30,7 @@ function AppShell() {
   const pulseScale = useRef(new Animated.Value(1)).current;
   const pulseOpacity = useRef(new Animated.Value(0.18)).current;
   const sheenTranslateX = useRef(new Animated.Value(-56)).current;
-  const isAppReady = isReady && isLanguageReady && hasOnboarded !== null;
+  const isAppReady = isReady && isLanguageReady && hasOnboarded !== null && isAuthReady;
 
   useEffect(() => {
     let mounted = true;
@@ -466,23 +469,25 @@ function AppShell() {
           transform: [{ translateY: appTranslateY }, { scale: appScale }],
         }}
       >
-        <SafeAreaProvider>
-          <SQLiteProvider databaseName={DATABASE_NAME} onInit={migrateDbIfNeeded}>
-            <StatusBar style={mode === "dark" ? "light" : "dark"} />
-            <Stack
-              screenOptions={{
-                contentStyle: { backgroundColor: theme.colors.background },
-                headerShown: false,
-              }}
-            >
-              {hasOnboarded ? (
-                <Stack.Screen name="(tabs)" />
-              ) : (
-                <Stack.Screen name="onboarding" />
-              )}
-            </Stack>
-          </SQLiteProvider>
-        </SafeAreaProvider>
+        <StatusBar style={mode === "dark" ? "light" : "dark"} />
+        <Stack
+          screenOptions={{
+            contentStyle: { backgroundColor: theme.colors.background },
+            headerShown: false,
+          }}
+        >
+          {!hasOnboarded ? (
+            <Stack.Screen name="onboarding" />
+          ) : !isSupabaseReady() ? (
+            <Stack.Screen name="(tabs)" />
+          ) : !session ? (
+            <Stack.Screen name="sign-in" />
+          ) : needsStoreSetup ? (
+            <Stack.Screen name="store-setup" />
+          ) : (
+            <Stack.Screen name="(tabs)" />
+          )}
+        </Stack>
       </Animated.View>
 
       {showIntroOverlay ? (
@@ -512,7 +517,13 @@ export default function RootLayout() {
   return (
     <ThemeProvider>
       <LanguageProvider>
-        <AppShell />
+        <SafeAreaProvider>
+          <SQLiteProvider databaseName={DATABASE_NAME} onInit={migrateDbIfNeeded}>
+            <AuthProvider>
+              <AppShell />
+            </AuthProvider>
+          </SQLiteProvider>
+        </SafeAreaProvider>
       </LanguageProvider>
     </ThemeProvider>
   );
