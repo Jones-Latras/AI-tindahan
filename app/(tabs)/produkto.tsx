@@ -1038,9 +1038,8 @@ export default function ProduktoScreen() {
                 source={{ uri: product.imageUri }}
                 style={{
                   alignSelf: "center",
-                  height: "85%",
-                  marginTop: "7.5%",
-                  width: "85%",
+                  height: "94%",
+                  width: "94%",
                 }}
               />
             ) : (
