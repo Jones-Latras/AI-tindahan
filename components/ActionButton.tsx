@@ -77,11 +77,17 @@ export function ActionButton({
     >
       {icon ? <View>{icon}</View> : null}
       <Text
+        adjustsFontSizeToFit
+        allowFontScaling={false}
+        minimumFontScale={0.88}
+        numberOfLines={1}
         style={{
           color: disabled ? theme.colors.textSoft : palette.textColor,
+          flexShrink: 1,
           fontFamily: theme.typography.body,
           fontSize: 15,
           fontWeight: "700",
+          textAlign: "center",
         }}
       >
         {label}
@@ -89,4 +95,3 @@ export function ActionButton({
     </Pressable>
   );
 }
-

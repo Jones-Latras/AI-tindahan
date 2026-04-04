@@ -1,5 +1,5 @@
 import { Feather } from "@expo/vector-icons";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { useSQLiteContext } from "expo-sqlite";
 import Storage from "expo-sqlite/kv-store";
 import { useCallback, useState, type ReactNode } from "react";
@@ -10,12 +10,17 @@ import { Screen } from "@/components/Screen";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAppLanguage } from "@/contexts/LanguageContext";
 import { useAppTheme } from "@/contexts/ThemeContext";
-import { getStoreName, saveStoreName } from "@/db/repositories";
+import { clearAllLocalStoreData, getStoreName, saveStoreName } from "@/db/repositories";
 import { seedStoreData } from "@/scripts/seed-store";
 import { isSupabaseReady } from "@/utils/supabase";
 import { getLastSyncTime, restoreFromCloud, syncToCloud } from "@/utils/sync";
 
 const STORE_NAME_KEY = "tindahan.store-name";
+const OWNER_NAME_KEY = "tindahan.owner-name";
+const PRODUCT_CATEGORIES_KEY = "tindahan.product-categories";
+const LAST_SYNC_KEY_PREFIX = "tindahan.last-sync.";
+const MILESTONES_KEY_PREFIX = "tindahan.milestones.";
+const HOME_BRIEF_KEY_PREFIX = "ai.home-brief.v6.";
 
 type SettingsSectionProps = {
   title: string;
@@ -129,11 +134,17 @@ function SettingsAction({ label, onPress, disabled, busy, tone = "primary" }: Se
         <ActivityIndicator color={primary ? theme.colors.primaryText : theme.colors.primary} size="small" />
       ) : null}
       <Text
+        adjustsFontSizeToFit
+        allowFontScaling={false}
+        minimumFontScale={0.88}
+        numberOfLines={1}
         style={{
           color: primary ? theme.colors.primaryText : theme.colors.text,
+          flexShrink: 1,
           fontFamily: theme.typography.body,
           fontSize: 12,
           fontWeight: "700",
+          textAlign: "center",
         }}
       >
         {label}
@@ -226,6 +237,7 @@ function SettingsRow({
 }
 
 export default function SettingsScreen() {
+  const router = useRouter();
   const db = useSQLiteContext();
   const { activeStore, session, signOut, stores, user } = useAuth();
   const { theme, mode, toggleMode } = useAppTheme();
@@ -238,6 +250,7 @@ export default function SettingsScreen() {
   const [syncing, setSyncing] = useState(false);
   const [lastSync, setLastSync] = useState<string | null>(null);
   const [seeding, setSeeding] = useState(false);
+  const [clearingData, setClearingData] = useState(false);
 
   const normalizedStoreName = storeName.trim().replace(/\s+/g, " ");
   const normalizedStoreNameDraft = storeNameDraft.trim().replace(/\s+/g, " ");
@@ -289,6 +302,59 @@ export default function SettingsScreen() {
       setSavingStoreName(false);
     }
   }, [db, normalizedStoreNameDraft, t]);
+
+  const handleClearAllData = useCallback(() => {
+    Alert.alert(
+      "Clear all local data?",
+      "This deletes products, sales, customers, expenses, restock lists, and local cache on this device. Cloud backups are not deleted.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Clear data",
+          style: "destructive",
+          onPress: () => {
+            void (async () => {
+              setClearingData(true);
+
+              try {
+                await clearAllLocalStoreData(db);
+
+                const storageKeys = await Storage.getAllKeys();
+                const keysToRemove = storageKeys.filter(
+                  (key) =>
+                    key === STORE_NAME_KEY ||
+                    key === OWNER_NAME_KEY ||
+                    key === PRODUCT_CATEGORIES_KEY ||
+                    key.startsWith(LAST_SYNC_KEY_PREFIX) ||
+                    key.startsWith(MILESTONES_KEY_PREFIX) ||
+                    key.startsWith(HOME_BRIEF_KEY_PREFIX),
+                );
+
+                await Promise.all(keysToRemove.map((key) => Storage.removeItem(key)));
+
+                setStoreName("");
+                setStoreNameDraft("");
+                setLastSync(null);
+
+                Alert.alert(
+                  "Local data cleared",
+                  "This device is now reset. Sign in and restore from cloud if you want your backed up data again.",
+                );
+                router.replace("/(tabs)");
+              } catch (error) {
+                Alert.alert(
+                  "Could not clear local data",
+                  error instanceof Error ? error.message : "Please try again.",
+                );
+              } finally {
+                setClearingData(false);
+              }
+            })();
+          },
+        },
+      ],
+    );
+  }, [db, router]);
 
   return (
     <Screen
@@ -470,10 +536,10 @@ export default function SettingsScreen() {
           />
           <SettingsRow
             icon="refresh-ccw"
-            isLast
+            isLast={false}
             right={
               <SettingsAction
-                disabled={syncing || !canUseCloudSync}
+                disabled={syncing || clearingData || !canUseCloudSync}
                 label={t("home.cloud.confirmRestore")}
                 onPress={() => {
                   Alert.alert(
@@ -507,6 +573,22 @@ export default function SettingsScreen() {
             }
             title={t("home.cloud.restore")}
           />
+          <SettingsRow
+            icon="trash-2"
+            isLast
+            right={
+              <SettingsAction
+                busy={clearingData}
+                disabled={syncing || clearingData}
+                label={clearingData ? "Clearing..." : "Clear local data"}
+                onPress={handleClearAllData}
+                tone="secondary"
+              />
+            }
+            subtitle="Delete all local store data on this device. Cloud backups stay untouched."
+            title="Reset this device"
+            tone="warning"
+          />
         </SettingsSection>
       ) : null}
 
@@ -521,6 +603,7 @@ export default function SettingsScreen() {
                 onPress={() => {
                   void (async () => {
                     await signOut();
+                    router.replace("/sign-in");
                   })();
                 }}
                 tone="secondary"

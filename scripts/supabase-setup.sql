@@ -40,6 +40,21 @@ as $$
   );
 $$;
 
+create or replace function public.is_store_owner(target_store_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.stores s
+    where s.id = target_store_id
+      and s.owner_user_id = auth.uid()
+  );
+$$;
+
 create table if not exists customers (
   sync_id uuid primary key,
   store_id uuid not null references stores(id) on delete cascade,
@@ -257,7 +272,7 @@ for all using (user_id = auth.uid()) with check (user_id = auth.uid());
 
 drop policy if exists "stores member access" on stores;
 create policy "stores member access" on stores
-for select using (public.is_store_member(id));
+for select using (owner_user_id = auth.uid() or public.is_store_member(id));
 drop policy if exists "stores owner insert" on stores;
 create policy "stores owner insert" on stores
 for insert with check (owner_user_id = auth.uid());
@@ -275,11 +290,7 @@ drop policy if exists "memberships self insert" on store_memberships;
 create policy "memberships self insert" on store_memberships
 for insert with check (
   user_id = auth.uid()
-  and exists (
-    select 1 from stores s
-    where s.id = store_memberships.store_id
-      and s.owner_user_id = auth.uid()
-  )
+  and public.is_store_owner(store_memberships.store_id)
 );
 
 drop policy if exists "customers members access" on customers;

@@ -1,4 +1,5 @@
 import Storage from "expo-sqlite/kv-store";
+import { useRouter } from "expo-router";
 import { useSQLiteContext } from "expo-sqlite";
 import { useEffect, useState } from "react";
 import { Text, View } from "react-native";
@@ -12,9 +13,10 @@ import { getStoreName, saveStoreName } from "@/db/repositories";
 import { STORE_NAME_KEY } from "@/app/onboarding";
 
 export default function StoreSetupScreen() {
+  const router = useRouter();
   const db = useSQLiteContext();
   const { theme } = useAppTheme();
-  const { createStore, user } = useAuth();
+  const { activeStore, createStore, user } = useAuth();
   const [storeName, setStoreName] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -37,6 +39,12 @@ export default function StoreSetupScreen() {
       mounted = false;
     };
   }, [db]);
+
+  useEffect(() => {
+    if (activeStore) {
+      router.replace("/(tabs)");
+    }
+  }, [activeStore, router]);
 
   const handleCreateStore = async () => {
     setSaving(true);

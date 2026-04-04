@@ -1,5 +1,7 @@
+import "react-native-url-polyfill/auto";
 import * as SecureStore from "expo-secure-store";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { AppState } from "react-native";
 
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL ?? "";
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? "";
@@ -15,6 +17,7 @@ const secureStoreAdapter = {
 };
 
 let supabaseClient: SupabaseClient | null = null;
+let autoRefreshHooked = false;
 
 export function isSupabaseReady() {
   return Boolean(supabaseUrl && supabaseAnonKey);
@@ -34,6 +37,23 @@ export function getSupabaseClient() {
         storage: secureStoreAdapter,
       },
     });
+  }
+
+  if (!autoRefreshHooked) {
+    AppState.addEventListener("change", (state) => {
+      if (!supabaseClient) {
+        return;
+      }
+
+      if (state === "active") {
+        supabaseClient.auth.startAutoRefresh();
+        return;
+      }
+
+      supabaseClient.auth.stopAutoRefresh();
+    });
+    supabaseClient.auth.startAutoRefresh();
+    autoRefreshHooked = true;
   }
 
   return supabaseClient;
@@ -70,8 +90,26 @@ export async function getSupabaseSession() {
 }
 
 export async function getSupabaseAccessToken() {
+  const client = getSupabaseClient();
   const session = await getSupabaseSession();
-  return session?.access_token ?? null;
+
+  if (!session) {
+    return null;
+  }
+
+  const expiresAtMs = (session.expires_at ?? 0) * 1000;
+
+  if (expiresAtMs > Date.now() + 60_000) {
+    return session.access_token;
+  }
+
+  const { data, error } = await client.auth.refreshSession();
+
+  if (error) {
+    throw error;
+  }
+
+  return data.session?.access_token ?? null;
 }
 
 export async function supabaseUpsert(
@@ -135,24 +173,37 @@ export async function invokeSupabaseFunction<T = unknown>(
     signal?: AbortSignal;
   },
 ) {
-  const accessToken = await getSupabaseAccessToken();
+  const client = getSupabaseClient();
+  let accessToken = await getSupabaseAccessToken();
 
   if (!accessToken) {
     throw new Error("Sign in before calling Supabase functions.");
   }
 
-  const response = await fetch(`${FUNCTIONS_URL}/${functionName}`, {
-    method: "POST",
-    headers: {
-      apikey: supabaseAnonKey,
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(payload),
-    signal: options?.signal,
-  });
+  const runRequest = async (token: string) =>
+    fetch(`${FUNCTIONS_URL}/${functionName}`, {
+      method: "POST",
+      headers: {
+        apikey: supabaseAnonKey,
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+      signal: options?.signal,
+    });
 
-  const rawBody = await response.text();
+  let response = await runRequest(accessToken);
+  let rawBody = await response.text();
+
+  if (response.status === 401 && rawBody.includes("Invalid JWT")) {
+    const { data, error } = await client.auth.refreshSession();
+
+    if (!error && data.session?.access_token) {
+      accessToken = data.session.access_token;
+      response = await runRequest(accessToken);
+      rawBody = await response.text();
+    }
+  }
 
   if (!response.ok) {
     throw new Error(`Supabase function "${functionName}" failed (${response.status}): ${rawBody}`);

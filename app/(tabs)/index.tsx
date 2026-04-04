@@ -6,7 +6,7 @@ import { useFocusEffect, useRouter } from "expo-router";
 import { useSQLiteContext } from "expo-sqlite";
 import Storage from "expo-sqlite/kv-store";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Alert, InteractionManager, Platform, Pressable, ScrollView, Text, View } from "react-native";
 import { captureRef } from "react-native-view-shot";
 
 import { ActionButton } from "@/components/ActionButton";
@@ -69,6 +69,7 @@ type CalculatorButton = {
 };
 
 const STORE_NAME_KEY = "tindahan.store-name";
+const HOME_REFRESH_DEBOUNCE_MS = 12_000;
 const REPORTS_TIMEFRAMES: AnalyticsTimeframe[] = ["today", "week", "month"];
 const CALCULATOR_BUTTON_ROWS: CalculatorButton[][] = [
   [
@@ -428,6 +429,9 @@ export default function HomeScreen() {
   const [messages, setMessages] = useState<ChatMessage[]>(() => [createChatMessage("assistant", t("home.aiWelcome"))]);
   const [briefDate, setBriefDate] = useState(() => new Date());
   const receiptCaptureRef = useRef<View>(null);
+  const hasLoadedOverviewRef = useRef(false);
+  const hasLoadedBriefRef = useRef(false);
+  const lastHomeRefreshAtRef = useRef(0);
   const compactCardStyle = {
     gap: theme.spacing.sm,
     padding: theme.spacing.md,
@@ -562,16 +566,14 @@ export default function HomeScreen() {
     );
   }, [t]);
 
-  const loadDashboard = useCallback(async (options?: { silent?: boolean }) => {
+  const loadHomeOverview = useCallback(async (options?: { silent?: boolean }) => {
     if (!options?.silent) {
       setLoading(true);
-      setAiLoading(true);
     }
 
     try {
-      const [nextMetrics, nextBrief, nextVelocity, nextWeekly, todayReports, weekReports, monthReports] = await Promise.all([
+      const [nextMetrics, nextVelocity, nextWeekly, todayReports, weekReports, monthReports] = await Promise.all([
         getHomeMetrics(db),
-        getOrCreateHomeAiBrief(db, language),
         getProductSalesVelocity(db),
         getWeeklyPaymentBreakdown(db),
         getReportsSnapshot(db, "today"),
@@ -584,29 +586,63 @@ export default function HomeScreen() {
         today: todayReports,
         week: weekReports,
       });
-      setBrief(nextBrief);
       setVelocity(nextVelocity.filter((item) => item.unitsPerDay > 0 && (item.daysUntilOutOfStock ?? Infinity) <= 7).slice(0, 5));
       setWeeklyReports(nextWeekly);
+      hasLoadedOverviewRef.current = true;
+      lastHomeRefreshAtRef.current = Date.now();
     } finally {
       if (!options?.silent) {
         setLoading(false);
-        setAiLoading(false);
       }
+    }
+  }, [db]);
+
+  const loadHomeBrief = useCallback(async (options?: { silent?: boolean }) => {
+    if (!options?.silent) {
+      setAiLoading(true);
+    }
+
+    try {
+      const nextBrief = await getOrCreateHomeAiBrief(db, language);
+      setBrief(nextBrief);
+      hasLoadedBriefRef.current = true;
+    } finally {
+      setAiLoading(false);
     }
   }, [db, language]);
 
   useFocusEffect(
     useCallback(() => {
       let midnightRefreshTimeout: ReturnType<typeof setTimeout> | null = null;
+      let cancelled = false;
+      let interactionTask: { cancel?: () => void } | null = null;
 
       const scheduleMidnightRefresh = () => {
         midnightRefreshTimeout = setTimeout(() => {
-          void loadDashboard({ silent: true });
+          void loadHomeOverview({ silent: true });
+          void loadHomeBrief({ silent: true });
           scheduleMidnightRefresh();
         }, getMillisecondsUntilNextMidnight());
       };
 
-      void loadDashboard();
+      interactionTask = InteractionManager.runAfterInteractions(() => {
+        if (cancelled) {
+          return;
+        }
+
+        const justRefreshed = Date.now() - lastHomeRefreshAtRef.current < HOME_REFRESH_DEBOUNCE_MS;
+        const shouldRefreshOverview = !hasLoadedOverviewRef.current || !justRefreshed;
+        const shouldRefreshBrief = !hasLoadedBriefRef.current || !justRefreshed;
+
+        if (shouldRefreshOverview) {
+          void loadHomeOverview({ silent: hasLoadedOverviewRef.current });
+        }
+
+        if (shouldRefreshBrief) {
+          void loadHomeBrief({ silent: hasLoadedBriefRef.current });
+        }
+      });
+
       void (async () => {
         const [dbStoreName, legacyStoreName] = await Promise.all([
           getStoreName(db),
@@ -624,11 +660,13 @@ export default function HomeScreen() {
       scheduleMidnightRefresh();
 
       return () => {
+        cancelled = true;
+        interactionTask?.cancel?.();
         if (midnightRefreshTimeout) {
           clearTimeout(midnightRefreshTimeout);
         }
       };
-    }, [db, loadDashboard]),
+    }, [db, loadHomeBrief, loadHomeOverview]),
   );
 
   const handleSendChat = useCallback(async () => {

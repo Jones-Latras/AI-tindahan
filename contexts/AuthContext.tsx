@@ -10,12 +10,15 @@ import {
   saveAuthenticatedUserId,
 } from "@/db/repositories";
 import {
+  completeAuthSessionFromUrl,
   createStoreForCurrentUser,
   ensureProfile,
   getCurrentSession,
+  isAuthCallbackUrl,
   listStoresForCurrentUser,
   signInWithPassword,
   signOutUser,
+  type SignUpResult,
   signUpWithPassword,
   subscribeToAuthChanges,
   type StoreSummary,
@@ -33,9 +36,10 @@ type AuthContextValue = {
   setActiveStore: (storeId: string) => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
-  signUp: (email: string, password: string) => Promise<void>;
+  signUp: (email: string, password: string) => Promise<SignUpResult>;
   stores: StoreSummary[];
   user: User | null;
+  completeAuthCallback: (url: string) => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -124,6 +128,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       activeStore: stores.find((store) => store.id === activeStoreId) ?? null,
       activeStoreId,
+      completeAuthCallback: async (url: string) => {
+        if (!isAuthCallbackUrl(url)) {
+          return;
+        }
+
+        await completeAuthSessionFromUrl(url);
+        await refresh();
+      },
       createStore: async (storeName: string) => {
         const store = await createStoreForCurrentUser(storeName);
         await saveActiveStoreId(db, store.id);
@@ -151,8 +163,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setActiveStoreId(null);
       },
       signUp: async (email: string, password: string) => {
-        await signUpWithPassword(email, password);
+        const result = await signUpWithPassword(email, password);
         await refresh();
+        return result;
       },
       stores,
       user: session?.user ?? null,

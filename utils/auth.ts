@@ -1,3 +1,4 @@
+import * as Linking from "expo-linking";
 import type { Session, User } from "@supabase/supabase-js";
 
 import { createSyncId } from "@/utils/id";
@@ -9,6 +10,13 @@ export type StoreSummary = {
   ownerUserId: string;
   role: string;
 };
+
+export type SignUpResult = {
+  requiresEmailConfirmation: boolean;
+  session: Session | null;
+};
+
+const AUTH_CALLBACK_PATH = "auth/callback";
 
 function sanitizeStoreName(storeName: string) {
   const normalized = storeName.trim().replace(/\s+/g, " ");
@@ -48,13 +56,19 @@ export async function signUpWithPassword(email: string, password: string) {
   const { data, error } = await client.auth.signUp({
     email: email.trim(),
     password,
+    options: {
+      emailRedirectTo: getEmailRedirectUrl(),
+    },
   });
 
   if (error) {
     throw new Error(error.message);
   }
 
-  return data.session;
+  return {
+    requiresEmailConfirmation: !data.session,
+    session: data.session,
+  } satisfies SignUpResult;
 }
 
 export async function signOutUser() {
@@ -162,6 +176,82 @@ export async function createStoreForCurrentUser(storeName: string) {
     ownerUserId: user.id,
     role: "owner",
   } satisfies StoreSummary;
+}
+
+export function getEmailRedirectUrl() {
+  return Linking.createURL(AUTH_CALLBACK_PATH, {
+    scheme: "tindahanai",
+  });
+}
+
+function normalizeCallbackUrl(url: string) {
+  if (!url.includes("#")) {
+    return url;
+  }
+
+  const [base, fragment] = url.split("#", 2);
+  const separator = base.includes("?") ? "&" : "?";
+  return `${base}${separator}${fragment}`;
+}
+
+function readCallbackParams(url: string) {
+  const normalizedUrl = normalizeCallbackUrl(url);
+  const parsedUrl = new URL(normalizedUrl);
+
+  return {
+    accessToken: parsedUrl.searchParams.get("access_token"),
+    code: parsedUrl.searchParams.get("code"),
+    errorCode: parsedUrl.searchParams.get("error_code"),
+    errorDescription: parsedUrl.searchParams.get("error_description"),
+    refreshToken: parsedUrl.searchParams.get("refresh_token"),
+  };
+}
+
+export function isAuthCallbackUrl(url: string) {
+  try {
+    const parsedUrl = new URL(normalizeCallbackUrl(url));
+    return parsedUrl.pathname.replace(/^\/+/, "") === AUTH_CALLBACK_PATH;
+  } catch {
+    return false;
+  }
+}
+
+export async function completeAuthSessionFromUrl(url: string) {
+  if (!isAuthCallbackUrl(url)) {
+    return null;
+  }
+
+  const client = getSupabaseClient();
+  const { accessToken, code, errorCode, errorDescription, refreshToken } = readCallbackParams(url);
+
+  if (errorCode || errorDescription) {
+    throw new Error(errorDescription ?? errorCode ?? "Authentication callback failed.");
+  }
+
+  if (code) {
+    const { data, error } = await client.auth.exchangeCodeForSession(code);
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    return data.session;
+  }
+
+  if (accessToken && refreshToken) {
+    const { data, error } = await client.auth.setSession({
+      access_token: accessToken,
+      refresh_token: refreshToken,
+    });
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    return data.session;
+  }
+
+  return null;
 }
 
 export function subscribeToAuthChanges(callback: (session: Session | null) => void) {

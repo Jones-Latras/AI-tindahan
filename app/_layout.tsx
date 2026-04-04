@@ -476,6 +476,7 @@ function AppShell() {
             headerShown: false,
           }}
         >
+          <Stack.Screen name="auth/callback" />
           {!hasOnboarded ? (
             <Stack.Screen name="onboarding" />
           ) : !isSupabaseReady() ? (

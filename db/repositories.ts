@@ -706,6 +706,24 @@ export const STORE_NAME_SETTING_KEY = "store_name";
 export const ACTIVE_STORE_ID_METADATA_KEY = "active_store_id";
 export const AUTH_USER_ID_METADATA_KEY = "auth_user_id";
 
+const LOCAL_RESET_TABLES = [
+  "container_return_events",
+  "sale_items",
+  "utang_payments",
+  "repack_sessions",
+  "restock_list_items",
+  "product_inventory_links",
+  "sales",
+  "utang",
+  "restock_lists",
+  "expenses",
+  "inventory_pools",
+  "products",
+  "customers",
+  "app_settings",
+  "local_metadata",
+] as const;
+
 function buildProductSelectQuery(whereClause = "", orderByClause = "ORDER BY p.name ASC") {
   return `
     SELECT
@@ -3091,6 +3109,14 @@ export async function applyUtangPayment(db: SQLiteDatabase, utangId: number, pay
       paidAt,
       utangId,
     );
+  });
+}
+
+export async function clearAllLocalStoreData(db: SQLiteDatabase) {
+  await db.withExclusiveTransactionAsync(async (txn) => {
+    for (const table of LOCAL_RESET_TABLES) {
+      await txn.runAsync(`DELETE FROM ${table}`);
+    }
   });
 }
 

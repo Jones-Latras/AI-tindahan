@@ -2,17 +2,19 @@ import { Platform } from "react-native";
 
 import type { ThemeMode } from "@/types/models";
 
+// Use the platform's primary system family instead of device-dependent branded/condensed faces.
+// This keeps text metrics more stable across phones until bundled custom fonts are added.
 const displayFontFamily = Platform.select({
-  ios: "Avenir Next Condensed",
-  android: "sans-serif-condensed",
+  ios: "System",
+  android: "sans-serif-medium",
   default: "system-ui",
-});
+}) as string;
 
 const bodyFontFamily = Platform.select({
-  ios: "Avenir Next",
+  ios: "System",
   android: "sans-serif",
   default: "system-ui",
-});
+}) as string;
 
 export const lightTheme = {
   mode: "light" as ThemeMode,

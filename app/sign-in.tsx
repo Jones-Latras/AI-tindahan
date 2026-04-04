@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "expo-router";
 import { Text, View } from "react-native";
 
 import { ActionButton } from "@/components/ActionButton";
@@ -8,14 +9,16 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useAppTheme } from "@/contexts/ThemeContext";
 
 export default function SignInScreen() {
+  const router = useRouter();
   const { theme } = useAppTheme();
-  const { signIn, signUp } = useAuth();
+  const { isReady, needsStoreSetup, session, signIn, signUp } = useAuth();
   const [mode, setMode] = useState<"sign-in" | "sign-up">("sign-in");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const isSignUp = mode === "sign-up";
 
   const canSubmit = useMemo(() => {
@@ -30,6 +33,14 @@ export default function SignInScreen() {
     return true;
   }, [confirmPassword, email, isSignUp, password]);
 
+  useEffect(() => {
+    if (!isReady || !session) {
+      return;
+    }
+
+    router.replace(needsStoreSetup ? "/store-setup" : "/(tabs)");
+  }, [isReady, needsStoreSetup, router, session]);
+
   const handleSubmit = async () => {
     if (!canSubmit) {
       setError(isSignUp ? "Check your password fields before continuing." : "Enter a valid email and password.");
@@ -38,10 +49,14 @@ export default function SignInScreen() {
 
     setSubmitting(true);
     setError(null);
+    setNotice(null);
 
     try {
       if (isSignUp) {
-        await signUp(email, password);
+        const result = await signUp(email, password);
+        if (result.requiresEmailConfirmation) {
+          setNotice("Check your email to confirm your account. The link will open this app.");
+        }
       } else {
         await signIn(email, password);
       }
@@ -104,6 +119,18 @@ export default function SignInScreen() {
             {error}
           </Text>
         ) : null}
+        {notice ? (
+          <Text
+            style={{
+              color: theme.colors.textMuted,
+              fontFamily: theme.typography.body,
+              fontSize: 13,
+              lineHeight: 18,
+            }}
+          >
+            {notice}
+          </Text>
+        ) : null}
 
         <ActionButton
           disabled={!canSubmit || submitting}
@@ -125,6 +152,7 @@ export default function SignInScreen() {
           onPress={() => {
             setMode((currentMode) => (currentMode === "sign-in" ? "sign-up" : "sign-in"));
             setError(null);
+            setNotice(null);
           }}
           style={{ width: "100%" }}
           variant="ghost"
