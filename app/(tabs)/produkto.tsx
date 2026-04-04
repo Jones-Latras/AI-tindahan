@@ -1034,7 +1034,7 @@ export default function ProduktoScreen() {
                     color: active ? theme.colors.primaryText : theme.colors.text,
                     fontFamily: theme.typography.body,
                     fontSize: 12,
-                    fontWeight: "700",
+                    fontWeight: "600",
                   }}
                 >
                   {option.label}
@@ -1058,7 +1058,7 @@ export default function ProduktoScreen() {
                   color: theme.colors.textMuted,
                   fontFamily: theme.typography.body,
                   fontSize: 12,
-                  fontWeight: "700",
+                  fontWeight: "600",
                 }}
               >
                 {t("produkto.categoriesLabel")}
@@ -1109,7 +1109,7 @@ export default function ProduktoScreen() {
                     color: theme.colors.text,
                     fontFamily: theme.typography.body,
                     fontSize: 12,
-                    fontWeight: "700",
+                    fontWeight: "600",
                   }}
                 >
                   {categoriesExpanded ? t("produkto.toggleCategories.hide") : t("produkto.toggleCategories.show")}
@@ -1136,7 +1136,7 @@ export default function ProduktoScreen() {
                     color: theme.colors.primary,
                     fontFamily: theme.typography.body,
                     fontSize: 12,
-                    fontWeight: "700",
+                    fontWeight: "600",
                   }}
                 >
                   {t("produkto.newCategoryButton")}
@@ -1172,7 +1172,7 @@ export default function ProduktoScreen() {
                         color: active ? theme.colors.primaryText : theme.colors.text,
                         fontFamily: theme.typography.body,
                         fontSize: 12,
-                        fontWeight: "700",
+                        fontWeight: "600",
                       }}
                     >
                       {option.label}
@@ -1380,7 +1380,7 @@ export default function ProduktoScreen() {
                       color: active ? theme.colors.primaryText : theme.colors.text,
                       fontFamily: theme.typography.body,
                       fontSize: 13,
-                      fontWeight: "700",
+                      fontWeight: "600",
                       textAlign: "center",
                     }}
                   >
@@ -1397,7 +1397,7 @@ export default function ProduktoScreen() {
                 color: theme.colors.text,
                 fontFamily: theme.typography.body,
                 fontSize: 14,
-                fontWeight: "700",
+                fontWeight: "600",
               }}
             >
               {t("produkto.inventorySetup")}
@@ -1437,7 +1437,7 @@ export default function ProduktoScreen() {
                         color: active ? theme.colors.primaryText : theme.colors.text,
                         fontFamily: theme.typography.body,
                         fontSize: 13,
-                        fontWeight: "700",
+                        fontWeight: "600",
                         textAlign: "center",
                       }}
                     >
@@ -1500,7 +1500,7 @@ export default function ProduktoScreen() {
                                 color: active ? theme.colors.primary : theme.colors.text,
                                 fontFamily: theme.typography.body,
                                 fontSize: 12,
-                                fontWeight: "700",
+                                fontWeight: "600",
                               }}
                             >
                               {pool.name}
@@ -1589,7 +1589,7 @@ export default function ProduktoScreen() {
                         color: theme.colors.text,
                         fontFamily: theme.typography.body,
                         fontSize: 13,
-                        fontWeight: "700",
+                        fontWeight: "600",
                       }}
                     >
                       {t("produkto.inventoryHelper.title")}
@@ -1637,7 +1637,7 @@ export default function ProduktoScreen() {
                             color: theme.colors.text,
                             fontFamily: theme.typography.body,
                             fontSize: 12,
-                            fontWeight: "700",
+                            fontWeight: "600",
                           }}
                         >
                           {t("produkto.inventoryHelper.quantity", {
@@ -1652,7 +1652,7 @@ export default function ProduktoScreen() {
                             color: theme.colors.textMuted,
                             fontFamily: theme.typography.body,
                             fontSize: 12,
-                            fontWeight: "700",
+                            fontWeight: "600",
                           }}
                         >
                           {t("produkto.inventoryHelper.threshold", {
@@ -1723,7 +1723,7 @@ export default function ProduktoScreen() {
                             color: active ? theme.colors.primary : theme.colors.text,
                             fontFamily: theme.typography.body,
                             fontSize: 13,
-                            fontWeight: "700",
+                            fontWeight: "600",
                             textAlign: "center",
                           }}
                         >
@@ -1754,7 +1754,7 @@ export default function ProduktoScreen() {
                   color: theme.colors.text,
                   fontFamily: theme.typography.body,
                   fontSize: 14,
-                  fontWeight: "700",
+                  fontWeight: "600",
                 }}
               >
                 Weight pricing mode
@@ -1786,7 +1786,7 @@ export default function ProduktoScreen() {
                           color: active ? theme.colors.primary : theme.colors.text,
                           fontFamily: theme.typography.body,
                           fontSize: 13,
-                          fontWeight: "700",
+                          fontWeight: "600",
                           textAlign: "center",
                         }}
                       >
@@ -1804,7 +1804,7 @@ export default function ProduktoScreen() {
                   color: theme.colors.text,
                   fontFamily: theme.typography.body,
                   fontSize: 14,
-                  fontWeight: "700",
+                  fontWeight: "600",
                 }}
               >
                 Pricing strategy
@@ -1836,7 +1836,7 @@ export default function ProduktoScreen() {
                           color: active ? theme.colors.primary : theme.colors.text,
                           fontFamily: theme.typography.body,
                           fontSize: 13,
-                          fontWeight: "700",
+                          fontWeight: "600",
                           textAlign: "center",
                         }}
                       >
@@ -1888,7 +1888,7 @@ export default function ProduktoScreen() {
                     color: theme.colors.text,
                     fontFamily: theme.typography.body,
                     fontSize: 13,
-                    fontWeight: "700",
+                    fontWeight: "600",
                   }}
                 >
                   Shared inventory controls stock
@@ -2044,7 +2044,7 @@ export default function ProduktoScreen() {
                     color: theme.colors.text,
                     fontFamily: theme.typography.body,
                     fontSize: 13,
-                    fontWeight: "700",
+                    fontWeight: "600",
                   }}
                 >
                   Shared inventory controls stock
@@ -2078,7 +2078,7 @@ export default function ProduktoScreen() {
                 color: theme.colors.danger,
                 fontFamily: theme.typography.body,
                 fontSize: 13,
-                fontWeight: "700",
+                fontWeight: "600",
               }}
             >
               Fix before saving
@@ -2101,7 +2101,7 @@ export default function ProduktoScreen() {
                 color: theme.colors.text,
                 fontFamily: theme.typography.body,
                 fontSize: 14,
-                fontWeight: "700",
+                fontWeight: "600",
               }}
             >
               Live pricing preview
@@ -2110,7 +2110,7 @@ export default function ProduktoScreen() {
               <Text style={{ color: theme.colors.textMuted, fontFamily: theme.typography.body, fontSize: 13 }}>
                 Price per kg
               </Text>
-              <Text style={{ color: theme.colors.primary, fontFamily: theme.typography.body, fontSize: 13, fontWeight: "700" }}>
+              <Text style={{ color: theme.colors.primary, fontFamily: theme.typography.body, fontSize: 13, fontWeight: "600" }}>
                 {centsToDisplayValue(pricingPreview.computedPricePerKgCents)}
               </Text>
             </View>
@@ -2118,7 +2118,7 @@ export default function ProduktoScreen() {
               <Text style={{ color: theme.colors.textMuted, fontFamily: theme.typography.body, fontSize: 13 }}>
                 Cost per kg
               </Text>
-              <Text style={{ color: theme.colors.text, fontFamily: theme.typography.body, fontSize: 13, fontWeight: "700" }}>
+              <Text style={{ color: theme.colors.text, fontFamily: theme.typography.body, fontSize: 13, fontWeight: "600" }}>
                 {centsToDisplayValue(pricingPreview.costPricePerKgCents)}
               </Text>
             </View>
@@ -2126,7 +2126,7 @@ export default function ProduktoScreen() {
               <Text style={{ color: theme.colors.textMuted, fontFamily: theme.typography.body, fontSize: 13 }}>
                 Total projected sales
               </Text>
-              <Text style={{ color: theme.colors.text, fontFamily: theme.typography.body, fontSize: 13, fontWeight: "700" }}>
+              <Text style={{ color: theme.colors.text, fontFamily: theme.typography.body, fontSize: 13, fontWeight: "600" }}>
                 {centsToDisplayValue(pricingPreview.sellingPriceTotalCents)}
               </Text>
             </View>
@@ -2134,7 +2134,7 @@ export default function ProduktoScreen() {
               <Text style={{ color: theme.colors.textMuted, fontFamily: theme.typography.body, fontSize: 13 }}>
                 Margin
               </Text>
-              <Text style={{ color: theme.colors.success, fontFamily: theme.typography.body, fontSize: 13, fontWeight: "700" }}>
+              <Text style={{ color: theme.colors.success, fontFamily: theme.typography.body, fontSize: 13, fontWeight: "600" }}>
                 {formatMarginPercent(pricingPreview.realizedMarginPercent)}
               </Text>
             </View>
@@ -2146,7 +2146,7 @@ export default function ProduktoScreen() {
                 color: theme.colors.text,
                 fontFamily: theme.typography.body,
                 fontSize: 14,
-                fontWeight: "700",
+                fontWeight: "600",
               }}
             >
               Live pricing preview
@@ -2155,7 +2155,7 @@ export default function ProduktoScreen() {
               <Text style={{ color: theme.colors.textMuted, fontFamily: theme.typography.body, fontSize: 13 }}>
                 Selling price
               </Text>
-              <Text style={{ color: theme.colors.primary, fontFamily: theme.typography.body, fontSize: 13, fontWeight: "700" }}>
+              <Text style={{ color: theme.colors.primary, fontFamily: theme.typography.body, fontSize: 13, fontWeight: "600" }}>
                 {centsToDisplayValue(pricingPreview.priceCents)}
               </Text>
             </View>
@@ -2163,7 +2163,7 @@ export default function ProduktoScreen() {
               <Text style={{ color: theme.colors.textMuted, fontFamily: theme.typography.body, fontSize: 13 }}>
                 Total projected sales
               </Text>
-              <Text style={{ color: theme.colors.text, fontFamily: theme.typography.body, fontSize: 13, fontWeight: "700" }}>
+              <Text style={{ color: theme.colors.text, fontFamily: theme.typography.body, fontSize: 13, fontWeight: "600" }}>
                 {centsToDisplayValue(pricingPreview.sellingPriceTotalCents)}
               </Text>
             </View>
@@ -2171,7 +2171,7 @@ export default function ProduktoScreen() {
               <Text style={{ color: theme.colors.textMuted, fontFamily: theme.typography.body, fontSize: 13 }}>
                 Margin
               </Text>
-              <Text style={{ color: theme.colors.success, fontFamily: theme.typography.body, fontSize: 13, fontWeight: "700" }}>
+              <Text style={{ color: theme.colors.success, fontFamily: theme.typography.body, fontSize: 13, fontWeight: "600" }}>
                 {formatMarginPercent(pricingPreview.marginPercent)}
               </Text>
             </View>
@@ -2184,7 +2184,7 @@ export default function ProduktoScreen() {
               color: theme.colors.text,
               fontFamily: theme.typography.body,
               fontSize: 14,
-              fontWeight: "700",
+              fontWeight: "600",
             }}
           >
             {t("produkto.containerTracking.title")}
@@ -2225,7 +2225,7 @@ export default function ProduktoScreen() {
                       color: active ? theme.colors.primaryText : theme.colors.text,
                       fontFamily: theme.typography.body,
                       fontSize: 13,
-                      fontWeight: "700",
+                      fontWeight: "600",
                       textAlign: "center",
                     }}
                   >
@@ -2276,7 +2276,7 @@ export default function ProduktoScreen() {
               color: theme.colors.textMuted,
               fontFamily: theme.typography.body,
               fontSize: 12,
-              fontWeight: "700",
+              fontWeight: "600",
             }}
           >
             Category
@@ -2312,7 +2312,7 @@ export default function ProduktoScreen() {
                   color: theme.colors.primary,
                   fontFamily: theme.typography.body,
                   fontSize: 12,
-                  fontWeight: "700",
+                  fontWeight: "600",
                 }}
               >
                 Add New
@@ -2340,7 +2340,7 @@ export default function ProduktoScreen() {
                       color: active ? theme.colors.primaryText : theme.colors.text,
                       fontFamily: theme.typography.body,
                       fontSize: 12,
-                      fontWeight: "700",
+                      fontWeight: "600",
                     }}
                   >
                     {category}
@@ -2433,7 +2433,7 @@ export default function ProduktoScreen() {
                     color: theme.colors.text,
                     fontFamily: theme.typography.body,
                     fontSize: 14,
-                    fontWeight: "700",
+                    fontWeight: "600",
                   }}
                 >
                   {repackPool.name}
@@ -2443,7 +2443,7 @@ export default function ProduktoScreen() {
                     color: theme.colors.primary,
                     fontFamily: theme.typography.body,
                     fontSize: 13,
-                    fontWeight: "700",
+                    fontWeight: "600",
                   }}
                 >
                   {formatWeightKg(repackPool.quantityAvailable)} {repackPool.baseUnitLabel}
@@ -2469,7 +2469,7 @@ export default function ProduktoScreen() {
                     color: theme.colors.textMuted,
                     fontFamily: theme.typography.body,
                     fontSize: 12,
-                    fontWeight: "700",
+                    fontWeight: "600",
                   }}
                 >
                   Source product
@@ -2502,7 +2502,7 @@ export default function ProduktoScreen() {
                             color: active ? theme.colors.primaryText : theme.colors.text,
                             fontFamily: theme.typography.body,
                             fontSize: 12,
-                            fontWeight: "700",
+                            fontWeight: "600",
                           }}
                         >
                           {product.name}
@@ -2519,7 +2519,7 @@ export default function ProduktoScreen() {
                     color: theme.colors.textMuted,
                     fontFamily: theme.typography.body,
                     fontSize: 12,
-                    fontWeight: "700",
+                    fontWeight: "600",
                   }}
                 >
                   Output product
@@ -2552,7 +2552,7 @@ export default function ProduktoScreen() {
                             color: active ? theme.colors.primaryText : theme.colors.text,
                             fontFamily: theme.typography.body,
                             fontSize: 12,
-                            fontWeight: "700",
+                            fontWeight: "600",
                           }}
                         >
                           {product.name}
@@ -2611,7 +2611,7 @@ export default function ProduktoScreen() {
                   color: theme.colors.text,
                   fontFamily: theme.typography.body,
                   fontSize: 13,
-                  fontWeight: "700",
+                  fontWeight: "600",
                 }}
               >
                 Link one more product first
@@ -2635,7 +2635,7 @@ export default function ProduktoScreen() {
                 color: theme.colors.text,
                 fontFamily: theme.typography.body,
                 fontSize: 14,
-                fontWeight: "700",
+                fontWeight: "600",
               }}
             >
               Recent repack sessions
@@ -2662,7 +2662,7 @@ export default function ProduktoScreen() {
                         color: theme.colors.text,
                         fontFamily: theme.typography.body,
                         fontSize: 13,
-                        fontWeight: "700",
+                        fontWeight: "600",
                       }}
                     >
                       {session.sourceProductName} to {session.outputProductName}
@@ -2846,7 +2846,7 @@ export default function ProduktoScreen() {
                     color: theme.colors.text,
                     fontFamily: theme.typography.body,
                     fontSize: 15,
-                    fontWeight: "700",
+                    fontWeight: "600",
                     textAlign: "center",
                   }}
                 >
@@ -2924,7 +2924,7 @@ export default function ProduktoScreen() {
               color: theme.colors.text,
               fontFamily: theme.typography.body,
               fontSize: 14,
-              fontWeight: "700",
+              fontWeight: "600",
             }}
           >
             Saved categories
@@ -2950,7 +2950,7 @@ export default function ProduktoScreen() {
                       color: theme.colors.text,
                       fontFamily: theme.typography.body,
                       fontSize: 12,
-                      fontWeight: "700",
+                      fontWeight: "600",
                     }}
                   >
                     {category}
@@ -2974,3 +2974,4 @@ export default function ProduktoScreen() {
     </Screen>
   );
 }
+

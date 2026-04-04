@@ -353,7 +353,7 @@ function HomeShortcutCard({ icon, label, onPress }: HomeShortcutCardProps) {
           color: theme.colors.text,
           fontFamily: theme.typography.body,
           fontSize: 12,
-          fontWeight: "500",
+          fontWeight: "600",
           lineHeight: 16,
           textAlign: "center",
         }}
@@ -975,7 +975,7 @@ export default function HomeScreen() {
                     color: isActive ? theme.colors.text : theme.colors.textMuted,
                     fontFamily: theme.typography.body,
                     fontSize: 12,
-                    fontWeight: "700",
+                    fontWeight: "600",
                   }}
                 >
                   {label.toUpperCase()}
@@ -991,7 +991,7 @@ export default function HomeScreen() {
               color: theme.colors.text,
               fontFamily: theme.typography.body,
               fontSize: 16,
-              fontWeight: "700",
+              fontWeight: "600",
             }}
           >
             {t("home.reports.bottomLine.title")}
@@ -1014,7 +1014,7 @@ export default function HomeScreen() {
                   color: theme.colors.textMuted,
                   fontFamily: theme.typography.body,
                   fontSize: 12,
-                  fontWeight: "700",
+                  fontWeight: "600",
                 }}
               >
                 {t("home.analytics.netProfit")}
@@ -1024,7 +1024,7 @@ export default function HomeScreen() {
                   color: report.netProfitCents >= 0 ? theme.colors.text : theme.colors.danger,
                   fontFamily: theme.typography.display,
                   fontSize: 24,
-                  fontWeight: "700",
+                  fontWeight: "600",
                 }}
               >
                 {formatCurrencyFromCents(report.netProfitCents)}
@@ -1056,7 +1056,7 @@ export default function HomeScreen() {
                   color: theme.colors.textMuted,
                   fontFamily: theme.typography.body,
                   fontSize: 12,
-                  fontWeight: "700",
+                  fontWeight: "600",
                 }}
               >
                 {t("home.reports.sales.label")}
@@ -1066,7 +1066,7 @@ export default function HomeScreen() {
                   color: theme.colors.text,
                   fontFamily: theme.typography.display,
                   fontSize: 24,
-                  fontWeight: "700",
+                  fontWeight: "600",
                 }}
               >
                 {formatCurrencyFromCents(report.salesCents)}
@@ -1090,7 +1090,7 @@ export default function HomeScreen() {
               color: theme.colors.text,
               fontFamily: theme.typography.body,
               fontSize: 16,
-              fontWeight: "700",
+              fontWeight: "600",
             }}
           >
             {t("home.reports.actions.title")}
@@ -1126,7 +1126,7 @@ export default function HomeScreen() {
                 flex: 1,
                 fontFamily: theme.typography.body,
                 fontSize: 14,
-                fontWeight: "700",
+                fontWeight: "600",
               }}
             >
               {`${metrics.restockUrgencyCount} ${t("home.analytics.restockAlerts")}`}
@@ -1164,7 +1164,7 @@ export default function HomeScreen() {
                 flex: 1,
                 fontFamily: theme.typography.body,
                 fontSize: 14,
-                fontWeight: "700",
+                fontWeight: "600",
               }}
             >
               {`${formatCurrencyFromCents(metrics.totalUtangCents)} ${t("home.reports.actions.unpaidUtang")}`}
@@ -1179,7 +1179,7 @@ export default function HomeScreen() {
               color: theme.colors.text,
               fontFamily: theme.typography.body,
               fontSize: 16,
-              fontWeight: "700",
+              fontWeight: "600",
             }}
           >
             {t("home.reports.performance.title")}
@@ -1215,7 +1215,7 @@ export default function HomeScreen() {
                     color: theme.colors.text,
                     fontFamily: theme.typography.display,
                     fontSize: 22,
-                    fontWeight: "700",
+                    fontWeight: "600",
                   }}
                 >
                   {entry.value}
@@ -1231,7 +1231,7 @@ export default function HomeScreen() {
               color: theme.colors.text,
               fontFamily: theme.typography.body,
               fontSize: 16,
-              fontWeight: "700",
+              fontWeight: "600",
             }}
           >
             {t("home.reports.paymentMix.title")}
@@ -1249,7 +1249,7 @@ export default function HomeScreen() {
                       color: theme.colors.text,
                       fontFamily: theme.typography.body,
                       fontSize: 13,
-                      fontWeight: "700",
+                      fontWeight: "600",
                     }}
                   >
                     {entry.label}
@@ -1295,7 +1295,7 @@ export default function HomeScreen() {
               color: theme.colors.text,
               fontFamily: theme.typography.body,
               fontSize: 16,
-              fontWeight: "700",
+              fontWeight: "600",
             }}
           >
             {t("home.reports.expenses.title")}
@@ -1339,7 +1339,7 @@ export default function HomeScreen() {
                     color: theme.colors.text,
                     fontFamily: theme.typography.body,
                     fontSize: 14,
-                    fontWeight: "700",
+                    fontWeight: "600",
                   }}
                 >
                   {formatCurrencyFromCents(entry.totalCents)}
@@ -1366,7 +1366,7 @@ export default function HomeScreen() {
                 color: theme.colors.text,
                 fontFamily: theme.typography.display,
                 fontSize: 24,
-                fontWeight: "700",
+                fontWeight: "600",
               }}
             >
               {t("home.weekly.title")}
@@ -1397,7 +1397,7 @@ export default function HomeScreen() {
                         color: theme.colors.text,
                         fontFamily: theme.typography.body,
                         fontSize: 13,
-                        fontWeight: "700",
+                        fontWeight: "600",
                       }}
                     >
                       {week.weekLabel}
@@ -1487,7 +1487,7 @@ export default function HomeScreen() {
                 color: theme.colors.text,
                 fontFamily: theme.typography.display,
                 fontSize: 24,
-                fontWeight: "700",
+                fontWeight: "600",
               }}
             >
               {t("home.runout.title")}
@@ -1524,7 +1524,7 @@ export default function HomeScreen() {
                       color: theme.colors.text,
                       fontFamily: theme.typography.body,
                       fontSize: 15,
-                      fontWeight: "700",
+                      fontWeight: "600",
                     }}
                   >
                     {item.name}
@@ -1565,7 +1565,7 @@ export default function HomeScreen() {
                 color: theme.colors.text,
                 fontFamily: theme.typography.display,
                 fontSize: 24,
-                fontWeight: "700",
+                fontWeight: "600",
               }}
             >
               {t("home.lowStock.title")}
@@ -1600,7 +1600,7 @@ export default function HomeScreen() {
                       color: theme.colors.text,
                       fontFamily: theme.typography.body,
                       fontSize: 15,
-                      fontWeight: "700",
+                      fontWeight: "600",
                     }}
                   >
                     {product.name}
@@ -1684,7 +1684,7 @@ export default function HomeScreen() {
               color: theme.colors.text,
               fontFamily: theme.typography.display,
               fontSize: 24,
-              fontWeight: "700",
+              fontWeight: "600",
             }}
           >
             {t("home.risk.title")}
@@ -1736,7 +1736,7 @@ export default function HomeScreen() {
                   flex: 1,
                   fontFamily: theme.typography.body,
                   fontSize: 15,
-                  fontWeight: "700",
+                  fontWeight: "600",
                   paddingRight: theme.spacing.md,
                 }}
               >
@@ -1839,7 +1839,7 @@ export default function HomeScreen() {
                           color: active ? theme.colors.primary : theme.colors.textMuted,
                           fontFamily: theme.typography.body,
                           fontSize: 13,
-                          fontWeight: "700",
+                          fontWeight: "600",
                         }}
                       >
                         {option.label}
@@ -1906,7 +1906,7 @@ export default function HomeScreen() {
                           flexShrink: 1,
                           fontFamily: theme.typography.display,
                           fontSize: 19,
-                          fontWeight: "700",
+                          fontWeight: "600",
                         }}
                       >
                         {customerLabel}
@@ -1932,7 +1932,7 @@ export default function HomeScreen() {
                       color: theme.colors.primary,
                       fontFamily: theme.typography.display,
                       fontSize: 20,
-                      fontWeight: "700",
+                      fontWeight: "600",
                     }}
                   >
                     {formatCurrencyFromCents(sale.totalCents)}
@@ -1968,7 +1968,7 @@ export default function HomeScreen() {
               color: theme.colors.textMuted,
               fontFamily: theme.typography.body,
               fontSize: 12,
-              fontWeight: "700",
+              fontWeight: "600",
               textTransform: "uppercase",
             }}
           >
@@ -1980,7 +1980,7 @@ export default function HomeScreen() {
               color: theme.colors.text,
               fontFamily: theme.typography.display,
               fontSize: 28,
-              fontWeight: "700",
+              fontWeight: "600",
               textAlign: "right",
             }}
           >
@@ -1996,7 +1996,7 @@ export default function HomeScreen() {
               color: theme.colors.textMuted,
               fontFamily: theme.typography.body,
               fontSize: 12,
-              fontWeight: "700",
+              fontWeight: "600",
               textTransform: "uppercase",
             }}
           >
@@ -2008,7 +2008,7 @@ export default function HomeScreen() {
               color: calculatorPreview === null ? theme.colors.textSoft : theme.colors.primary,
               fontFamily: theme.typography.display,
               fontSize: 24,
-              fontWeight: "700",
+              fontWeight: "600",
               textAlign: "right",
             }}
           >
@@ -2078,7 +2078,7 @@ export default function HomeScreen() {
                       color: palette.textColor,
                       fontFamily: theme.typography.body,
                       fontSize: button.label.length > 2 ? 14 : 20,
-                      fontWeight: "700",
+                      fontWeight: "600",
                     }}
                   >
                     {button.label}
@@ -2147,7 +2147,7 @@ export default function HomeScreen() {
         titleStyle={{
           fontFamily: theme.typography.body,
           fontSize: 26,
-          fontWeight: "700",
+          fontWeight: "600",
           letterSpacing: 0.1,
         }}
         title={storeName || "TindaHan AI"}
@@ -2204,7 +2204,7 @@ export default function HomeScreen() {
                 color: theme.colors.textSoft,
                 fontFamily: theme.typography.body,
                 fontSize: 11,
-                fontWeight: "700",
+                fontWeight: "600",
                 letterSpacing: 0.8,
                 textTransform: "uppercase",
               }}
@@ -2219,7 +2219,7 @@ export default function HomeScreen() {
                     color: theme.colors.text,
                     fontFamily: theme.typography.display,
                     fontSize: 22,
-                    fontWeight: "700",
+                    fontWeight: "600",
                   }}
                 >
                   {t("home.brief.title")}
@@ -2463,3 +2463,4 @@ export default function HomeScreen() {
     </>
   );
 }
+

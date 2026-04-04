@@ -60,7 +60,7 @@ export function ModalSheet({
                   color: theme.colors.text,
                   fontFamily: theme.typography.display,
                   fontSize: 26,
-                  fontWeight: "700",
+                  fontWeight: "600",
                 }}
               >
                 {title}
@@ -69,9 +69,12 @@ export function ModalSheet({
                 <Text
                   style={{
                     color: theme.colors.textMuted,
-                    fontFamily: theme.typography.body,
-                    fontSize: 14,
-                    lineHeight: 20,
+                    fontFamily: theme.typography.label,
+                    fontSize: 11,
+                    fontWeight: "600",
+                    letterSpacing: 0.8,
+                    lineHeight: 16,
+                    textTransform: "uppercase",
                   }}
                 >
                   {subtitle}
@@ -109,3 +112,4 @@ export function ModalSheet({
     </Modal>
   );
 }
+

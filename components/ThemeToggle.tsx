@@ -45,7 +45,7 @@ export function ThemeToggle() {
           color: theme.colors.text,
           fontFamily: theme.typography.body,
           fontSize: 13,
-          fontWeight: "700",
+          fontWeight: "600",
         }}
       >
         {mode === "dark" ? t("theme.dark") : t("theme.light")}
@@ -53,4 +53,5 @@ export function ThemeToggle() {
     </Pressable>
   );
 }
+
 

@@ -42,7 +42,7 @@ export function LanguageToggle() {
           color: theme.colors.text,
           fontFamily: theme.typography.body,
           fontSize: 13,
-          fontWeight: "700",
+          fontWeight: "600",
         }}
       >
         {languageDisplayNames[language]}
@@ -50,3 +50,4 @@ export function LanguageToggle() {
     </Pressable>
   );
 }
+

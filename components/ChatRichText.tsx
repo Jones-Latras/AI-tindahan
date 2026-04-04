@@ -104,7 +104,7 @@ export function ChatRichText({
                 color,
                 fontFamily: theme.typography.display,
                 fontSize: headingMatch[1].length === 1 ? headingLargeFontSize : headingSmallFontSize,
-                fontWeight: "700",
+                fontWeight: "600",
                 lineHeight: headingMatch[1].length === 1 ? headingLargeLineHeight : headingSmallLineHeight,
               }}
             >
@@ -128,7 +128,7 @@ export function ChatRichText({
                   color: markerColor,
                   fontFamily: theme.typography.body,
                   fontSize,
-                  fontWeight: "700",
+                  fontWeight: "600",
                   lineHeight,
                 }}
               >
@@ -164,7 +164,7 @@ export function ChatRichText({
                   color: markerColor,
                   fontFamily: theme.typography.body,
                   fontSize,
-                  fontWeight: "700",
+                  fontWeight: "600",
                   lineHeight,
                 }}
               >
@@ -202,3 +202,4 @@ export function ChatRichText({
     </View>
   );
 }
+

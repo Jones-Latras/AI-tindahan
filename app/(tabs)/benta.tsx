@@ -960,7 +960,7 @@ export default function BentaScreen() {
                           color: theme.colors.primaryText,
                           fontFamily: theme.typography.body,
                           fontSize: 14,
-                          fontWeight: "700",
+                          fontWeight: "600",
                         }}
                       >
                         {cartCountLabel}
@@ -980,7 +980,7 @@ export default function BentaScreen() {
                           color: theme.colors.primaryText,
                           fontFamily: theme.typography.display,
                           fontSize: 18,
-                          fontWeight: "700",
+                          fontWeight: "600",
                         }}
                       >
                         {formatCurrencyFromCents(finalTotalCents)}
@@ -999,7 +999,7 @@ export default function BentaScreen() {
                           color: theme.colors.primary,
                           fontFamily: theme.typography.body,
                           fontSize: 12,
-                          fontWeight: "700",
+                          fontWeight: "600",
                         }}
                       >
                         {t("benta.cartBar.view")}
@@ -1111,7 +1111,7 @@ export default function BentaScreen() {
                       color: active ? theme.colors.primaryText : theme.colors.text,
                       fontFamily: theme.typography.body,
                       fontSize: 12,
-                      fontWeight: "700",
+                      fontWeight: "600",
                     }}
                   >
                     {option.label}
@@ -1206,7 +1206,7 @@ export default function BentaScreen() {
                 color: theme.colors.text,
                 fontFamily: theme.typography.display,
                 fontSize: 24,
-                fontWeight: "700",
+                fontWeight: "600",
               }}
             >
               Current Cart
@@ -1281,7 +1281,7 @@ export default function BentaScreen() {
                   color: discountCents > 0 ? theme.colors.textMuted : theme.colors.text,
                   fontFamily: theme.typography.display,
                   fontSize: discountCents > 0 ? 18 : 28,
-                  fontWeight: "700",
+                  fontWeight: "600",
                   textDecorationLine: discountCents > 0 ? "line-through" : "none",
                 }}
               >
@@ -1296,7 +1296,7 @@ export default function BentaScreen() {
                     color: theme.colors.success,
                     fontFamily: theme.typography.body,
                     fontSize: 14,
-                    fontWeight: "700",
+                    fontWeight: "600",
                   }}
                 >
                   Tawad ({tawadType === "percent" ? `${tawadInput}%` : formatCurrencyFromCents(discountCents)} off)
@@ -1306,7 +1306,7 @@ export default function BentaScreen() {
                     color: theme.colors.success,
                     fontFamily: theme.typography.display,
                     fontSize: 28,
-                    fontWeight: "700",
+                    fontWeight: "600",
                   }}
                 >
                   {formatCurrencyFromCents(finalTotalCents)}
@@ -1321,7 +1321,7 @@ export default function BentaScreen() {
                     color: theme.colors.textMuted,
                     fontFamily: theme.typography.body,
                     fontSize: 13,
-                    fontWeight: "700",
+                    fontWeight: "600",
                   }}
                 >
                   Tawad (Discount)
@@ -1386,7 +1386,7 @@ export default function BentaScreen() {
                   color: theme.colors.textMuted,
                   fontFamily: theme.typography.body,
                   fontSize: 13,
-                  fontWeight: "700",
+                  fontWeight: "600",
                 }}
               >
                 Payment method
@@ -1412,7 +1412,7 @@ export default function BentaScreen() {
                       color: theme.colors.textSoft,
                       fontFamily: theme.typography.body,
                       fontSize: 11,
-                      fontWeight: "700",
+                      fontWeight: "600",
                       textTransform: "uppercase",
                     }}
                   >
@@ -1423,7 +1423,7 @@ export default function BentaScreen() {
                       color: theme.colors.text,
                       fontFamily: theme.typography.body,
                       fontSize: 15,
-                      fontWeight: "700",
+                      fontWeight: "600",
                     }}
                   >
                     {selectedPaymentMethodOption.label}
@@ -1468,7 +1468,7 @@ export default function BentaScreen() {
                         color: theme.colors.text,
                         fontFamily: theme.typography.body,
                         fontSize: 15,
-                        fontWeight: "700",
+                        fontWeight: "600",
                       }}
                     >
                       {selectedCustomerName}
@@ -1517,7 +1517,7 @@ export default function BentaScreen() {
                     color: theme.colors.primary,
                     fontFamily: theme.typography.body,
                     fontSize: 14,
-                    fontWeight: "700",
+                    fontWeight: "600",
                   }}
                 >
                   No cash input needed. This sale will be saved under {paymentMethod.toUpperCase()}.
@@ -1546,7 +1546,7 @@ export default function BentaScreen() {
                       color: theme.colors.success,
                       fontFamily: theme.typography.body,
                       fontSize: 12,
-                      fontWeight: "700",
+                      fontWeight: "600",
                       textTransform: "uppercase",
                     }}
                   >
@@ -1557,7 +1557,7 @@ export default function BentaScreen() {
                       color: theme.colors.success,
                       fontFamily: theme.typography.display,
                       fontSize: 30,
-                      fontWeight: "700",
+                      fontWeight: "600",
                     }}
                   >
                     {formatCurrencyFromCents(changeCents)}
@@ -1574,7 +1574,7 @@ export default function BentaScreen() {
                             : theme.colors.success,
                     fontFamily: theme.typography.body,
                     fontSize: 14,
-                    fontWeight: "700",
+                    fontWeight: "600",
                   }}
                 >
                   {paymentMethod === "cash"
@@ -1664,7 +1664,7 @@ export default function BentaScreen() {
                     color: discountCents > 0 ? theme.colors.textMuted : theme.colors.text,
                     fontFamily: theme.typography.display,
                     fontSize: discountCents > 0 ? 18 : 26,
-                    fontWeight: "700",
+                    fontWeight: "600",
                     textDecorationLine: discountCents > 0 ? "line-through" : "none",
                   }}
                 >
@@ -1689,7 +1689,7 @@ export default function BentaScreen() {
                       color: theme.colors.success,
                       fontFamily: theme.typography.body,
                       fontSize: 13,
-                      fontWeight: "700",
+                      fontWeight: "600",
                     }}
                   >
                     Tawad ({tawadType === "percent" ? `${tawadInput}%` : formatCurrencyFromCents(discountCents)} off)
@@ -1699,7 +1699,7 @@ export default function BentaScreen() {
                       color: theme.colors.success,
                       fontFamily: theme.typography.display,
                       fontSize: 26,
-                      fontWeight: "700",
+                      fontWeight: "600",
                     }}
                   >
                     {formatCurrencyFromCents(finalTotalCents)}
@@ -1714,7 +1714,7 @@ export default function BentaScreen() {
                       color: theme.colors.textMuted,
                       fontFamily: theme.typography.body,
                       fontSize: 13,
-                      fontWeight: "700",
+                      fontWeight: "600",
                     }}
                   >
                     Tawad (Discount)
@@ -1785,7 +1785,7 @@ export default function BentaScreen() {
                     color: theme.colors.textMuted,
                     fontFamily: theme.typography.body,
                     fontSize: 13,
-                    fontWeight: "700",
+                    fontWeight: "600",
                   }}
                 >
                   Payment method
@@ -1811,7 +1811,7 @@ export default function BentaScreen() {
                         color: theme.colors.textSoft,
                         fontFamily: theme.typography.body,
                         fontSize: 11,
-                        fontWeight: "700",
+                        fontWeight: "600",
                         textTransform: "uppercase",
                       }}
                     >
@@ -1822,7 +1822,7 @@ export default function BentaScreen() {
                         color: theme.colors.text,
                         fontFamily: theme.typography.body,
                         fontSize: 15,
-                        fontWeight: "700",
+                        fontWeight: "600",
                       }}
                     >
                       {selectedPaymentMethodOption.label}
@@ -1867,7 +1867,7 @@ export default function BentaScreen() {
                           color: theme.colors.text,
                           fontFamily: theme.typography.body,
                           fontSize: 15,
-                          fontWeight: "700",
+                          fontWeight: "600",
                         }}
                       >
                         {selectedCustomer.name}
@@ -1916,7 +1916,7 @@ export default function BentaScreen() {
                       color: theme.colors.primary,
                       fontFamily: theme.typography.body,
                       fontSize: 14,
-                      fontWeight: "700",
+                      fontWeight: "600",
                     }}
                   >
                     No cash input needed. This sale will be saved under {paymentMethod.toUpperCase()}.
@@ -1945,7 +1945,7 @@ export default function BentaScreen() {
                         color: theme.colors.success,
                         fontFamily: theme.typography.body,
                         fontSize: 12,
-                        fontWeight: "700",
+                        fontWeight: "600",
                         textTransform: "uppercase",
                       }}
                     >
@@ -1956,7 +1956,7 @@ export default function BentaScreen() {
                         color: theme.colors.success,
                         fontFamily: theme.typography.display,
                         fontSize: 30,
-                        fontWeight: "700",
+                        fontWeight: "600",
                       }}
                     >
                       {formatCurrencyFromCents(changeCents)}
@@ -1973,7 +1973,7 @@ export default function BentaScreen() {
                               : theme.colors.success,
                       fontFamily: theme.typography.body,
                       fontSize: 14,
-                      fontWeight: "700",
+                      fontWeight: "600",
                     }}
                   >
                     {paymentMethod === "cash"
@@ -2050,7 +2050,7 @@ export default function BentaScreen() {
                 <Text style={{ color: theme.colors.textMuted, fontFamily: theme.typography.body, fontSize: 13 }}>
                   Price per kg
                 </Text>
-                <Text style={{ color: theme.colors.text, fontFamily: theme.typography.body, fontSize: 13, fontWeight: "700" }}>
+                <Text style={{ color: theme.colors.text, fontFamily: theme.typography.body, fontSize: 13, fontWeight: "600" }}>
                   {formatProductPriceLabel(selectedWeightProduct)}
                 </Text>
               </View>
@@ -2058,7 +2058,7 @@ export default function BentaScreen() {
                 <Text style={{ color: theme.colors.textMuted, fontFamily: theme.typography.body, fontSize: 13 }}>
                   Preview total
                 </Text>
-                <Text style={{ color: theme.colors.primary, fontFamily: theme.typography.body, fontSize: 13, fontWeight: "700" }}>
+                <Text style={{ color: theme.colors.primary, fontFamily: theme.typography.body, fontSize: 13, fontWeight: "600" }}>
                   {formatCurrencyFromCents(weightLineTotalCents)}
                 </Text>
               </View>
@@ -2097,7 +2097,7 @@ export default function BentaScreen() {
                 <Text style={{ color: theme.colors.textMuted, fontFamily: theme.typography.body, fontSize: 13 }}>
                   Available stock
                 </Text>
-                <Text style={{ color: theme.colors.text, fontFamily: theme.typography.body, fontSize: 13, fontWeight: "700" }}>
+                <Text style={{ color: theme.colors.text, fontFamily: theme.typography.body, fontSize: 13, fontWeight: "600" }}>
                   {formatProductStockLabel(quickEditProduct)}
                 </Text>
               </View>
@@ -2105,7 +2105,7 @@ export default function BentaScreen() {
                 <Text style={{ color: theme.colors.textMuted, fontFamily: theme.typography.body, fontSize: 13 }}>
                   Low-stock threshold
                 </Text>
-                <Text style={{ color: theme.colors.text, fontFamily: theme.typography.body, fontSize: 13, fontWeight: "700" }}>
+                <Text style={{ color: theme.colors.text, fontFamily: theme.typography.body, fontSize: 13, fontWeight: "600" }}>
                   {formatProductMinStockLabel(quickEditProduct)}
                 </Text>
               </View>
@@ -2152,7 +2152,7 @@ export default function BentaScreen() {
                       color: theme.colors.text,
                       fontFamily: theme.typography.body,
                       fontSize: 15,
-                      fontWeight: "700",
+                      fontWeight: "600",
                     }}
                   >
                     {decision.productName}
@@ -2206,7 +2206,7 @@ export default function BentaScreen() {
                           color: active ? theme.colors.primaryText : theme.colors.text,
                           fontFamily: theme.typography.body,
                           fontSize: 13,
-                          fontWeight: "700",
+                          fontWeight: "600",
                           textAlign: "center",
                         }}
                       >
@@ -2228,7 +2228,7 @@ export default function BentaScreen() {
                     color: theme.colors.text,
                     fontFamily: theme.typography.body,
                     fontSize: 15,
-                    fontWeight: "700",
+                    fontWeight: "600",
                   }}
                 >
                   {selectedCustomer.name}
@@ -2250,7 +2250,7 @@ export default function BentaScreen() {
                     color: theme.colors.warning,
                     fontFamily: theme.typography.body,
                     fontSize: 13,
-                    fontWeight: "700",
+                    fontWeight: "600",
                   }}
                 >
                   {t("benta.containerCheck.customerRequired")}
@@ -2286,7 +2286,7 @@ export default function BentaScreen() {
                       color: theme.colors.text,
                       fontFamily: theme.typography.body,
                       fontSize: 15,
-                      fontWeight: "700",
+                      fontWeight: "600",
                     }}
                   >
                     {customer.name}
@@ -2444,3 +2444,4 @@ export default function BentaScreen() {
     </>
   );
 }
+

@@ -41,7 +41,7 @@ export function EmptyState({ icon, title, message }: EmptyStateProps) {
           color: theme.colors.text,
           fontFamily: theme.typography.display,
           fontSize: 22,
-          fontWeight: "700",
+          fontWeight: "600",
           textAlign: "center",
         }}
       >
@@ -61,4 +61,5 @@ export function EmptyState({ icon, title, message }: EmptyStateProps) {
     </View>
   );
 }
+
 

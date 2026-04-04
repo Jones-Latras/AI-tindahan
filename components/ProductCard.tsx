@@ -335,7 +335,7 @@ export function ProductCard({
               color: stockStatus.textColor,
               fontFamily: theme.typography.body,
               fontSize: usesRegularTextSizing ? 12 : 11,
-              fontWeight: "700",
+              fontWeight: "600",
             }}
           >
             {stockStatus.label}
@@ -366,7 +366,7 @@ export function ProductCard({
               color: theme.colors.primaryText,
               fontFamily: theme.typography.body,
               fontSize: usesRegularTextSizing ? 12 : 11,
-              fontWeight: "700",
+              fontWeight: "600",
             }}
           >
             {quantityBadgeLabel}
@@ -411,7 +411,7 @@ export function ProductCard({
                 color: theme.colors.textMuted,
                 fontFamily: theme.typography.body,
                 fontSize: usesRegularTextSizing ? 12 : 11,
-                fontWeight: "700",
+                fontWeight: "600",
               }}
             >
               {resolvedCategory}
@@ -434,7 +434,7 @@ export function ProductCard({
                   color: theme.colors.accent,
                   fontFamily: theme.typography.body,
                   fontSize: usesRegularTextSizing ? 12 : 11,
-                  fontWeight: "700",
+                  fontWeight: "600",
                 }}
               >
                 {t("productCard.value.byWeight")}
@@ -456,7 +456,7 @@ export function ProductCard({
               color: theme.colors.text,
               fontFamily: theme.typography.display,
               fontSize: usesRegularTextSizing ? 20 : 18,
-              fontWeight: "700",
+              fontWeight: "600",
               lineHeight: usesRegularTextSizing ? 24 : 22,
             }}
           >
@@ -475,7 +475,7 @@ export function ProductCard({
                 : usesRegularTextSizing
                   ? 14
                   : 13,
-              fontWeight: "700",
+              fontWeight: "600",
             }}
           >
             {resolvedPriceLabel}
@@ -499,7 +499,7 @@ export function ProductCard({
                   color: isLowStock ? warningBadge.backgroundColor : isOutOfStock ? theme.colors.textSoft : theme.colors.text,
                   fontFamily: theme.typography.body,
                   fontSize: 12,
-                  fontWeight: "700",
+                  fontWeight: "600",
                 }}
               >
                 {resolvedStockLabel}
@@ -520,7 +520,7 @@ export function ProductCard({
                   color: isOutOfStock ? theme.colors.textSoft : theme.colors.success,
                   fontFamily: theme.typography.body,
                   fontSize: 12,
-                  fontWeight: "700",
+                  fontWeight: "600",
                 }}
               >
                 {marginPercent}
@@ -594,7 +594,7 @@ export function ProductCard({
                   color: theme.colors.textSoft,
                   fontFamily: theme.typography.body,
                   fontSize: 11,
-                  fontWeight: "700",
+                  fontWeight: "600",
                   letterSpacing: 0.4,
                   textTransform: "uppercase",
                 }}
@@ -607,7 +607,7 @@ export function ProductCard({
                   color: theme.colors.text,
                   fontFamily: theme.typography.display,
                   fontSize: usesRegularTextSizing ? 20 : 16,
-                  fontWeight: "700",
+                  fontWeight: "600",
                   lineHeight: usesRegularTextSizing ? 24 : 20,
                 }}
               >
@@ -637,7 +637,7 @@ export function ProductCard({
                       flex: 1,
                       fontFamily: theme.typography.body,
                       fontSize: usesRegularTextSizing ? 12 : 11,
-                      fontWeight: "700",
+                      fontWeight: "600",
                       textAlign: "right",
                     }}
                   >
@@ -654,3 +654,4 @@ export function ProductCard({
     </Animated.View>
   );
 }
+

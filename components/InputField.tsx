@@ -30,9 +30,11 @@ export function InputField({
       <Text
         style={{
           color: theme.colors.textMuted,
-          fontFamily: theme.typography.body,
-          fontSize: 13,
+          fontFamily: theme.typography.label,
+          fontSize: 11,
           fontWeight: "600",
+          letterSpacing: 0.8,
+          textTransform: "uppercase",
         }}
       >
         {label}

@@ -57,7 +57,7 @@ export function CartItem({
             color: theme.colors.text,
             fontFamily: theme.typography.body,
             fontSize: compact ? 14 : 15,
-            fontWeight: "700",
+            fontWeight: "600",
           }}
         >
           {name}
@@ -76,7 +76,7 @@ export function CartItem({
             color: theme.colors.text,
             fontFamily: theme.typography.body,
             fontSize: compact ? 12 : 13,
-            fontWeight: "700",
+            fontWeight: "600",
           }}
         >
           {formatCurrencyFromCents(totalCents)}
@@ -102,7 +102,7 @@ export function CartItem({
                   color: theme.colors.primary,
                   fontFamily: theme.typography.body,
                   fontSize: compact ? 12 : 13,
-                  fontWeight: "700",
+                  fontWeight: "600",
                 }}
               >
                 Edit kg
@@ -136,7 +136,7 @@ export function CartItem({
                 color: theme.colors.text,
                 fontFamily: theme.typography.body,
                 fontSize: compact ? 14 : 15,
-                fontWeight: "700",
+                fontWeight: "600",
                 minWidth: 24,
                 textAlign: "center",
               }}
@@ -172,3 +172,4 @@ export function CartItem({
     </View>
   );
 }
+

@@ -583,7 +583,7 @@ export default function PalistaScreen() {
                             color: theme.colors.text,
                             fontFamily: theme.typography.display,
                             fontSize: 18,
-                            fontWeight: "700",
+                            fontWeight: "600",
                           }}
                         >
                           {customer.name}
@@ -623,7 +623,7 @@ export default function PalistaScreen() {
                           color: theme.colors.text,
                           fontFamily: theme.typography.display,
                           fontSize: 20,
-                          fontWeight: "700",
+                          fontWeight: "600",
                         }}
                         numberOfLines={1}
                       >
@@ -651,7 +651,7 @@ export default function PalistaScreen() {
                           color: theme.colors.textMuted,
                           fontFamily: theme.typography.body,
                           fontSize: 12,
-                          fontWeight: "700",
+                          fontWeight: "600",
                         }}
                       >
                         {t("palista.quickActions")}
@@ -681,7 +681,7 @@ export default function PalistaScreen() {
                               color: theme.colors.primary,
                               fontFamily: theme.typography.body,
                               fontSize: 10,
-                              fontWeight: "700",
+                              fontWeight: "600",
                             }}
                             numberOfLines={1}
                           >
@@ -711,7 +711,7 @@ export default function PalistaScreen() {
                               color: theme.colors.text,
                               fontFamily: theme.typography.body,
                               fontSize: 10,
-                              fontWeight: "700",
+                              fontWeight: "600",
                             }}
                             numberOfLines={1}
                           >
@@ -741,7 +741,7 @@ export default function PalistaScreen() {
                               color: theme.colors.text,
                               fontFamily: theme.typography.body,
                               fontSize: 10,
-                              fontWeight: "700",
+                              fontWeight: "600",
                             }}
                             numberOfLines={1}
                           >
@@ -839,7 +839,7 @@ export default function PalistaScreen() {
                       color: theme.colors.text,
                       fontFamily: theme.typography.body,
                       fontSize: 16,
-                      fontWeight: "700",
+                      fontWeight: "600",
                     }}
                   >
                     {formatDateLabel(selectedCustomer.lastUtangDate)}
@@ -857,7 +857,7 @@ export default function PalistaScreen() {
                       color: theme.colors.textMuted,
                       fontFamily: theme.typography.body,
                       fontSize: 12,
-                      fontWeight: "700",
+                      fontWeight: "600",
                     }}
                   >
                     {t("palista.containerReturns.title")}
@@ -867,7 +867,7 @@ export default function PalistaScreen() {
                       color: theme.colors.text,
                       fontFamily: theme.typography.body,
                       fontSize: 16,
-                      fontWeight: "700",
+                      fontWeight: "600",
                     }}
                   >
                     {outstandingBottleCount === 0
@@ -908,7 +908,7 @@ export default function PalistaScreen() {
                               color: theme.colors.text,
                               fontFamily: theme.typography.body,
                               fontSize: 14,
-                              fontWeight: "700",
+                              fontWeight: "600",
                             }}
                           >
                             {event.containerLabelSnapshot}
@@ -1008,7 +1008,7 @@ export default function PalistaScreen() {
                             color: theme.colors.text,
                             fontFamily: theme.typography.body,
                             fontSize: 15,
-                            fontWeight: "700",
+                            fontWeight: "600",
                           }}
                         >
                           {entry.description || t("palista.generalCreditPurchase")}
@@ -1029,7 +1029,7 @@ export default function PalistaScreen() {
                             color: theme.colors.text,
                             fontFamily: theme.typography.body,
                             fontSize: 15,
-                            fontWeight: "700",
+                            fontWeight: "600",
                           }}
                         >
                           {formatCurrencyFromCents(outstanding)}
@@ -1039,7 +1039,7 @@ export default function PalistaScreen() {
                             color: isPaid ? theme.colors.success : theme.colors.textMuted,
                             fontFamily: theme.typography.body,
                             fontSize: 12,
-                            fontWeight: "700",
+                            fontWeight: "600",
                           }}
                         >
                           {isPaid
@@ -1062,7 +1062,7 @@ export default function PalistaScreen() {
                           color: theme.colors.textMuted,
                           fontFamily: theme.typography.body,
                           fontSize: 12,
-                          fontWeight: "700",
+                          fontWeight: "600",
                         }}
                       >
                         {t("palista.paymentHistoryTitle")}
@@ -1094,7 +1094,7 @@ export default function PalistaScreen() {
                                 color: theme.colors.text,
                                 fontFamily: theme.typography.body,
                                 fontSize: 13,
-                                fontWeight: "700",
+                                fontWeight: "600",
                               }}
                             >
                               {t("palista.timeline.creditLogged")}
@@ -1114,7 +1114,7 @@ export default function PalistaScreen() {
                               color: theme.colors.text,
                               fontFamily: theme.typography.body,
                               fontSize: 13,
-                              fontWeight: "700",
+                              fontWeight: "600",
                             }}
                           >
                             {formatCurrencyFromCents(entry.amountCents)}
@@ -1149,7 +1149,7 @@ export default function PalistaScreen() {
                                     color: theme.colors.text,
                                     fontFamily: theme.typography.body,
                                     fontSize: 13,
-                                    fontWeight: "700",
+                                    fontWeight: "600",
                                   }}
                                 >
                                   {t("palista.timeline.paymentReceived")}
@@ -1169,7 +1169,7 @@ export default function PalistaScreen() {
                                   color: theme.colors.success,
                                   fontFamily: theme.typography.body,
                                   fontSize: 13,
-                                  fontWeight: "700",
+                                  fontWeight: "600",
                                 }}
                               >
                                 {formatCurrencyFromCents(payment.amountCents)}
@@ -1301,7 +1301,7 @@ export default function PalistaScreen() {
                       color: isFullAmount ? theme.colors.primary : theme.colors.text,
                       fontFamily: theme.typography.body,
                       fontSize: 12,
-                      fontWeight: "700",
+                      fontWeight: "600",
                     }}
                   >
                     {label}
@@ -1318,7 +1318,7 @@ export default function PalistaScreen() {
                 color: theme.colors.text,
                 fontFamily: theme.typography.body,
                 fontSize: 14,
-                fontWeight: "700",
+                fontWeight: "600",
               }}
             >
               {t("palista.paymentSummary.title")}
@@ -1340,7 +1340,7 @@ export default function PalistaScreen() {
                   color: theme.colors.text,
                   fontFamily: theme.typography.body,
                   fontSize: 13,
-                  fontWeight: "700",
+                  fontWeight: "600",
                 }}
               >
                 {formatCurrencyFromCents(selectedEntryOutstanding)}
@@ -1363,7 +1363,7 @@ export default function PalistaScreen() {
                   color: theme.colors.text,
                   fontFamily: theme.typography.body,
                   fontSize: 13,
-                  fontWeight: "700",
+                  fontWeight: "600",
                 }}
               >
                 {formatCurrencyFromCents(hasValidPaymentAmount ? paymentAmountCents : 0)}
@@ -1386,7 +1386,7 @@ export default function PalistaScreen() {
                   color: theme.colors.text,
                   fontFamily: theme.typography.body,
                   fontSize: 13,
-                  fontWeight: "700",
+                  fontWeight: "600",
                 }}
               >
                 {formatCurrencyFromCents(appliedPaymentCents)}
@@ -1409,7 +1409,7 @@ export default function PalistaScreen() {
                   color: remainingBalanceCents === 0 ? theme.colors.success : theme.colors.text,
                   fontFamily: theme.typography.body,
                   fontSize: 13,
-                  fontWeight: "700",
+                  fontWeight: "600",
                 }}
               >
                 {formatCurrencyFromCents(remainingBalanceCents)}
@@ -1432,7 +1432,7 @@ export default function PalistaScreen() {
                   color: changeDueCents > 0 ? theme.colors.warning : theme.colors.text,
                   fontFamily: theme.typography.display,
                   fontSize: 18,
-                  fontWeight: "700",
+                  fontWeight: "600",
                 }}
               >
                 {formatCurrencyFromCents(changeDueCents)}
@@ -1444,3 +1444,4 @@ export default function PalistaScreen() {
     </Screen>
   );
 }
+

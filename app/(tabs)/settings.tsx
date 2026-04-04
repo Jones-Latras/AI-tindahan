@@ -55,7 +55,7 @@ function SettingsSection({ title, children }: SettingsSectionProps) {
           color: theme.colors.text,
           fontFamily: theme.typography.body,
           fontSize: 14,
-          fontWeight: "700",
+          fontWeight: "600",
         }}
       >
         {title}
@@ -97,7 +97,7 @@ function SettingsValuePill({ icon, label }: { icon?: keyof typeof Feather.glyphM
           color: theme.colors.text,
           fontFamily: theme.typography.body,
           fontSize: 12,
-          fontWeight: "700",
+          fontWeight: "600",
         }}
       >
         {label}
@@ -143,7 +143,7 @@ function SettingsAction({ label, onPress, disabled, busy, tone = "primary" }: Se
           flexShrink: 1,
           fontFamily: theme.typography.label,
           fontSize: 12,
-          fontWeight: "700",
+          fontWeight: "600",
           textAlign: "center",
         }}
       >
@@ -202,7 +202,7 @@ function SettingsRow({
             color: theme.colors.text,
             fontFamily: theme.typography.body,
             fontSize: 15,
-            fontWeight: "700",
+            fontWeight: "600",
           }}
         >
           {title}
@@ -650,3 +650,4 @@ export default function SettingsScreen() {
     </Screen>
   );
 }
+

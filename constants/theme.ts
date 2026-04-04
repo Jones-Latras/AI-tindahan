@@ -1,6 +1,6 @@
 import type { ThemeMode } from "@/types/models";
 
-const displayFontFamily = "Inter_700Bold";
+const displayFontFamily = "Inter_600SemiBold";
 const bodyFontFamily = "Inter_400Regular";
 const labelFontFamily = "Inter_600SemiBold";
 

@@ -39,6 +39,7 @@ export function StatusBadge({ label, tone = "neutral" }: StatusBadgeProps) {
           fontSize: 11,
           fontWeight: "600",
           letterSpacing: 0.8,
+          textTransform: "uppercase",
         }}
       >
         {label}

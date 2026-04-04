@@ -123,7 +123,7 @@ export default function OnboardingScreen() {
               color: theme.colors.textMuted,
               fontFamily: theme.typography.body,
               fontSize: 14,
-              fontWeight: "700",
+              fontWeight: "600",
             }}
           >
             {t("onboarding.skip")}
@@ -157,7 +157,7 @@ export default function OnboardingScreen() {
                 color: theme.colors.text,
                 fontFamily: theme.typography.display,
                 fontSize: 28,
-                fontWeight: "700",
+                fontWeight: "600",
                 lineHeight: 36,
                 textAlign: "center",
               }}
@@ -225,3 +225,4 @@ export default function OnboardingScreen() {
     </View>
   );
 }
+

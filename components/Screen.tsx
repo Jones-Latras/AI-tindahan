@@ -128,7 +128,7 @@ export function Screen({
                   color: theme.colors.text,
                   fontFamily: theme.typography.display,
                   fontSize: 30,
-                  fontWeight: "700",
+                  fontWeight: "600",
                   letterSpacing: 0.3,
                 },
                 titleStyle,
@@ -140,9 +140,12 @@ export function Screen({
               <Text
                 style={{
                   color: theme.colors.textMuted,
-                  fontFamily: theme.typography.body,
-                  fontSize: 15,
-                  lineHeight: 22,
+                  fontFamily: theme.typography.label,
+                  fontSize: 11,
+                  fontWeight: "600",
+                  letterSpacing: 0.8,
+                  lineHeight: 16,
+                  textTransform: "uppercase",
                 }}
               >
                 {subtitle}
@@ -157,3 +160,4 @@ export function Screen({
     </SafeAreaView>
   );
 }
+

@@ -286,7 +286,7 @@ export default function RestockScreen() {
               color: theme.colors.textMuted,
               fontFamily: theme.typography.body,
               fontSize: 13,
-              fontWeight: "700",
+              fontWeight: "600",
             }}
           >
             {t("restock.currentLists")}
@@ -324,7 +324,7 @@ export default function RestockScreen() {
                         flex: 1,
                         fontFamily: theme.typography.body,
                         fontSize: 14,
-                        fontWeight: "700",
+                        fontWeight: "600",
                       }}
                     >
                       {list.title}
@@ -372,7 +372,7 @@ export default function RestockScreen() {
                     color: theme.colors.text,
                     fontFamily: theme.typography.display,
                     fontSize: 22,
-                    fontWeight: "700",
+                    fontWeight: "600",
                   }}
                 >
                   {selectedList.title}
@@ -461,7 +461,7 @@ export default function RestockScreen() {
                               color: theme.colors.text,
                               fontFamily: theme.typography.body,
                               fontSize: 15,
-                              fontWeight: "700",
+                              fontWeight: "600",
                               textDecorationLine: item.isChecked ? "line-through" : "none",
                             }}
                           >
@@ -559,3 +559,4 @@ export default function RestockScreen() {
     </Screen>
   );
 }
+

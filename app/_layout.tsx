@@ -9,9 +9,7 @@ import { ActivityIndicator, Animated, Easing, Text, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import {
   Inter_400Regular,
-  Inter_500Medium,
   Inter_600SemiBold,
-  Inter_700Bold,
 } from "@expo-google-fonts/inter";
 
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
@@ -320,7 +318,7 @@ function AppShell() {
                         color: theme.colors.text,
                         fontFamily: theme.typography.display,
                         fontSize: 26,
-                        fontWeight: "700",
+                        fontWeight: "600",
                         left: 1,
                         letterSpacing: -0.8,
                         position: "absolute",
@@ -334,7 +332,7 @@ function AppShell() {
                         color: theme.colors.primary,
                         fontFamily: theme.typography.display,
                         fontSize: 25,
-                        fontWeight: "700",
+                        fontWeight: "600",
                         letterSpacing: -0.8,
                         opacity: 0.98,
                         position: "absolute",
@@ -378,7 +376,7 @@ function AppShell() {
                   color: theme.colors.textMuted,
                   fontFamily: theme.typography.body,
                   fontSize: 10,
-                  fontWeight: "700",
+                  fontWeight: "600",
                   letterSpacing: 1.8,
                   textTransform: "uppercase",
                 }}
@@ -390,7 +388,7 @@ function AppShell() {
                   color: theme.colors.text,
                   fontFamily: theme.typography.display,
                   fontSize: 24,
-                  fontWeight: "700",
+                  fontWeight: "600",
                   letterSpacing: 0.1,
                 }}
               >
@@ -524,9 +522,7 @@ function AppShell() {
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
     Inter_400Regular,
-    Inter_500Medium,
     Inter_600SemiBold,
-    Inter_700Bold,
   });
 
   if (!fontsLoaded && !fontError) {
@@ -547,3 +543,4 @@ export default function RootLayout() {
     </ThemeProvider>
   );
 }
+

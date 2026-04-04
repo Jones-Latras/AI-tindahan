@@ -46,9 +46,11 @@ export function StatCard({ icon, label, value, tone = "primary" }: StatCardProps
         <Text
           style={{
             color: theme.colors.textMuted,
-            fontFamily: theme.typography.body,
-            fontSize: 12,
+            fontFamily: theme.typography.label,
+            fontSize: 11,
             fontWeight: "600",
+            letterSpacing: 0.8,
+            textTransform: "uppercase",
           }}
         >
           {label}
@@ -58,7 +60,7 @@ export function StatCard({ icon, label, value, tone = "primary" }: StatCardProps
             color: theme.colors.text,
             fontFamily: theme.typography.display,
             fontSize: 22,
-            fontWeight: "700",
+            fontWeight: "600",
           }}
         >
           {value}
@@ -67,4 +69,5 @@ export function StatCard({ icon, label, value, tone = "primary" }: StatCardProps
     </SurfaceCard>
   );
 }
+
 

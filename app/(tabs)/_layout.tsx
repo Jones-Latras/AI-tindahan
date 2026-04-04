@@ -1,6 +1,6 @@
-import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
+import { Feather } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
-import { Animated, Platform, Pressable, Text, View } from "react-native";
+import { Animated, Pressable, Text, View } from "react-native";
 import { useEffect, useRef, useState } from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
@@ -154,7 +154,7 @@ function FloatingTabBar({ state, descriptors, navigation }: any) {
                         color: isFocused ? theme.colors.primary : theme.colors.textSoft,
                         fontFamily: theme.typography.label,
                         fontSize: 10,
-                        fontWeight: "700",
+                        fontWeight: "600",
                       }}
                     >
                       {options.title}
@@ -258,3 +258,4 @@ export default function TabLayout() {
     </Tabs>
   );
 }
+

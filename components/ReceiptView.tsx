@@ -87,7 +87,7 @@ export function ReceiptView({
                 color: "#667085",
                 fontFamily: theme.typography.body,
                 fontSize: 11,
-                fontWeight: "700",
+                fontWeight: "600",
                 letterSpacing: 1,
                 textTransform: "uppercase",
               }}
@@ -99,7 +99,7 @@ export function ReceiptView({
                 color: "#101828",
                 fontFamily: theme.typography.display,
                 fontSize: 28,
-                fontWeight: "700",
+                fontWeight: "600",
               }}
             >
               {storeName || "TindaHan AI"}
@@ -130,7 +130,7 @@ export function ReceiptView({
                   color: theme.colors.primary,
                   fontFamily: theme.typography.body,
                   fontSize: 11,
-                  fontWeight: "700",
+                  fontWeight: "600",
                 }}
               >
                 Transaction #{saleId}
@@ -149,7 +149,7 @@ export function ReceiptView({
                   color: "#344054",
                   fontFamily: theme.typography.body,
                   fontSize: 11,
-                  fontWeight: "700",
+                  fontWeight: "600",
                 }}
               >
                 {paymentLabel}
@@ -175,7 +175,7 @@ export function ReceiptView({
                   flexShrink: 1,
                   fontFamily: theme.typography.body,
                   fontSize: 12,
-                  fontWeight: "700",
+                  fontWeight: "600",
                   textAlign: "right",
                 }}
               >
@@ -189,7 +189,7 @@ export function ReceiptView({
                   color: "#101828",
                   fontFamily: theme.typography.body,
                   fontSize: 12,
-                  fontWeight: "700",
+                  fontWeight: "600",
                 }}
               >
                 {items.length}
@@ -205,7 +205,7 @@ export function ReceiptView({
                 color: "#667085",
                 fontFamily: theme.typography.body,
                 fontSize: 11,
-                fontWeight: "700",
+                fontWeight: "600",
                 textTransform: "uppercase",
               }}
             >
@@ -216,7 +216,7 @@ export function ReceiptView({
                 color: "#667085",
                 fontFamily: theme.typography.body,
                 fontSize: 11,
-                fontWeight: "700",
+                fontWeight: "600",
                 textTransform: "uppercase",
               }}
             >
@@ -244,7 +244,7 @@ export function ReceiptView({
                       flex: 1,
                       fontFamily: theme.typography.body,
                       fontSize: 14,
-                      fontWeight: "700",
+                      fontWeight: "600",
                     }}
                   >
                     {item.name}
@@ -254,7 +254,7 @@ export function ReceiptView({
                       color: "#101828",
                       fontFamily: theme.typography.body,
                       fontSize: 14,
-                      fontWeight: "700",
+                      fontWeight: "600",
                     }}
                   >
                     {fmt(lineTotalCents)}
@@ -294,7 +294,7 @@ export function ReceiptView({
                 color: "#9A3412",
                 fontFamily: theme.typography.body,
                 fontSize: 11,
-                fontWeight: "700",
+                fontWeight: "600",
                 textTransform: "uppercase",
               }}
             >
@@ -321,7 +321,7 @@ export function ReceiptView({
                       flex: 1,
                       fontFamily: theme.typography.body,
                       fontSize: 13,
-                      fontWeight: "700",
+                      fontWeight: "600",
                     }}
                   >
                     {containerReturn.quantityOut} {containerReturn.containerLabelSnapshot}
@@ -331,7 +331,7 @@ export function ReceiptView({
                       color: outstanding > 0 ? "#C2410C" : theme.colors.success,
                       fontFamily: theme.typography.body,
                       fontSize: 12,
-                      fontWeight: "700",
+                      fontWeight: "600",
                       textAlign: "right",
                     }}
                   >
@@ -355,17 +355,17 @@ export function ReceiptView({
         >
           <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12 }}>
             <Text style={{ color: "#344054", fontFamily: theme.typography.body, fontSize: 13 }}>Subtotal</Text>
-            <Text style={{ color: "#101828", fontFamily: theme.typography.body, fontSize: 13, fontWeight: "700" }}>
+            <Text style={{ color: "#101828", fontFamily: theme.typography.body, fontSize: 13, fontWeight: "600" }}>
               {fmt(subtotalCents)}
             </Text>
           </View>
 
           {discountCents > 0 ? (
             <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12 }}>
-              <Text style={{ color: theme.colors.success, fontFamily: theme.typography.body, fontSize: 13, fontWeight: "700" }}>
+              <Text style={{ color: theme.colors.success, fontFamily: theme.typography.body, fontSize: 13, fontWeight: "600" }}>
                 Tawad
               </Text>
-              <Text style={{ color: theme.colors.success, fontFamily: theme.typography.body, fontSize: 13, fontWeight: "700" }}>
+              <Text style={{ color: theme.colors.success, fontFamily: theme.typography.body, fontSize: 13, fontWeight: "600" }}>
                 -{fmt(discountCents)}
               </Text>
             </View>
@@ -378,7 +378,7 @@ export function ReceiptView({
                   color: "#101828",
                   fontFamily: theme.typography.display,
                   fontSize: 18,
-                  fontWeight: "700",
+                  fontWeight: "600",
                 }}
               >
                 Total
@@ -388,7 +388,7 @@ export function ReceiptView({
                   color: theme.colors.primary,
                   fontFamily: theme.typography.display,
                   fontSize: 24,
-                  fontWeight: "700",
+                  fontWeight: "600",
                 }}
               >
                 {fmt(totalCents)}
@@ -408,7 +408,7 @@ export function ReceiptView({
           >
             <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12 }}>
               <Text style={{ color: "#D0D5DD", fontFamily: theme.typography.body, fontSize: 13 }}>Cash received</Text>
-              <Text style={{ color: "#FFFFFF", fontFamily: theme.typography.body, fontSize: 13, fontWeight: "700" }}>
+              <Text style={{ color: "#FFFFFF", fontFamily: theme.typography.body, fontSize: 13, fontWeight: "600" }}>
                 {fmt(cashPaidCents)}
               </Text>
             </View>
@@ -418,7 +418,7 @@ export function ReceiptView({
                   color: "#86EFAC",
                   fontFamily: theme.typography.body,
                   fontSize: 13,
-                  fontWeight: "700",
+                  fontWeight: "600",
                   textTransform: "uppercase",
                 }}
               >
@@ -429,7 +429,7 @@ export function ReceiptView({
                   color: "#86EFAC",
                   fontFamily: theme.typography.display,
                   fontSize: 22,
-                  fontWeight: "700",
+                  fontWeight: "600",
                 }}
               >
                 {fmt(changeCents)}
@@ -449,7 +449,7 @@ export function ReceiptView({
             }}
           >
             <Text style={{ color: "#667085", fontFamily: theme.typography.body, fontSize: 13 }}>Paid via</Text>
-            <Text style={{ color: "#101828", fontFamily: theme.typography.body, fontSize: 13, fontWeight: "700" }}>
+            <Text style={{ color: "#101828", fontFamily: theme.typography.body, fontSize: 13, fontWeight: "600" }}>
               {paymentLabel}
             </Text>
           </View>
@@ -469,7 +469,7 @@ export function ReceiptView({
               color: "#101828",
               fontFamily: theme.typography.body,
               fontSize: 13,
-              fontWeight: "700",
+              fontWeight: "600",
               textAlign: "center",
             }}
           >
@@ -490,7 +490,7 @@ export function ReceiptView({
               color: theme.colors.primary,
               fontFamily: theme.typography.body,
               fontSize: 11,
-              fontWeight: "700",
+              fontWeight: "600",
               textAlign: "center",
             }}
           >
@@ -501,3 +501,4 @@ export function ReceiptView({
     </View>
   );
 }
+
