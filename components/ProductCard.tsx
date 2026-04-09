@@ -72,10 +72,10 @@ export function ProductCard({
   const { t } = useAppLanguage();
   const microLabelTextStyle = {
     fontFamily: theme.typography.label,
-    fontSize: 11,
-    fontWeight: "600" as const,
-    letterSpacing: 0.8,
-    textTransform: "uppercase" as const,
+    fontSize: theme.typography.scale.label.fontSize,
+    fontWeight: theme.typography.weight.medium,
+    letterSpacing: 0.3,
+    lineHeight: theme.typography.scale.label.lineHeight,
   };
   const [imageFailed, setImageFailed] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
@@ -369,9 +369,10 @@ export function ProductCard({
             numberOfLines={1}
             style={{
               color: theme.colors.primaryText,
-              fontFamily: theme.typography.body,
-              fontSize: usesRegularTextSizing ? 12 : 11,
-              fontWeight: "600",
+              fontFamily: theme.typography.label,
+              fontSize: theme.typography.scale.label.fontSize,
+              fontWeight: theme.typography.weight.medium,
+              lineHeight: theme.typography.scale.label.lineHeight,
             }}
           >
             {quantityBadgeLabel}
@@ -453,14 +454,14 @@ export function ProductCard({
           <Text
             ellipsizeMode="tail"
             numberOfLines={2}
-            style={{
-              color: theme.colors.text,
-              fontFamily: theme.typography.display,
-              fontSize: usesRegularTextSizing ? 20 : 18,
-              fontWeight: "600",
-              lineHeight: usesRegularTextSizing ? 24 : 22,
-            }}
-          >
+          style={{
+            color: theme.colors.text,
+            fontFamily: theme.typography.strong,
+            fontSize: usesRegularTextSizing ? 20 : theme.typography.scale.body.fontSize,
+            fontWeight: theme.typography.weight.semibold,
+            lineHeight: usesRegularTextSizing ? 24 : 22,
+          }}
+        >
             {name}
           </Text>
           <Text
@@ -468,15 +469,20 @@ export function ProductCard({
             style={{
               color: priceTone,
               flexShrink: 0,
-              fontFamily: showInfoFlip ? theme.typography.display : theme.typography.body,
+              fontFamily: showInfoFlip ? theme.typography.money : theme.typography.body,
               fontSize: showInfoFlip
                 ? usesRegularTextSizing
-                  ? 24
-                  : 22
+                  ? theme.typography.scale.h2.fontSize
+                  : theme.typography.scale.body.fontSize
                 : usesRegularTextSizing
                   ? 14
                   : 13,
-              fontWeight: "600",
+              fontWeight: theme.typography.weight.semibold,
+              lineHeight: showInfoFlip
+                ? theme.typography.scale.h2.lineHeight
+                : usesRegularTextSizing
+                  ? theme.typography.scale.bodySm.lineHeight
+                  : 18,
             }}
           >
             {resolvedPriceLabel}
@@ -602,9 +608,9 @@ export function ProductCard({
                 numberOfLines={2}
                 style={{
                   color: theme.colors.text,
-                  fontFamily: theme.typography.display,
-                  fontSize: usesRegularTextSizing ? 20 : 16,
-                  fontWeight: "600",
+                  fontFamily: theme.typography.strong,
+                  fontSize: usesRegularTextSizing ? theme.typography.scale.h2.fontSize : theme.typography.scale.body.fontSize,
+                  fontWeight: theme.typography.weight.semibold,
                   lineHeight: usesRegularTextSizing ? 24 : 20,
                 }}
               >
@@ -622,7 +628,12 @@ export function ProductCard({
                     style={{
                       color: theme.colors.textMuted,
                       fontFamily: theme.typography.body,
-                      fontSize: usesRegularTextSizing ? 12 : 11,
+                      fontSize: usesRegularTextSizing
+                        ? theme.typography.scale.label.fontSize
+                        : theme.typography.scale.caption.fontSize,
+                      lineHeight: usesRegularTextSizing
+                        ? theme.typography.scale.label.lineHeight
+                        : theme.typography.scale.caption.lineHeight,
                     }}
                   >
                     {detail.label}
@@ -633,8 +644,13 @@ export function ProductCard({
                       color: detail.tone,
                       flex: 1,
                       fontFamily: theme.typography.body,
-                      fontSize: usesRegularTextSizing ? 12 : 11,
-                      fontWeight: "600",
+                      fontSize: usesRegularTextSizing
+                        ? theme.typography.scale.label.fontSize
+                        : theme.typography.scale.caption.fontSize,
+                      fontWeight: theme.typography.weight.semibold,
+                      lineHeight: usesRegularTextSizing
+                        ? theme.typography.scale.label.lineHeight
+                        : theme.typography.scale.caption.lineHeight,
                       textAlign: "right",
                     }}
                   >

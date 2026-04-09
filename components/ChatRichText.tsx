@@ -102,9 +102,9 @@ export function ChatRichText({
               key={`heading-${index}`}
               style={{
                 color,
-                fontFamily: theme.typography.display,
+                fontFamily: theme.typography.strong,
                 fontSize: headingMatch[1].length === 1 ? headingLargeFontSize : headingSmallFontSize,
-                fontWeight: "600",
+                fontWeight: theme.typography.weight.semibold,
                 lineHeight: headingMatch[1].length === 1 ? headingLargeLineHeight : headingSmallLineHeight,
               }}
             >

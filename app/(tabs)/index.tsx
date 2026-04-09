@@ -443,8 +443,7 @@ export default function HomeScreen() {
         month: "short",
         weekday: "long",
       })
-        .format(briefDate)
-        .toUpperCase(),
+        .format(briefDate),
     [briefDate, language],
   );
   const shortcutItems = useMemo(() => {
@@ -1022,9 +1021,10 @@ export default function HomeScreen() {
               <Text
                 style={{
                   color: report.netProfitCents >= 0 ? theme.colors.text : theme.colors.danger,
-                  fontFamily: theme.typography.display,
-                  fontSize: 24,
-                  fontWeight: "600",
+                  fontFamily: theme.typography.money,
+                  fontSize: theme.typography.scale.h2.fontSize,
+                  fontWeight: theme.typography.weight.semibold,
+                  lineHeight: theme.typography.scale.h2.lineHeight,
                 }}
               >
                 {formatCurrencyFromCents(report.netProfitCents)}
@@ -1064,9 +1064,10 @@ export default function HomeScreen() {
               <Text
                 style={{
                   color: theme.colors.text,
-                  fontFamily: theme.typography.display,
-                  fontSize: 24,
-                  fontWeight: "600",
+                  fontFamily: theme.typography.money,
+                  fontSize: theme.typography.scale.h2.fontSize,
+                  fontWeight: theme.typography.weight.semibold,
+                  lineHeight: theme.typography.scale.h2.lineHeight,
                 }}
               >
                 {formatCurrencyFromCents(report.salesCents)}
@@ -1213,9 +1214,10 @@ export default function HomeScreen() {
                 <Text
                   style={{
                     color: theme.colors.text,
-                    fontFamily: theme.typography.display,
-                    fontSize: 22,
-                    fontWeight: "600",
+                    fontFamily: theme.typography.money,
+                    fontSize: theme.typography.scale.h2.fontSize,
+                    fontWeight: theme.typography.weight.semibold,
+                    lineHeight: theme.typography.scale.h2.lineHeight,
                   }}
                 >
                   {entry.value}
@@ -1364,9 +1366,10 @@ export default function HomeScreen() {
             <Text
               style={{
                 color: theme.colors.text,
-                fontFamily: theme.typography.display,
-                fontSize: 24,
-                fontWeight: "600",
+                fontFamily: theme.typography.strong,
+                fontSize: theme.typography.scale.h2.fontSize,
+                fontWeight: theme.typography.weight.semibold,
+                lineHeight: theme.typography.scale.h2.lineHeight,
               }}
             >
               {t("home.weekly.title")}
@@ -1485,9 +1488,10 @@ export default function HomeScreen() {
             <Text
               style={{
                 color: theme.colors.text,
-                fontFamily: theme.typography.display,
-                fontSize: 24,
-                fontWeight: "600",
+                fontFamily: theme.typography.strong,
+                fontSize: theme.typography.scale.h2.fontSize,
+                fontWeight: theme.typography.weight.semibold,
+                lineHeight: theme.typography.scale.h2.lineHeight,
               }}
             >
               {t("home.runout.title")}
@@ -1563,9 +1567,10 @@ export default function HomeScreen() {
             <Text
               style={{
                 color: theme.colors.text,
-                fontFamily: theme.typography.display,
-                fontSize: 24,
-                fontWeight: "600",
+                fontFamily: theme.typography.strong,
+                fontSize: theme.typography.scale.h2.fontSize,
+                fontWeight: theme.typography.weight.semibold,
+                lineHeight: theme.typography.scale.h2.lineHeight,
               }}
             >
               {t("home.lowStock.title")}
@@ -1682,9 +1687,10 @@ export default function HomeScreen() {
           <Text
             style={{
               color: theme.colors.text,
-              fontFamily: theme.typography.display,
-              fontSize: 24,
-              fontWeight: "600",
+              fontFamily: theme.typography.strong,
+              fontSize: theme.typography.scale.h2.fontSize,
+              fontWeight: theme.typography.weight.semibold,
+              lineHeight: theme.typography.scale.h2.lineHeight,
             }}
           >
             {t("home.risk.title")}
@@ -1904,9 +1910,10 @@ export default function HomeScreen() {
                         style={{
                           color: theme.colors.text,
                           flexShrink: 1,
-                          fontFamily: theme.typography.display,
-                          fontSize: 19,
-                          fontWeight: "600",
+                          fontFamily: theme.typography.body,
+                          fontSize: theme.typography.scale.body.fontSize,
+                          fontWeight: theme.typography.weight.semibold,
+                          lineHeight: theme.typography.scale.body.lineHeight,
                         }}
                       >
                         {customerLabel}
@@ -1930,9 +1937,10 @@ export default function HomeScreen() {
                   <Text
                     style={{
                       color: theme.colors.primary,
-                      fontFamily: theme.typography.display,
-                      fontSize: 20,
-                      fontWeight: "600",
+                      fontFamily: theme.typography.money,
+                      fontSize: theme.typography.scale.h2.fontSize,
+                      fontWeight: theme.typography.weight.semibold,
+                      lineHeight: theme.typography.scale.h2.lineHeight,
                     }}
                   >
                     {formatCurrencyFromCents(sale.totalCents)}
@@ -1966,10 +1974,11 @@ export default function HomeScreen() {
           <Text
             style={{
               color: theme.colors.textMuted,
-              fontFamily: theme.typography.body,
-              fontSize: 12,
-              fontWeight: "600",
-              textTransform: "uppercase",
+              fontFamily: theme.typography.label,
+              fontSize: theme.typography.scale.label.fontSize,
+              fontWeight: theme.typography.weight.medium,
+              letterSpacing: 0.3,
+              lineHeight: theme.typography.scale.label.lineHeight,
             }}
           >
             {t("home.calculator.expression")}
@@ -1978,9 +1987,10 @@ export default function HomeScreen() {
             numberOfLines={2}
             style={{
               color: theme.colors.text,
-              fontFamily: theme.typography.display,
-              fontSize: 28,
-              fontWeight: "600",
+              fontFamily: theme.typography.body,
+              fontSize: theme.typography.scale.h1.fontSize,
+              fontWeight: theme.typography.weight.semibold,
+              lineHeight: theme.typography.scale.h1.lineHeight,
               textAlign: "right",
             }}
           >
@@ -1994,10 +2004,11 @@ export default function HomeScreen() {
           <Text
             style={{
               color: theme.colors.textMuted,
-              fontFamily: theme.typography.body,
-              fontSize: 12,
-              fontWeight: "600",
-              textTransform: "uppercase",
+              fontFamily: theme.typography.label,
+              fontSize: theme.typography.scale.label.fontSize,
+              fontWeight: theme.typography.weight.medium,
+              letterSpacing: 0.3,
+              lineHeight: theme.typography.scale.label.lineHeight,
             }}
           >
             {t("home.calculator.result")}
@@ -2006,9 +2017,10 @@ export default function HomeScreen() {
             numberOfLines={1}
             style={{
               color: calculatorPreview === null ? theme.colors.textSoft : theme.colors.primary,
-              fontFamily: theme.typography.display,
-              fontSize: 24,
-              fontWeight: "600",
+              fontFamily: theme.typography.money,
+              fontSize: theme.typography.scale.h1.fontSize,
+              fontWeight: theme.typography.weight.semibold,
+              lineHeight: theme.typography.scale.h1.lineHeight,
               textAlign: "right",
             }}
           >
@@ -2202,11 +2214,11 @@ export default function HomeScreen() {
             <Text
               style={{
                 color: theme.colors.textSoft,
-                fontFamily: theme.typography.body,
-                fontSize: 11,
-                fontWeight: "600",
-                letterSpacing: 0.8,
-                textTransform: "uppercase",
+                fontFamily: theme.typography.label,
+                fontSize: theme.typography.scale.label.fontSize,
+                fontWeight: theme.typography.weight.medium,
+                letterSpacing: 0.3,
+                lineHeight: theme.typography.scale.label.lineHeight,
               }}
             >
               {briefDateLabel}
@@ -2217,9 +2229,10 @@ export default function HomeScreen() {
                 <Text
                   style={{
                     color: theme.colors.text,
-                    fontFamily: theme.typography.display,
-                    fontSize: 22,
-                    fontWeight: "600",
+                    fontFamily: theme.typography.strong,
+                    fontSize: theme.typography.scale.h2.fontSize,
+                    fontWeight: theme.typography.weight.semibold,
+                    lineHeight: theme.typography.scale.h2.lineHeight,
                   }}
                 >
                   {t("home.brief.title")}

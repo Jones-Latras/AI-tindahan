@@ -370,9 +370,10 @@ export default function RestockScreen() {
                 <Text
                   style={{
                     color: theme.colors.text,
-                    fontFamily: theme.typography.display,
-                    fontSize: 22,
-                    fontWeight: "600",
+                    fontFamily: theme.typography.strong,
+                    fontSize: theme.typography.scale.h2.fontSize,
+                    fontWeight: theme.typography.weight.semibold,
+                    lineHeight: theme.typography.scale.h2.lineHeight,
                   }}
                 >
                   {selectedList.title}

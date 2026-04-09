@@ -63,10 +63,10 @@ export function ReceiptView({
   const { theme } = useAppTheme();
   const microLabelTextStyle = {
     fontFamily: theme.typography.label,
-    fontSize: 11,
-    fontWeight: "600" as const,
-    letterSpacing: 0.8,
-    textTransform: "uppercase" as const,
+    fontSize: theme.typography.scale.label.fontSize,
+    fontWeight: theme.typography.weight.medium,
+    letterSpacing: 0.3,
+    lineHeight: theme.typography.scale.label.lineHeight,
   };
 
   const fmt = (cents: number) => `PHP ${(cents / 100).toFixed(2)}`;
@@ -100,9 +100,10 @@ export function ReceiptView({
             <Text
               style={{
                 color: "#101828",
-                fontFamily: theme.typography.display,
-                fontSize: 28,
-                fontWeight: "600",
+                fontFamily: theme.typography.strong,
+                fontSize: theme.typography.scale.h1.fontSize,
+                fontWeight: theme.typography.weight.semibold,
+                lineHeight: theme.typography.scale.h1.lineHeight,
               }}
             >
               {storeName || "TindaHan AI"}
@@ -366,9 +367,10 @@ export function ReceiptView({
               <Text
                 style={{
                   color: "#101828",
-                  fontFamily: theme.typography.display,
-                  fontSize: 18,
-                  fontWeight: "600",
+                  fontFamily: theme.typography.body,
+                  fontSize: theme.typography.scale.body.fontSize,
+                  fontWeight: theme.typography.weight.semibold,
+                  lineHeight: theme.typography.scale.body.lineHeight,
                 }}
               >
                 Total
@@ -376,9 +378,10 @@ export function ReceiptView({
               <Text
                 style={{
                   color: theme.colors.primary,
-                  fontFamily: theme.typography.display,
-                  fontSize: 24,
-                  fontWeight: "600",
+                  fontFamily: theme.typography.money,
+                  fontSize: theme.typography.scale.h1.fontSize,
+                  fontWeight: theme.typography.weight.semibold,
+                  lineHeight: theme.typography.scale.h1.lineHeight,
                 }}
               >
                 {fmt(totalCents)}
@@ -406,10 +409,7 @@ export function ReceiptView({
               <Text
                 style={{
                   color: "#86EFAC",
-                  fontFamily: theme.typography.body,
-                  fontSize: 13,
-                  fontWeight: "600",
-                  textTransform: "uppercase",
+                  ...microLabelTextStyle,
                 }}
               >
                 Sukli
@@ -417,9 +417,10 @@ export function ReceiptView({
               <Text
                 style={{
                   color: "#86EFAC",
-                  fontFamily: theme.typography.display,
-                  fontSize: 22,
-                  fontWeight: "600",
+                  fontFamily: theme.typography.money,
+                  fontSize: theme.typography.scale.h2.fontSize,
+                  fontWeight: theme.typography.weight.semibold,
+                  lineHeight: theme.typography.scale.h2.lineHeight,
                 }}
               >
                 {fmt(changeCents)}
@@ -469,7 +470,8 @@ export function ReceiptView({
             style={{
               color: "#667085",
               fontFamily: theme.typography.body,
-              fontSize: 11,
+              fontSize: theme.typography.scale.label.fontSize,
+              lineHeight: theme.typography.scale.label.lineHeight,
               textAlign: "center",
             }}
           >
@@ -479,8 +481,9 @@ export function ReceiptView({
             style={{
               color: theme.colors.primary,
               fontFamily: theme.typography.body,
-              fontSize: 11,
-              fontWeight: "600",
+              fontSize: theme.typography.scale.label.fontSize,
+              fontWeight: theme.typography.weight.medium,
+              lineHeight: theme.typography.scale.label.lineHeight,
               textAlign: "center",
             }}
           >

@@ -228,12 +228,12 @@ export default function ProduktoScreen() {
   const microLabelTextStyle = useMemo(
     () => ({
       fontFamily: theme.typography.label,
-      fontSize: 11,
-      fontWeight: "600" as const,
-      letterSpacing: 0.8,
-      textTransform: "uppercase" as const,
+      fontSize: theme.typography.scale.label.fontSize,
+      fontWeight: theme.typography.weight.medium,
+      letterSpacing: 0.3,
+      lineHeight: theme.typography.scale.label.lineHeight,
     }),
-    [theme.typography.label],
+    [theme.typography],
   );
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
@@ -1096,10 +1096,11 @@ export default function ProduktoScreen() {
                 ellipsizeMode="tail"
                 numberOfLines={1}
                 style={{
-                  color: theme.colors.textMuted,
+                  color: theme.colors.text,
                   fontFamily: theme.typography.body,
-                  fontSize: 12,
-                  lineHeight: 16,
+                  fontSize: theme.typography.scale.bodySm.fontSize,
+                  fontWeight: theme.typography.weight.semibold,
+                  lineHeight: theme.typography.scale.bodySm.lineHeight,
                 }}
               >
                 {product.name}
@@ -1386,11 +1387,7 @@ export default function ProduktoScreen() {
         <Text
           style={{
             color: theme.colors.textSoft,
-            fontFamily: theme.typography.label,
-            fontSize: 11,
-            fontWeight: "600",
-            letterSpacing: 0.8,
-            textTransform: "uppercase",
+            ...microLabelTextStyle,
           }}
         >
           {catalogCountLabel}

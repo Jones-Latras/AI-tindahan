@@ -107,12 +107,12 @@ export default function BentaScreen() {
   const microLabelTextStyle = useMemo(
     () => ({
       fontFamily: theme.typography.label,
-      fontSize: 11,
-      fontWeight: "600" as const,
-      letterSpacing: 0.8,
-      textTransform: "uppercase" as const,
+      fontSize: theme.typography.scale.label.fontSize,
+      fontWeight: theme.typography.weight.medium,
+      letterSpacing: 0.3,
+      lineHeight: theme.typography.scale.label.lineHeight,
     }),
-    [theme.typography.label],
+    [theme.typography],
   );
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
@@ -1065,9 +1065,9 @@ export default function BentaScreen() {
                     style={{
                       color: theme.colors.primaryText,
                       fontFamily: theme.typography.label,
-                      fontSize: 11,
-                      fontWeight: "600",
-                      lineHeight: 18,
+                      fontSize: theme.typography.scale.label.fontSize,
+                      fontWeight: theme.typography.weight.medium,
+                      lineHeight: theme.typography.scale.label.lineHeight,
                     }}
                   >
                     {cartUnitCount > 99 ? "99+" : cartUnitCount}
@@ -1182,11 +1182,7 @@ export default function BentaScreen() {
           <Text
             style={{
               color: theme.colors.textSoft,
-              fontFamily: theme.typography.label,
-              fontSize: 11,
-              fontWeight: "600",
-              letterSpacing: 0.8,
-              textTransform: "uppercase",
+              ...microLabelTextStyle,
             }}
           >
             {catalogCountLabel}
@@ -1291,9 +1287,10 @@ export default function BentaScreen() {
             <Text
               style={{
                 color: theme.colors.text,
-                fontFamily: theme.typography.display,
-                fontSize: 24,
-                fontWeight: "600",
+                fontFamily: theme.typography.strong,
+                fontSize: theme.typography.scale.h2.fontSize,
+                fontWeight: theme.typography.weight.semibold,
+                lineHeight: theme.typography.scale.h2.lineHeight,
               }}
             >
               Current Cart
@@ -1364,9 +1361,10 @@ export default function BentaScreen() {
               <Text
                 style={{
                   color: discountCents > 0 ? theme.colors.textMuted : theme.colors.text,
-                  fontFamily: theme.typography.display,
-                  fontSize: discountCents > 0 ? 18 : 28,
-                  fontWeight: "600",
+                  fontFamily: theme.typography.money,
+                  fontSize: discountCents > 0 ? 18 : theme.typography.scale.h1.fontSize,
+                  fontWeight: theme.typography.weight.semibold,
+                  lineHeight: discountCents > 0 ? 22 : theme.typography.scale.h1.lineHeight,
                   textDecorationLine: discountCents > 0 ? "line-through" : "none",
                 }}
               >
@@ -1389,9 +1387,10 @@ export default function BentaScreen() {
                 <Text
                   style={{
                     color: theme.colors.success,
-                    fontFamily: theme.typography.display,
-                    fontSize: 28,
-                    fontWeight: "600",
+                    fontFamily: theme.typography.money,
+                    fontSize: theme.typography.scale.h1.fontSize,
+                    fontWeight: theme.typography.weight.semibold,
+                    lineHeight: theme.typography.scale.h1.lineHeight,
                   }}
                 >
                   {formatCurrencyFromCents(finalTotalCents)}
@@ -1626,10 +1625,7 @@ export default function BentaScreen() {
                   <Text
                     style={{
                       color: theme.colors.success,
-                      fontFamily: theme.typography.body,
-                      fontSize: 12,
-                      fontWeight: "600",
-                      textTransform: "uppercase",
+                      ...microLabelTextStyle,
                     }}
                   >
                     Sukli
@@ -1637,9 +1633,10 @@ export default function BentaScreen() {
                   <Text
                     style={{
                       color: theme.colors.success,
-                      fontFamily: theme.typography.display,
-                      fontSize: 30,
-                      fontWeight: "600",
+                      fontFamily: theme.typography.money,
+                      fontSize: theme.typography.scale.h1.fontSize,
+                      fontWeight: theme.typography.weight.semibold,
+                      lineHeight: theme.typography.scale.h1.lineHeight,
                     }}
                   >
                     {formatCurrencyFromCents(changeCents)}
@@ -1842,9 +1839,10 @@ export default function BentaScreen() {
                 <Text
                   style={{
                     color: discountCents > 0 ? theme.colors.textMuted : theme.colors.text,
-                    fontFamily: theme.typography.display,
-                    fontSize: discountCents > 0 ? 18 : 26,
-                    fontWeight: "600",
+                    fontFamily: theme.typography.money,
+                    fontSize: discountCents > 0 ? 18 : theme.typography.scale.h1.fontSize,
+                    fontWeight: theme.typography.weight.semibold,
+                    lineHeight: discountCents > 0 ? 22 : theme.typography.scale.h1.lineHeight,
                     textDecorationLine: discountCents > 0 ? "line-through" : "none",
                   }}
                 >
@@ -1875,9 +1873,10 @@ export default function BentaScreen() {
                   <Text
                     style={{
                       color: theme.colors.success,
-                      fontFamily: theme.typography.display,
-                      fontSize: 26,
-                      fontWeight: "600",
+                      fontFamily: theme.typography.money,
+                      fontSize: theme.typography.scale.h1.fontSize,
+                      fontWeight: theme.typography.weight.semibold,
+                      lineHeight: theme.typography.scale.h1.lineHeight,
                     }}
                   >
                     {formatCurrencyFromCents(finalTotalCents)}
@@ -2118,10 +2117,7 @@ export default function BentaScreen() {
                     <Text
                       style={{
                         color: theme.colors.success,
-                        fontFamily: theme.typography.body,
-                        fontSize: 12,
-                        fontWeight: "600",
-                        textTransform: "uppercase",
+                        ...microLabelTextStyle,
                       }}
                     >
                       Sukli
@@ -2129,9 +2125,10 @@ export default function BentaScreen() {
                     <Text
                       style={{
                         color: theme.colors.success,
-                        fontFamily: theme.typography.display,
-                        fontSize: 30,
-                        fontWeight: "600",
+                        fontFamily: theme.typography.money,
+                        fontSize: theme.typography.scale.h1.fontSize,
+                        fontWeight: theme.typography.weight.semibold,
+                        lineHeight: theme.typography.scale.h1.lineHeight,
                       }}
                     >
                       {formatCurrencyFromCents(changeCents)}

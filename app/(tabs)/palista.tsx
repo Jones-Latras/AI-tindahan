@@ -581,9 +581,10 @@ export default function PalistaScreen() {
                         <Text
                           style={{
                             color: theme.colors.text,
-                            fontFamily: theme.typography.display,
-                            fontSize: 18,
-                            fontWeight: "600",
+                            fontFamily: theme.typography.strong,
+                            fontSize: theme.typography.scale.h2.fontSize,
+                            fontWeight: theme.typography.weight.semibold,
+                            lineHeight: theme.typography.scale.h2.lineHeight,
                           }}
                         >
                           {customer.name}
@@ -621,9 +622,10 @@ export default function PalistaScreen() {
                       <Text
                         style={{
                           color: theme.colors.text,
-                          fontFamily: theme.typography.display,
-                          fontSize: 20,
-                          fontWeight: "600",
+                          fontFamily: theme.typography.money,
+                          fontSize: theme.typography.scale.h2.fontSize,
+                          fontWeight: theme.typography.weight.semibold,
+                          lineHeight: theme.typography.scale.h2.lineHeight,
                         }}
                         numberOfLines={1}
                       >
@@ -1430,9 +1432,10 @@ export default function PalistaScreen() {
               <Text
                 style={{
                   color: changeDueCents > 0 ? theme.colors.warning : theme.colors.text,
-                  fontFamily: theme.typography.display,
-                  fontSize: 18,
-                  fontWeight: "600",
+                  fontFamily: theme.typography.money,
+                  fontSize: theme.typography.scale.h2.fontSize,
+                  fontWeight: theme.typography.weight.semibold,
+                  lineHeight: theme.typography.scale.h2.lineHeight,
                 }}
               >
                 {formatCurrencyFromCents(changeDueCents)}

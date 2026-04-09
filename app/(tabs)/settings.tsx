@@ -53,10 +53,10 @@ function SettingsSection({ title, children }: SettingsSectionProps) {
         style={{
           color: theme.colors.textMuted,
           fontFamily: theme.typography.label,
-          fontSize: 11,
-          fontWeight: "600",
-          letterSpacing: 0.8,
-          textTransform: "uppercase",
+          fontSize: theme.typography.scale.label.fontSize,
+          fontWeight: theme.typography.weight.medium,
+          letterSpacing: 0.3,
+          lineHeight: theme.typography.scale.label.lineHeight,
         }}
       >
         {title}
@@ -96,9 +96,10 @@ function SettingsValuePill({ icon, label }: { icon?: keyof typeof Feather.glyphM
       <Text
         style={{
           color: theme.colors.text,
-          fontFamily: theme.typography.body,
-          fontSize: 12,
-          fontWeight: "600",
+          fontFamily: theme.typography.label,
+          fontSize: theme.typography.scale.label.fontSize,
+          fontWeight: theme.typography.weight.medium,
+          lineHeight: theme.typography.scale.label.lineHeight,
         }}
       >
         {label}
@@ -143,8 +144,9 @@ function SettingsAction({ label, onPress, disabled, busy, tone = "primary" }: Se
           color: primary ? theme.colors.primaryText : theme.colors.text,
           flexShrink: 1,
           fontFamily: theme.typography.label,
-          fontSize: 12,
-          fontWeight: "600",
+          fontSize: theme.typography.scale.label.fontSize,
+          fontWeight: theme.typography.weight.medium,
+          lineHeight: theme.typography.scale.label.lineHeight,
           textAlign: "center",
         }}
       >
@@ -201,8 +203,9 @@ function SettingsRow({
           style={{
             color: theme.colors.text,
             fontFamily: theme.typography.body,
-            fontSize: 15,
-            fontWeight: "600",
+            fontSize: theme.typography.scale.body.fontSize,
+            fontWeight: theme.typography.weight.semibold,
+            lineHeight: theme.typography.scale.body.lineHeight,
           }}
         >
           {title}
@@ -394,9 +397,10 @@ export default function SettingsScreen() {
           <Text
             style={{
               color: theme.colors.textMuted,
-              fontFamily: theme.typography.body,
-              fontSize: 13,
-              fontWeight: "600",
+              fontFamily: theme.typography.label,
+              fontSize: theme.typography.scale.label.fontSize,
+              fontWeight: theme.typography.weight.medium,
+              lineHeight: theme.typography.scale.label.lineHeight,
             }}
           >
             {t("home.settings.store.fieldLabel")}
@@ -432,7 +436,8 @@ export default function SettingsScreen() {
                 color: theme.colors.text,
                 flex: 1,
                 fontFamily: theme.typography.body,
-                fontSize: 15,
+                fontSize: theme.typography.scale.body.fontSize,
+                lineHeight: theme.typography.scale.body.lineHeight,
                 minHeight: 50,
                 paddingRight: theme.spacing.sm,
               }}
