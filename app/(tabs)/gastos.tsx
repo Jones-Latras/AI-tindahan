@@ -690,9 +690,9 @@ export default function GastosScreen() {
           <Text
             style={{
               color: theme.colors.text,
-              fontFamily: theme.typography.money,
-              fontSize: theme.typography.scale.h1.fontSize,
-              lineHeight: theme.typography.scale.h1.lineHeight,
+              fontFamily: theme.typography.strong,
+              fontSize: theme.typography.scale.h2.fontSize,
+              lineHeight: theme.typography.scale.h2.lineHeight,
             }}
           >
             {currentMonthLabel}
@@ -729,8 +729,8 @@ export default function GastosScreen() {
                 style={{
                   color: theme.colors.text,
                   fontFamily: theme.typography.money,
-                  fontSize: theme.typography.scale.h2.fontSize,
-                  lineHeight: theme.typography.scale.h2.lineHeight,
+                  fontSize: theme.typography.scale.body.fontSize,
+                  lineHeight: theme.typography.scale.body.lineHeight,
                 }}
               >
                 {card.value}
@@ -764,8 +764,8 @@ export default function GastosScreen() {
               style={{
                 color: theme.colors.text,
                 fontFamily: theme.typography.strong,
-                fontSize: theme.typography.scale.h1.fontSize,
-                lineHeight: theme.typography.scale.h1.lineHeight,
+                fontSize: theme.typography.scale.h2.fontSize,
+                lineHeight: theme.typography.scale.h2.lineHeight,
               }}
             >
               {copy.historyTitle}
@@ -821,8 +821,8 @@ export default function GastosScreen() {
                         style={{
                           color: theme.colors.text,
                           fontFamily: theme.typography.strong,
-                          fontSize: theme.typography.scale.h2.fontSize,
-                          lineHeight: theme.typography.scale.h2.lineHeight,
+                          fontSize: theme.typography.scale.body.fontSize,
+                          lineHeight: theme.typography.scale.body.lineHeight,
                         }}
                       >
                         {trip.marketName}
@@ -902,8 +902,8 @@ export default function GastosScreen() {
                         style={{
                           color: theme.colors.primary,
                           fontFamily: theme.typography.money,
-                          fontSize: theme.typography.scale.h2.fontSize,
-                          lineHeight: theme.typography.scale.h2.lineHeight,
+                          fontSize: theme.typography.scale.body.fontSize,
+                          lineHeight: theme.typography.scale.body.lineHeight,
                         }}
                       >
                         {formatCurrencyFromCents(trip.grandTotalCents)}
@@ -946,8 +946,8 @@ export default function GastosScreen() {
                 style={{
                   color: theme.colors.text,
                   fontFamily: theme.typography.money,
-                  fontSize: theme.typography.scale.h2.fontSize,
-                  lineHeight: theme.typography.scale.h2.lineHeight,
+                  fontSize: theme.typography.scale.body.fontSize,
+                  lineHeight: theme.typography.scale.body.lineHeight,
                 }}
               >
                 {entry.value}
@@ -968,8 +968,8 @@ export default function GastosScreen() {
             style={{
               color: theme.colors.primary,
               fontFamily: theme.typography.money,
-              fontSize: theme.typography.scale.h1.fontSize,
-              lineHeight: theme.typography.scale.h1.lineHeight,
+              fontSize: theme.typography.scale.h2.fontSize,
+              lineHeight: theme.typography.scale.h2.lineHeight,
             }}
           >
             {formatCurrencyFromCents(grandTotalCents)}
@@ -1041,8 +1041,8 @@ export default function GastosScreen() {
               style={{
                 color: theme.colors.text,
                 fontFamily: theme.typography.strong,
-                fontSize: theme.typography.scale.h2.fontSize,
-                lineHeight: theme.typography.scale.h2.lineHeight,
+                fontSize: theme.typography.scale.body.fontSize,
+                lineHeight: theme.typography.scale.body.lineHeight,
               }}
             >
               {copy.itemsSectionTitle}
@@ -1224,8 +1224,8 @@ export default function GastosScreen() {
                   style={{
                     color: theme.colors.primary,
                     fontFamily: theme.typography.money,
-                    fontSize: theme.typography.scale.h2.fontSize,
-                    lineHeight: theme.typography.scale.h2.lineHeight,
+                    fontSize: theme.typography.scale.body.fontSize,
+                    lineHeight: theme.typography.scale.body.lineHeight,
                   }}
                 >
                   {formatCurrencyFromCents(item.lineTotalCents)}
@@ -1243,8 +1243,8 @@ export default function GastosScreen() {
             style={{
               color: theme.colors.text,
               fontFamily: theme.typography.strong,
-              fontSize: theme.typography.scale.h2.fontSize,
-              lineHeight: theme.typography.scale.h2.lineHeight,
+              fontSize: theme.typography.scale.body.fontSize,
+              lineHeight: theme.typography.scale.body.lineHeight,
             }}
           >
             {copy.travelSubtitle}
@@ -1350,8 +1350,8 @@ export default function GastosScreen() {
                           ? theme.colors.primary
                           : theme.colors.text,
                       fontFamily: theme.typography.money,
-                      fontSize: theme.typography.scale.h2.fontSize,
-                      lineHeight: theme.typography.scale.h2.lineHeight,
+                      fontSize: theme.typography.scale.body.fontSize,
+                      lineHeight: theme.typography.scale.body.lineHeight,
                     }}
                   >
                     {entry.value}
@@ -1368,8 +1368,8 @@ export default function GastosScreen() {
                 style={{
                   color: theme.colors.text,
                   fontFamily: theme.typography.strong,
-                  fontSize: theme.typography.scale.h2.fontSize,
-                  lineHeight: theme.typography.scale.h2.lineHeight,
+                  fontSize: theme.typography.scale.body.fontSize,
+                  lineHeight: theme.typography.scale.body.lineHeight,
                 }}
               >
                 {copy.detailItemsCount(detailTrip.items.length)}
@@ -1420,8 +1420,8 @@ export default function GastosScreen() {
                     style={{
                       color: theme.colors.primary,
                       fontFamily: theme.typography.money,
-                      fontSize: theme.typography.scale.h2.fontSize,
-                      lineHeight: theme.typography.scale.h2.lineHeight,
+                      fontSize: theme.typography.scale.body.fontSize,
+                      lineHeight: theme.typography.scale.body.lineHeight,
                     }}
                   >
                     {formatCurrencyFromCents(item.lineTotalCents)}
@@ -1439,8 +1439,8 @@ export default function GastosScreen() {
                 style={{
                   color: theme.colors.text,
                   fontFamily: theme.typography.strong,
-                  fontSize: theme.typography.scale.h2.fontSize,
-                  lineHeight: theme.typography.scale.h2.lineHeight,
+                  fontSize: theme.typography.scale.body.fontSize,
+                  lineHeight: theme.typography.scale.body.lineHeight,
                 }}
               >
                 {copy.travelSubtitle}

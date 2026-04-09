@@ -1,6 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
-import { Animated, Pressable, Text, View } from "react-native";
+import { Animated, Pressable, Text, View, useWindowDimensions } from "react-native";
 import { useEffect, useRef, useState } from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
@@ -12,8 +12,17 @@ import { useAppTheme } from "@/contexts/ThemeContext";
 function FloatingTabBar({ state, descriptors, navigation }: any) {
   const { theme } = useAppTheme();
   const insets = useSafeAreaInsets();
+  const { width: windowWidth } = useWindowDimensions();
   const [tabWidth, setTabWidth] = useState(0);
   const tabBarBottomOffset = getFloatingTabBarBottomOffset(insets.bottom);
+  const isCompactWidth = windowWidth <= 380;
+  const horizontalInset = isCompactWidth ? theme.spacing.md : theme.spacing.lg;
+  const outerGap = isCompactWidth ? theme.spacing.xs : theme.spacing.sm;
+  const labelFontSize = isCompactWidth ? 8.5 : 9.5;
+  const labelLineHeight = isCompactWidth ? 10 : 11;
+  const itemGap = isCompactWidth ? 2 : 4;
+  const pillInset = isCompactWidth ? 4 : 0;
+  const pillSize = isCompactWidth ? 50 : 54;
 
   const bentaRouteIndex = state.routes.findIndex((route: any) => route.name === "benta");
   const bentaRoute = state.routes[bentaRouteIndex];
@@ -47,12 +56,12 @@ function FloatingTabBar({ state, descriptors, navigation }: any) {
       style={{
         position: "absolute",
         bottom: tabBarBottomOffset,
-        left: theme.spacing.lg,
-        right: theme.spacing.lg,
+        left: horizontalInset,
+        right: horizontalInset,
         flexDirection: "row",
         alignItems: "stretch",
         justifyContent: "space-between",
-        gap: theme.spacing.sm,
+        gap: outerGap,
       }}
     >
       <View
@@ -73,7 +82,7 @@ function FloatingTabBar({ state, descriptors, navigation }: any) {
             borderRadius: 36,
             borderWidth: 1,
             borderColor: theme.colors.border,
-            paddingHorizontal: theme.spacing.sm,
+            paddingHorizontal: isCompactWidth ? theme.spacing.xs : theme.spacing.sm,
             paddingVertical: 10,
             overflow: "hidden",
           }}
@@ -97,8 +106,8 @@ function FloatingTabBar({ state, descriptors, navigation }: any) {
               >
                 <View
                   style={{
-                    width: 54,
-                    height: 54,
+                    width: pillSize,
+                    height: pillSize,
                     backgroundColor: theme.colors.primaryMuted,
                     borderRadius: 16,
                   }}
@@ -145,19 +154,26 @@ function FloatingTabBar({ state, descriptors, navigation }: any) {
                       flexDirection: "column",
                       alignItems: "center",
                       justifyContent: "center",
-                      width: 54,
-                      height: 54,
-                      gap: 4,
+                      minWidth: 0,
+                      width: "100%",
+                      height: pillSize,
+                      gap: itemGap,
+                      paddingHorizontal: pillInset,
                     }}
                   >
                     <Feather name={iconName} size={isFocused ? 18 : 20} color={iconColor} />
                     <Text
+                      adjustsFontSizeToFit
+                      allowFontScaling={false}
+                      minimumFontScale={0.68}
                       numberOfLines={1}
                       style={{
                         color: isFocused ? theme.colors.primary : theme.colors.textSoft,
                         fontFamily: theme.typography.label,
-                        fontSize: theme.typography.scale.micro.fontSize,
-                        lineHeight: theme.typography.scale.micro.lineHeight,
+                        fontSize: labelFontSize,
+                        lineHeight: labelLineHeight,
+                        textAlign: "center",
+                        width: "100%",
                       }}
                     >
                       {options.title}
