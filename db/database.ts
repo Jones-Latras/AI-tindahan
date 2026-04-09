@@ -3,7 +3,7 @@ import type { SQLiteDatabase } from "expo-sqlite";
 import { createSyncId } from "@/utils/id";
 
 export const DATABASE_NAME = "tindahan-ai.db";
-export const DATABASE_VERSION = 15;
+export const DATABASE_VERSION = 16;
 
 const SYNC_ID_TABLES = [
   "products",
@@ -13,6 +13,8 @@ const SYNC_ID_TABLES = [
   "utang",
   "utang_payments",
   "expenses",
+  "expense_trips",
+  "expense_trip_items",
   "expense_budgets",
   "restock_lists",
   "restock_list_items",
@@ -675,7 +677,53 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
     currentVersion = 15;
   }
 
-  if (currentVersion >= 15) {
+  if (currentVersion < 16) {
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS expense_trips (
+        id INTEGER PRIMARY KEY NOT NULL,
+        trip_date TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        market_name TEXT NOT NULL,
+        payment_method TEXT NOT NULL DEFAULT 'cash' CHECK(payment_method IN ('cash', 'gcash', 'maya', 'utang')),
+        pamasahe_cents INTEGER NOT NULL DEFAULT 0 CHECK(pamasahe_cents >= 0),
+        gasolina_cents INTEGER NOT NULL DEFAULT 0 CHECK(gasolina_cents >= 0),
+        other_travel_cents INTEGER NOT NULL DEFAULT 0 CHECK(other_travel_cents >= 0),
+        notes TEXT,
+        total_items_cents INTEGER NOT NULL DEFAULT 0 CHECK(total_items_cents >= 0),
+        total_travel_cents INTEGER NOT NULL DEFAULT 0 CHECK(total_travel_cents >= 0),
+        grand_total_cents INTEGER NOT NULL DEFAULT 0 CHECK(grand_total_cents >= 0),
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        synced INTEGER NOT NULL DEFAULT 0,
+        sync_id TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS expense_trip_items (
+        id INTEGER PRIMARY KEY NOT NULL,
+        expense_trip_id INTEGER NOT NULL REFERENCES expense_trips(id) ON DELETE CASCADE,
+        item_name TEXT NOT NULL COLLATE NOCASE,
+        quantity REAL NOT NULL CHECK(quantity > 0),
+        unit_price_cents INTEGER NOT NULL CHECK(unit_price_cents >= 0),
+        line_total_cents INTEGER NOT NULL CHECK(line_total_cents >= 0),
+        category TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        synced INTEGER NOT NULL DEFAULT 0,
+        sync_id TEXT
+      );
+
+      ALTER TABLE expenses ADD COLUMN expense_trip_id INTEGER;
+
+      CREATE INDEX IF NOT EXISTS idx_expense_trips_trip_date ON expense_trips(trip_date DESC, id DESC);
+      CREATE INDEX IF NOT EXISTS idx_expense_trip_items_trip ON expense_trip_items(expense_trip_id, id ASC);
+      CREATE INDEX IF NOT EXISTS idx_expense_trip_items_name ON expense_trip_items(item_name);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_expense_trips_sync_id ON expense_trips(sync_id);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_expense_trip_items_sync_id ON expense_trip_items(sync_id);
+      CREATE INDEX IF NOT EXISTS idx_expenses_trip_id ON expenses(expense_trip_id);
+    `);
+
+    currentVersion = 16;
+  }
+
+  if (currentVersion >= 16) {
     await backfillSyncIds(db);
   }
 

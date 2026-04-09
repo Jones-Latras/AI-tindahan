@@ -22,6 +22,10 @@ import type {
   ExpenseBudgetSummary,
   ExpenseCategorySummary,
   ExpenseSummary,
+  ExpenseTrip,
+  ExpenseTripItem,
+  ExpenseTripOverview,
+  ExpenseTripSummary,
   HomeMetrics,
   InventoryPool,
   PaymentBreakdown,
@@ -190,6 +194,44 @@ type ExpenseRow = {
   expense_date: string;
   created_at: string;
   updated_at: string;
+};
+
+type ExpenseTripRow = {
+  id: number;
+  trip_date: string;
+  market_name: string;
+  payment_method: PaymentMethod;
+  pamasahe_cents: number;
+  gasolina_cents: number;
+  other_travel_cents: number;
+  notes: string | null;
+  total_items_cents: number;
+  total_travel_cents: number;
+  grand_total_cents: number;
+  created_at: string;
+  updated_at: string;
+};
+
+type ExpenseTripItemRow = {
+  id: number;
+  expense_trip_id: number;
+  item_name: string;
+  quantity: number;
+  unit_price_cents: number;
+  line_total_cents: number;
+  category: string;
+  created_at: string;
+};
+
+type ExpenseTripListRow = ExpenseTripRow & {
+  item_count: number;
+};
+
+type ExpenseTripOverviewRow = {
+  current_month_total_cents: number | null;
+  current_month_trip_count: number | null;
+  all_time_total_cents: number | null;
+  all_time_trip_count: number | null;
 };
 
 type ExpenseBudgetRow = {
@@ -437,6 +479,55 @@ function mapExpense(row: ExpenseRow): Expense {
     expenseDate: row.expense_date,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+  };
+}
+
+function mapExpenseTripItem(row: ExpenseTripItemRow): ExpenseTripItem {
+  return {
+    id: row.id,
+    expenseTripId: row.expense_trip_id,
+    itemName: row.item_name,
+    quantity: row.quantity,
+    unitPriceCents: row.unit_price_cents,
+    lineTotalCents: row.line_total_cents,
+    category: row.category,
+    createdAt: row.created_at,
+  };
+}
+
+function mapExpenseTripSummary(row: ExpenseTripListRow, itemTags: string[] = []): ExpenseTripSummary {
+  return {
+    id: row.id,
+    tripDate: row.trip_date,
+    marketName: row.market_name,
+    paymentMethod: row.payment_method,
+    itemCount: row.item_count,
+    totalItemsCents: row.total_items_cents,
+    totalTravelCents: row.total_travel_cents,
+    grandTotalCents: row.grand_total_cents,
+    itemTags,
+  };
+}
+
+function mapExpenseTrip(
+  row: ExpenseTripRow,
+  items: ExpenseTripItem[],
+): ExpenseTrip {
+  return {
+    ...mapExpenseTripSummary(
+      {
+        ...row,
+        item_count: items.length,
+      },
+      items.map((item) => item.itemName),
+    ),
+    pamasaheCents: row.pamasahe_cents,
+    gasolinaCents: row.gasolina_cents,
+    otherTravelCents: row.other_travel_cents,
+    notes: row.notes,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    items,
   };
 }
 
@@ -738,6 +829,24 @@ export type ExpenseInput = {
   expenseDate?: string;
 };
 
+export type ExpenseTripItemInput = {
+  itemName: string;
+  quantity: number;
+  unitPriceCents: number;
+  category: string;
+};
+
+export type ExpenseTripInput = {
+  tripDate?: string;
+  marketName: string;
+  paymentMethod: PaymentMethod;
+  pamasaheCents?: number;
+  gasolinaCents?: number;
+  otherTravelCents?: number;
+  notes?: string;
+  items: ExpenseTripItemInput[];
+};
+
 export type ExpenseBudgetInput = {
   category?: string | null;
   amountCents: number;
@@ -785,10 +894,12 @@ const LOCAL_RESET_TABLES = [
   "utang_payments",
   "repack_sessions",
   "restock_list_items",
+  "expense_trip_items",
   "product_inventory_links",
   "sales",
   "utang",
   "restock_lists",
+  "expense_trips",
   "expenses",
   "expense_budgets",
   "inventory_pools",
@@ -1686,6 +1797,58 @@ function sanitizeExpenseCategory(category: string) {
   return normalized;
 }
 
+function sanitizeExpenseTripMarketName(marketName: string) {
+  const normalized = sanitizeText(marketName, 80);
+
+  if (normalized.length < 2) {
+    throw new Error("Dapat may hindi bababa sa 2 character ang pangalan ng palengke o tindahan.");
+  }
+
+  return normalized;
+}
+
+function sanitizeExpenseTripItemName(itemName: string) {
+  const normalized = sanitizeText(itemName, 80);
+
+  if (normalized.length < 2) {
+    throw new Error("Dapat may hindi bababa sa 2 character ang pangalan ng item.");
+  }
+
+  return normalized;
+}
+
+function assertPositiveQuantity(value: number, label: string) {
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new Error(`${label} ay dapat mas mataas sa zero.`);
+  }
+}
+
+function sanitizeExpenseTripCategory(category: string, itemName: string) {
+  const normalized = sanitizeText(category, 40).toLowerCase().replace(/\s+/g, "_");
+
+  if (normalized.length < 2) {
+    throw new Error(`Maglagay ng kategorya para sa ${itemName}.`);
+  }
+
+  return normalized;
+}
+
+function normalizeExpenseTripPaymentMethod(paymentMethod?: PaymentMethod): PaymentMethod {
+  if (paymentMethod === "gcash" || paymentMethod === "maya" || paymentMethod === "utang") {
+    return paymentMethod;
+  }
+
+  return "cash";
+}
+
+function formatExpenseTripQuantityLabel(quantity: number) {
+  if (Number.isInteger(quantity)) {
+    return quantity.toString();
+  }
+
+  return quantity.toFixed(2).replace(/\.?0+$/, "");
+}
+
 function normalizeExpenseDate(expenseDate?: string) {
   if (!expenseDate) {
     return new Date().toISOString();
@@ -1714,6 +1877,40 @@ function normalizeBudgetMonth(budgetMonth?: string) {
   }
 
   return normalized;
+}
+
+type ExpenseSqlExecutor = Pick<SQLiteDatabase, "runAsync">;
+
+async function insertExpenseLedgerEntry(
+  db: ExpenseSqlExecutor,
+  input: ExpenseInput & { expenseTripId?: number | null },
+) {
+  const category = sanitizeExpenseCategory(input.category);
+  const description = sanitizeOptionalText(input.description ?? "", 140);
+  const expenseDate = normalizeExpenseDate(input.expenseDate);
+
+  return db.runAsync(
+    `
+      INSERT INTO expenses (
+        category,
+        amount_cents,
+        description,
+        expense_date,
+        expense_trip_id,
+        sync_id,
+        created_at,
+        updated_at,
+        synced
+      )
+      VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0)
+    `,
+    category,
+    input.amountCents,
+    description,
+    expenseDate,
+    input.expenseTripId ?? null,
+    createSyncId(),
+  );
 }
 
 function formatDefaultRestockListTitle(createdAt = new Date()) {
@@ -1779,6 +1976,383 @@ async function refreshRestockListStatus(db: SqlExecutor, restockListId: number) 
     isCompleted ? new Date().toISOString() : null,
     restockListId,
   );
+}
+
+export type ExpenseTripItemSuggestion = {
+  name: string;
+  category: string | null;
+};
+
+export async function listExpenseTripSuggestions(
+  db: SQLiteDatabase,
+  limit = 24,
+): Promise<ExpenseTripItemSuggestion[]> {
+  const [products, itemRows] = await Promise.all([
+    listProducts(db),
+    db.getAllAsync<{ item_name: string; category: string; last_used_at: string }>(
+      `
+        SELECT
+          item_name,
+          category,
+          MAX(created_at) AS last_used_at
+        FROM expense_trip_items
+        GROUP BY LOWER(item_name), category
+        ORDER BY MAX(created_at) DESC, item_name ASC
+        LIMIT ?
+      `,
+      limit,
+    ),
+  ]);
+
+  const suggestions = new Map<string, ExpenseTripItemSuggestion>();
+
+  for (const row of itemRows) {
+    const key = row.item_name.trim().toLowerCase();
+
+    if (!key) {
+      continue;
+    }
+
+    suggestions.set(key, {
+      name: row.item_name,
+      category: row.category,
+    });
+  }
+
+  for (const product of products) {
+    const key = product.name.trim().toLowerCase();
+
+    if (!key || suggestions.has(key)) {
+      continue;
+    }
+
+    suggestions.set(key, {
+      name: product.name,
+      category: product.category,
+    });
+  }
+
+  return [...suggestions.values()].slice(0, limit);
+}
+
+export async function getExpenseTripOverview(db: SQLiteDatabase): Promise<ExpenseTripOverview> {
+  const row = await db.getFirstAsync<ExpenseTripOverviewRow>(
+    `
+      SELECT
+        COALESCE(
+          SUM(
+            CASE
+              WHEN STRFTIME('%Y-%m', trip_date, 'localtime') = STRFTIME('%Y-%m', 'now', 'localtime')
+                THEN grand_total_cents
+              ELSE 0
+            END
+          ),
+          0
+        ) AS current_month_total_cents,
+        COALESCE(
+          SUM(
+            CASE
+              WHEN STRFTIME('%Y-%m', trip_date, 'localtime') = STRFTIME('%Y-%m', 'now', 'localtime')
+                THEN 1
+              ELSE 0
+            END
+          ),
+          0
+        ) AS current_month_trip_count,
+        COALESCE(SUM(grand_total_cents), 0) AS all_time_total_cents,
+        COUNT(*) AS all_time_trip_count
+      FROM expense_trips
+    `,
+  );
+
+  return {
+    currentMonthTotalCents: row?.current_month_total_cents ?? 0,
+    currentMonthTripCount: row?.current_month_trip_count ?? 0,
+    allTimeTotalCents: row?.all_time_total_cents ?? 0,
+    allTimeTripCount: row?.all_time_trip_count ?? 0,
+  };
+}
+
+export async function listExpenseTrips(db: SQLiteDatabase): Promise<ExpenseTripSummary[]> {
+  const [tripRows, itemRows] = await Promise.all([
+    db.getAllAsync<ExpenseTripListRow>(
+      `
+        SELECT
+          id,
+          trip_date,
+          market_name,
+          payment_method,
+          pamasahe_cents,
+          gasolina_cents,
+          other_travel_cents,
+          notes,
+          total_items_cents,
+          total_travel_cents,
+          grand_total_cents,
+          created_at,
+          updated_at,
+          (
+            SELECT COUNT(*)
+            FROM expense_trip_items eti
+            WHERE eti.expense_trip_id = et.id
+          ) AS item_count
+        FROM expense_trips et
+        ORDER BY trip_date DESC, id DESC
+      `,
+    ),
+    db.getAllAsync<ExpenseTripItemRow>(
+      `
+        SELECT
+          id,
+          expense_trip_id,
+          item_name,
+          quantity,
+          unit_price_cents,
+          line_total_cents,
+          category,
+          created_at
+        FROM expense_trip_items
+        ORDER BY expense_trip_id ASC, id ASC
+      `,
+    ),
+  ]);
+
+  const tagsByTrip = new Map<number, string[]>();
+
+  for (const row of itemRows) {
+    const tags = tagsByTrip.get(row.expense_trip_id) ?? [];
+
+    if (!tags.includes(row.item_name) && tags.length < 4) {
+      tags.push(row.item_name);
+      tagsByTrip.set(row.expense_trip_id, tags);
+    }
+  }
+
+  return tripRows.map((row) => mapExpenseTripSummary(row, tagsByTrip.get(row.id) ?? []));
+}
+
+export async function getExpenseTripById(db: SQLiteDatabase, expenseTripId: number): Promise<ExpenseTrip | null> {
+  const [tripRow, itemRows] = await Promise.all([
+    db.getFirstAsync<ExpenseTripRow>(
+      `
+        SELECT
+          id,
+          trip_date,
+          market_name,
+          payment_method,
+          pamasahe_cents,
+          gasolina_cents,
+          other_travel_cents,
+          notes,
+          total_items_cents,
+          total_travel_cents,
+          grand_total_cents,
+          created_at,
+          updated_at
+        FROM expense_trips
+        WHERE id = ?
+        LIMIT 1
+      `,
+      expenseTripId,
+    ),
+    db.getAllAsync<ExpenseTripItemRow>(
+      `
+        SELECT
+          id,
+          expense_trip_id,
+          item_name,
+          quantity,
+          unit_price_cents,
+          line_total_cents,
+          category,
+          created_at
+        FROM expense_trip_items
+        WHERE expense_trip_id = ?
+        ORDER BY id ASC
+      `,
+      expenseTripId,
+    ),
+  ]);
+
+  if (!tripRow) {
+    return null;
+  }
+
+  return mapExpenseTrip(tripRow, itemRows.map(mapExpenseTripItem));
+}
+
+export async function createExpenseTrip(db: SQLiteDatabase, input: ExpenseTripInput) {
+  const marketName = sanitizeExpenseTripMarketName(input.marketName);
+  const paymentMethod = normalizeExpenseTripPaymentMethod(input.paymentMethod);
+  const tripDate = normalizeExpenseDate(input.tripDate);
+  const notes = sanitizeOptionalText(input.notes ?? "", 240);
+  const pamasaheCents = Math.max(0, input.pamasaheCents ?? 0);
+  const gasolinaCents = Math.max(0, input.gasolinaCents ?? 0);
+  const otherTravelCents = Math.max(0, input.otherTravelCents ?? 0);
+
+  if (!Number.isInteger(pamasaheCents) || pamasaheCents < 0) {
+    throw new Error("Dapat zero o mas mataas ang pamasahe.");
+  }
+
+  if (!Number.isInteger(gasolinaCents) || gasolinaCents < 0) {
+    throw new Error("Dapat zero o mas mataas ang gasolina.");
+  }
+
+  if (!Number.isInteger(otherTravelCents) || otherTravelCents < 0) {
+    throw new Error("Dapat zero o mas mataas ang ibang gastos sa biyahe.");
+  }
+
+  if (!input.items.length) {
+    throw new Error("Maglagay ng kahit isang item bago i-save ang biyahe.");
+  }
+
+  const items = input.items.map((item) => {
+    const itemName = sanitizeExpenseTripItemName(item.itemName);
+    const quantity = Number(item.quantity);
+    const unitPriceCents = Math.round(item.unitPriceCents);
+    const category = sanitizeExpenseTripCategory(item.category, itemName);
+
+    assertPositiveQuantity(quantity, `Ang dami ng ${itemName}`);
+
+    if (!Number.isInteger(unitPriceCents) || unitPriceCents < 0) {
+      throw new Error(`Dapat valid na halaga ang presyo ng ${itemName}.`);
+    }
+
+    if (unitPriceCents <= 0) {
+      throw new Error(`Dapat mas mataas sa zero ang presyo ng ${itemName}.`);
+    }
+
+    const lineTotalCents = Math.max(0, Math.round(quantity * unitPriceCents));
+
+    if (lineTotalCents <= 0) {
+      throw new Error(`Dapat mas mataas sa zero ang subtotal ng ${itemName}.`);
+    }
+
+    return {
+      itemName,
+      quantity,
+      unitPriceCents,
+      lineTotalCents,
+      category,
+    };
+  });
+
+  const totalItemsCents = items.reduce((sum, item) => sum + item.lineTotalCents, 0);
+  const totalTravelCents = pamasaheCents + gasolinaCents + otherTravelCents;
+  const grandTotalCents = totalItemsCents + totalTravelCents;
+  let expenseTripId = 0;
+
+  await db.withExclusiveTransactionAsync(async (txn) => {
+    const tripResult = await txn.runAsync(
+      `
+        INSERT INTO expense_trips (
+          trip_date,
+          market_name,
+          payment_method,
+          pamasahe_cents,
+          gasolina_cents,
+          other_travel_cents,
+          notes,
+          total_items_cents,
+          total_travel_cents,
+          grand_total_cents,
+          sync_id,
+          created_at,
+          updated_at,
+          synced
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0)
+      `,
+      tripDate,
+      marketName,
+      paymentMethod,
+      pamasaheCents,
+      gasolinaCents,
+      otherTravelCents,
+      notes,
+      totalItemsCents,
+      totalTravelCents,
+      grandTotalCents,
+      createSyncId(),
+    );
+
+    expenseTripId = Number(tripResult.lastInsertRowId);
+
+    for (const item of items) {
+      await txn.runAsync(
+        `
+          INSERT INTO expense_trip_items (
+            expense_trip_id,
+            item_name,
+            quantity,
+            unit_price_cents,
+            line_total_cents,
+            category,
+            sync_id,
+            created_at,
+            synced
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, 0)
+        `,
+        expenseTripId,
+        item.itemName,
+        item.quantity,
+        item.unitPriceCents,
+        item.lineTotalCents,
+        item.category,
+        createSyncId(),
+      );
+
+      await insertExpenseLedgerEntry(txn, {
+        category: item.category,
+        amountCents: item.lineTotalCents,
+        description: `${item.itemName} x${formatExpenseTripQuantityLabel(item.quantity)} sa ${marketName}`,
+        expenseDate: tripDate,
+        expenseTripId,
+      });
+    }
+
+    const travelEntries = [
+      {
+        amountCents: pamasaheCents,
+        category: "pamasahe",
+        description: `Pamasahe papuntang ${marketName}`,
+      },
+      {
+        amountCents: gasolinaCents,
+        category: "gasolina",
+        description: `Gasolina para sa biyahe sa ${marketName}`,
+      },
+      {
+        amountCents: otherTravelCents,
+        category: "other",
+        description: `Ibang biyahe expense sa ${marketName}`,
+      },
+    ];
+
+    for (const entry of travelEntries) {
+      if (entry.amountCents <= 0) {
+        continue;
+      }
+
+      await insertExpenseLedgerEntry(txn, {
+        category: entry.category,
+        amountCents: entry.amountCents,
+        description: entry.description,
+        expenseDate: tripDate,
+        expenseTripId,
+      });
+    }
+  });
+
+  return expenseTripId;
+}
+
+export async function deleteExpenseTrip(db: SQLiteDatabase, expenseTripId: number) {
+  await db.withExclusiveTransactionAsync(async (txn) => {
+    await txn.runAsync("DELETE FROM expenses WHERE expense_trip_id = ?", expenseTripId);
+    await txn.runAsync("DELETE FROM expense_trips WHERE id = ?", expenseTripId);
+  });
 }
 
 export async function listExpenses(db: SQLiteDatabase): Promise<Expense[]> {
@@ -2032,30 +2606,7 @@ export async function addExpense(db: SQLiteDatabase, input: ExpenseInput) {
     throw new Error("Expense amount must be greater than zero.");
   }
 
-  const category = sanitizeExpenseCategory(input.category);
-  const description = sanitizeOptionalText(input.description ?? "", 140);
-  const expenseDate = normalizeExpenseDate(input.expenseDate);
-
-  const result = await db.runAsync(
-    `
-      INSERT INTO expenses (
-        category,
-        amount_cents,
-        description,
-        expense_date,
-        sync_id,
-        created_at,
-        updated_at,
-        synced
-      )
-      VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0)
-    `,
-    category,
-    input.amountCents,
-    description,
-    expenseDate,
-    createSyncId(),
-  );
+  const result = await insertExpenseLedgerEntry(db, input);
 
   return Number(result.lastInsertRowId);
 }

@@ -151,6 +151,46 @@ export interface Expense {
   updatedAt: string;
 }
 
+export interface ExpenseTripItem {
+  id: number;
+  expenseTripId: number;
+  itemName: string;
+  quantity: number;
+  unitPriceCents: number;
+  lineTotalCents: number;
+  category: string;
+  createdAt: string;
+}
+
+export interface ExpenseTripSummary {
+  id: number;
+  tripDate: string;
+  marketName: string;
+  paymentMethod: PaymentMethod;
+  itemCount: number;
+  totalItemsCents: number;
+  totalTravelCents: number;
+  grandTotalCents: number;
+  itemTags: string[];
+}
+
+export interface ExpenseTrip extends ExpenseTripSummary {
+  pamasaheCents: number;
+  gasolinaCents: number;
+  otherTravelCents: number;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+  items: ExpenseTripItem[];
+}
+
+export interface ExpenseTripOverview {
+  currentMonthTotalCents: number;
+  currentMonthTripCount: number;
+  allTimeTotalCents: number;
+  allTimeTripCount: number;
+}
+
 export type BudgetStatus = "on_track" | "warning" | "over";
 
 export interface ExpenseBudget {

@@ -1,9 +1,8 @@
 import { Feather } from "@expo/vector-icons";
 import { useFocusEffect } from "expo-router";
 import { useSQLiteContext } from "expo-sqlite";
-import Storage from "expo-sqlite/kv-store";
 import { useCallback, useMemo, useState } from "react";
-import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from "react-native";
 
 import { ActionButton } from "@/components/ActionButton";
 import { EmptyState } from "@/components/EmptyState";
@@ -12,139 +11,206 @@ import { ModalSheet } from "@/components/ModalSheet";
 import { Screen } from "@/components/Screen";
 import { StatusBadge } from "@/components/StatusBadge";
 import { SurfaceCard } from "@/components/SurfaceCard";
-import type { TranslationKey } from "@/constants/translations";
+import {
+  createExpenseTrip,
+  deleteExpenseTrip,
+  getExpenseTripById,
+  getExpenseTripOverview,
+  listExpenseTripSuggestions,
+  listExpenseTrips,
+  listProductCategories,
+  type ExpenseTripItemSuggestion,
+} from "@/db/repositories";
 import { useAppLanguage } from "@/contexts/LanguageContext";
 import { useAppTheme } from "@/contexts/ThemeContext";
-import {
-  addExpense,
-  deleteExpenseCategory,
-  deleteExpense,
-  deleteExpenseBudget,
-  getExpenseBudgetSummary,
-  getExpenseSummary,
-  listExpenseBudgets,
-  listExpenseCategories,
-  listExpenses,
-  updateExpense,
-  updateExpenseBudget,
-  upsertExpenseBudget,
-} from "@/db/repositories";
-import type {
-  Expense,
-  ExpenseBudget,
-  ExpenseBudgetProgress,
-  ExpenseBudgetSummary,
-  ExpenseSummary,
-} from "@/types/models";
-import { centsToDisplayValue, formatCurrencyFromCents, parseCurrencyToCents } from "@/utils/money";
+import type { ExpenseTrip, ExpenseTripOverview, ExpenseTripSummary, PaymentMethod } from "@/types/models";
+import { formatCurrencyFromCents, parseCurrencyToCents } from "@/utils/money";
 
-const QUICK_AMOUNT_OPTIONS = [5_000, 10_000, 20_000, 50_000];
-const PRESET_EXPENSE_CATEGORIES = [
-  "rent",
-  "electricity",
-  "pamasahe",
-  "plastic_bags",
-  "ice",
-  "restock_transport",
-  "supplies",
-  "other",
-] as const;
-
-type PresetExpenseCategory = typeof PRESET_EXPENSE_CATEGORIES[number];
-
-const EXPENSE_CATEGORY_TRANSLATION_KEYS: Partial<Record<string, TranslationKey>> = {
-  rent: "gastos.category.rent",
-  electricity: "gastos.category.electricity",
-  pamasahe: "gastos.category.pamasahe",
-  plastic_bags: "gastos.category.plastic_bags",
-  ice: "gastos.category.ice",
-  restock_transport: "gastos.category.restock_transport",
-  supplies: "gastos.category.supplies",
-  other: "gastos.category.other",
+type DraftTripItem = {
+  id: string;
+  itemName: string;
+  quantity: string;
+  unitPrice: string;
+  category: string;
 };
 
-type CategoryModalTarget = "expense" | "budget";
+const COMMON_SARI_SARI_ITEMS = [
+  { category: "bigas", name: "Bigas" },
+  { category: "itlog", name: "Itlog" },
+  { category: "delata", name: "Sardinas" },
+  { category: "delata", name: "Corned Beef" },
+  { category: "delata", name: "Tuna" },
+  { category: "noodles", name: "Instant Noodles" },
+  { category: "kape", name: "Kape" },
+  { category: "asukal", name: "Asukal" },
+  { category: "mantika", name: "Mantika" },
+  { category: "bisyo", name: "Sigarilyo" },
+  { category: "inumin", name: "Softdrinks" },
+  { category: "inumin", name: "Tubig" },
+  { category: "gatas", name: "Gatas" },
+  { category: "biskwit", name: "Biskwit" },
+  { category: "tinapay", name: "Tinapay" },
+  { category: "pampaligo", name: "Sabon" },
+  { category: "personal_care", name: "Shampoo" },
+  { category: "panlinis", name: "Detergent" },
+] as const;
 
-const HIDDEN_EXPENSE_CATEGORIES_KEY = "tindahan.expense-hidden-categories";
-const MONO_FONT_FAMILY = Platform.select({
-  android: "monospace",
-  default: "monospace",
-  ios: "Menlo",
-});
+const COMMON_ITEM_CATEGORIES = [
+  "bigas",
+  "itlog",
+  "delata",
+  "noodles",
+  "inumin",
+  "bisyo",
+  "kape",
+  "asukal",
+  "mantika",
+  "biskwit",
+  "personal_care",
+  "panlinis",
+  "iba_pa",
+] as const;
+
+const PAYMENT_METHOD_OPTIONS: { label: string; value: PaymentMethod }[] = [
+  { label: "Cash", value: "cash" },
+  { label: "GCash", value: "gcash" },
+  { label: "Maya", value: "maya" },
+  { label: "Utang", value: "utang" },
+];
+
+function createDraftItem(): DraftTripItem {
+  return {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    itemName: "",
+    quantity: "1",
+    unitPrice: "",
+    category: "",
+  };
+}
 
 function normalizeSearchValue(value: string) {
   return value.trim().toLowerCase();
 }
 
-function normalizeCategoryDraft(value: string) {
-  return value.trim().toLowerCase().replace(/\s+/g, "_");
+function safeMoneyInputToCents(value: string) {
+  const cents = parseCurrencyToCents(value);
+  return Number.isFinite(cents) ? cents : 0;
 }
 
-function parseStoredCategories(rawValue: string | null) {
-  if (!rawValue) {
-    return [];
+function parseQuantityInput(value: string) {
+  const normalized = value.replace(/,/g, ".").replace(/[^0-9.]/g, "").trim();
+
+  if (!normalized) {
+    return 0;
   }
 
-  try {
-    const parsed = JSON.parse(rawValue) as unknown;
-
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
-
-    return [...new Set(parsed.map((value) => normalizeCategoryDraft(String(value))).filter((value) => value.length >= 2))];
-  } catch {
-    return [];
-  }
+  const parsed = Number.parseFloat(normalized);
+  return Number.isFinite(parsed) ? parsed : Number.NaN;
 }
 
-function formatExpenseCategoryLabel(
-  category: string,
-  t: (key: TranslationKey, params?: Record<string, number | string>) => string,
-) {
-  const translationKey = EXPENSE_CATEGORY_TRANSLATION_KEYS[category as PresetExpenseCategory];
-
-  if (translationKey) {
-    return t(translationKey);
+function formatQuantityLabel(quantity: number) {
+  if (Number.isInteger(quantity)) {
+    return quantity.toString();
   }
 
+  return quantity.toFixed(2).replace(/\.?0+$/, "");
+}
+
+function humanizeCategory(category: string) {
   return category
     .replace(/_/g, " ")
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-function formatBudgetCategoryLabel(
-  category: string | null,
-  t: (key: TranslationKey, params?: Record<string, number | string>) => string,
-) {
-  if (!category) {
-    return t("gastos.budget.category.overall");
+function formatDateInput(date = new Date()) {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function parseDateInputToIso(value: string) {
+  const match = value.trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+
+  if (!match) {
+    return null;
   }
 
-  return formatExpenseCategoryLabel(category, t);
+  const year = Number(match[1]);
+  const monthIndex = Number(match[2]) - 1;
+  const day = Number(match[3]);
+  const date = new Date(year, monthIndex, day, 12, 0, 0, 0);
+
+  if (
+    Number.isNaN(date.getTime()) ||
+    date.getFullYear() !== year ||
+    date.getMonth() !== monthIndex ||
+    date.getDate() !== day
+  ) {
+    return null;
+  }
+
+  return date.toISOString();
 }
 
-function formatBudgetMonthLabel(budgetMonth: string, locale: string) {
-  const [yearString, monthString] = budgetMonth.split("-");
-  const year = Number(yearString);
-  const monthIndex = Number(monthString) - 1;
+function getPaymentMethodLabel(paymentMethod: PaymentMethod) {
+  if (paymentMethod === "gcash") {
+    return "GCash";
+  }
 
-  return new Intl.DateTimeFormat(locale, {
-    month: "long",
-    year: "numeric",
-  }).format(new Date(year, monthIndex, 1));
+  if (paymentMethod === "maya") {
+    return "Maya";
+  }
+
+  if (paymentMethod === "utang") {
+    return "Utang";
+  }
+
+  return "Cash";
 }
 
-function getBudgetProgressWidth(usageRatio: number) {
-  return `${Math.max(0, Math.min(usageRatio, 1)) * 100}%` as `${number}%`;
+function getPaymentMethodTone(paymentMethod: PaymentMethod) {
+  if (paymentMethod === "cash") {
+    return "success" as const;
+  }
+
+  if (paymentMethod === "utang") {
+    return "warning" as const;
+  }
+
+  return "primary" as const;
 }
 
-function getBudgetCategoryKey(category: string | null) {
-  return category ?? "__overall__";
-}
+export default function GastosScreen() {
+  const db = useSQLiteContext();
+  const { theme } = useAppTheme();
+  const { language } = useAppLanguage();
+  const [overview, setOverview] = useState<ExpenseTripOverview | null>(null);
+  const [trips, setTrips] = useState<ExpenseTripSummary[]>([]);
+  const [itemSuggestions, setItemSuggestions] = useState<ExpenseTripItemSuggestion[]>([]);
+  const [categorySuggestions, setCategorySuggestions] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [formVisible, setFormVisible] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [detailTripId, setDetailTripId] = useState<number | null>(null);
+  const [detailTrip, setDetailTrip] = useState<ExpenseTrip | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [tripDateInput, setTripDateInput] = useState(() => formatDateInput());
+  const [marketNameInput, setMarketNameInput] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
+  const [pamasaheInput, setPamasaheInput] = useState("");
+  const [gasolinaInput, setGasolinaInput] = useState("");
+  const [otherTravelInput, setOtherTravelInput] = useState("");
+  const [notesInput, setNotesInput] = useState("");
+  const [draftItems, setDraftItems] = useState<DraftTripItem[]>(() => [createDraftItem()]);
+  const locale = language === "english" ? "en-PH" : "fil-PH";
 
-function getMicroLabelStyle(theme: ReturnType<typeof useAppTheme>["theme"]) {
-  return {
+  const compactCardStyle = {
+    gap: theme.spacing.sm,
+    padding: theme.spacing.md,
+  } as const;
+  const microLabelStyle = {
     color: theme.colors.textMuted,
     fontFamily: theme.typography.label,
     fontSize: 11,
@@ -152,126 +218,38 @@ function getMicroLabelStyle(theme: ReturnType<typeof useAppTheme>["theme"]) {
     letterSpacing: 0.8,
     textTransform: "uppercase" as const,
   };
-}
 
-function getExpensePrimaryLabel(
-  expense: Expense,
-  t: (key: TranslationKey, params?: Record<string, number | string>) => string,
-) {
-  return expense.description?.trim() || formatExpenseCategoryLabel(expense.category, t);
-}
+  const resetForm = useCallback(() => {
+    setTripDateInput(formatDateInput());
+    setMarketNameInput("");
+    setPaymentMethod("cash");
+    setPamasaheInput("");
+    setGasolinaInput("");
+    setOtherTravelInput("");
+    setNotesInput("");
+    setDraftItems([createDraftItem()]);
+  }, []);
 
-function getExpenseTitle(
-  expense: Expense,
-  t: (key: TranslationKey, params?: Record<string, number | string>) => string,
-) {
-  return expense.description?.trim() || t("gastos.noDescription");
-}
-
-function getInitials(value: string) {
-  const cleaned = value.trim();
-
-  if (!cleaned) {
-    return "NA";
-  }
-
-  const parts = cleaned
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2);
-
-  if (parts.length === 1) {
-    return parts[0]!.slice(0, 2).toUpperCase();
-  }
-
-  return parts.map((part) => part[0]).join("").toUpperCase();
-}
-
-function getBudgetBalanceBadge(progress: ExpenseBudgetProgress) {
-  if (progress.budgetCents <= 0) {
-    return "0%";
-  }
-
-  const remainingRatio = progress.remainingCents / progress.budgetCents;
-  const percent = Math.round(Math.abs(remainingRatio) * 100);
-
-  return progress.remainingCents >= 0 ? `${percent}%` : `-${percent}%`;
-}
-
-export default function GastosScreen() {
-  const db = useSQLiteContext();
-  const { theme } = useAppTheme();
-  const { language, t } = useAppLanguage();
-  const [expenses, setExpenses] = useState<Expense[]>([]);
-  const [summary, setSummary] = useState<ExpenseSummary | null>(null);
-  const [budgetSummary, setBudgetSummary] = useState<ExpenseBudgetSummary | null>(null);
-  const [budgets, setBudgets] = useState<ExpenseBudget[]>([]);
-  const [savedCategories, setSavedCategories] = useState<string[]>([]);
-  const [customCategories, setCustomCategories] = useState<string[]>([]);
-  const [hiddenCategories, setHiddenCategories] = useState<string[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [modalVisible, setModalVisible] = useState(false);
-  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
-  const [budgetModalVisible, setBudgetModalVisible] = useState(false);
-  const [editingBudget, setEditingBudget] = useState<ExpenseBudget | null>(null);
-  const [categoryModalVisible, setCategoryModalVisible] = useState(false);
-  const [categoryModalTarget, setCategoryModalTarget] = useState<CategoryModalTarget>("expense");
-  const [categoryDraft, setCategoryDraft] = useState("");
-  const [amountInput, setAmountInput] = useState("");
-  const [descriptionInput, setDescriptionInput] = useState("");
-  const [draftCategory, setDraftCategory] = useState<string>("other");
-  const [draftExpenseDate, setDraftExpenseDate] = useState(() => new Date().toISOString());
-  const [budgetAmountInput, setBudgetAmountInput] = useState("");
-  const [budgetScopeMode, setBudgetScopeMode] = useState<"overall" | "category">("overall");
-  const [budgetCategory, setBudgetCategory] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [savingBudget, setSavingBudget] = useState(false);
-  const locale = language === "english" ? "en-PH" : "fil-PH";
-
-  const compactCardStyle = {
-    gap: theme.spacing.sm,
-    padding: theme.spacing.md,
-  } as const;
-  const microLabelStyle = getMicroLabelStyle(theme);
-  const pillChipBaseStyle = {
-    borderRadius: theme.radius.pill,
-    borderWidth: 1,
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: 10,
-  } as const;
-
-  const formatExpenseTimestamp = useCallback(
-    (dateIso: string) =>
-      new Intl.DateTimeFormat(locale, {
-        day: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-        month: "short",
-        year: "numeric",
-      }).format(new Date(dateIso)),
-    [locale],
-  );
-
-  const loadExpenses = useCallback(async () => {
+  const loadTrips = useCallback(async () => {
     setLoading(true);
 
     try {
-      const [nextExpenses, nextSummary, nextSavedCategories, nextBudgetSummary, nextBudgets, hiddenCategoriesRaw] = await Promise.all([
-        listExpenses(db),
-        getExpenseSummary(db),
-        listExpenseCategories(db),
-        getExpenseBudgetSummary(db),
-        listExpenseBudgets(db),
-        Storage.getItem(HIDDEN_EXPENSE_CATEGORIES_KEY),
+      const [nextOverview, nextTrips, nextItemSuggestions, productCategories] = await Promise.all([
+        getExpenseTripOverview(db),
+        listExpenseTrips(db),
+        listExpenseTripSuggestions(db),
+        listProductCategories(db),
       ]);
-      setExpenses(nextExpenses);
-      setSummary(nextSummary);
-      setSavedCategories(nextSavedCategories);
-      setBudgetSummary(nextBudgetSummary);
-      setBudgets(nextBudgets);
-      setHiddenCategories(parseStoredCategories(hiddenCategoriesRaw));
+
+      setOverview(nextOverview);
+      setTrips(nextTrips);
+      setItemSuggestions(nextItemSuggestions);
+      setCategorySuggestions(productCategories);
+    } catch (error) {
+      Alert.alert(
+        "Hindi makuha ang mga biyahe",
+        error instanceof Error ? error.message : "May problema habang kinukuha ang gastos sa biyahe.",
+      );
     } finally {
       setLoading(false);
     }
@@ -279,816 +257,376 @@ export default function GastosScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      void loadExpenses();
-    }, [loadExpenses]),
+      void loadTrips();
+    }, [loadTrips]),
   );
 
-  const budgetCategories = useMemo(
-    () => budgets.map((budget) => budget.category).filter((category): category is string => Boolean(category)),
-    [budgets],
-  );
+  const mergedItemSuggestions = useMemo(() => {
+    const suggestions = new Map<string, ExpenseTripItemSuggestion>();
 
-  const filterCategories = useMemo(() => {
-    const dynamicCategories = [...savedCategories, ...budgetCategories, ...customCategories].filter(
-      (category) =>
-        !PRESET_EXPENSE_CATEGORIES.includes(category as PresetExpenseCategory) &&
-        !hiddenCategories.includes(category),
-    );
-    const visiblePresetCategories = PRESET_EXPENSE_CATEGORIES.filter((category) => !hiddenCategories.includes(category));
-    return [...visiblePresetCategories, ...new Set(dynamicCategories)];
-  }, [budgetCategories, customCategories, hiddenCategories, savedCategories]);
-
-  const modalCategories = useMemo(() => {
-    const recentCategories = summary?.recentCategories ?? [];
-    const merged = [...recentCategories, ...filterCategories];
-    return [...new Set(merged)];
-  }, [filterCategories, summary?.recentCategories]);
-
-  const budgetCategoryOptions = useMemo(() => {
-    const merged = [editingBudget?.category ?? null, ...modalCategories];
-    return [null, ...new Set(merged.filter((category): category is string => Boolean(category)))];
-  }, [editingBudget?.category, modalCategories]);
-
-  const normalizedSearch = useMemo(() => normalizeSearchValue(searchTerm), [searchTerm]);
-  const filteredExpenses = useMemo(
-    () =>
-      expenses.filter((expense) => {
-        const matchesCategory = !selectedCategory || expense.category === selectedCategory;
-
-        if (!matchesCategory) {
-          return false;
-        }
-
-        if (!normalizedSearch) {
-          return true;
-        }
-
-        return (
-          normalizeSearchValue(expense.category).includes(normalizedSearch) ||
-          normalizeSearchValue(expense.description ?? "").includes(normalizedSearch)
-        );
-      }),
-    [expenses, normalizedSearch, selectedCategory],
-  );
-
-  const budgetRows = useMemo(() => {
-    if (!budgetSummary) {
-      return [];
+    for (const entry of COMMON_SARI_SARI_ITEMS) {
+      suggestions.set(entry.name.toLowerCase(), { name: entry.name, category: entry.category });
     }
 
-    return [
-      ...(budgetSummary.overallBudget ? [budgetSummary.overallBudget] : []),
-      ...budgetSummary.categoryBudgets,
-    ];
-  }, [budgetSummary]);
+    for (const suggestion of itemSuggestions) {
+      const key = suggestion.name.trim().toLowerCase();
 
-  const trackedRemainingCents = budgetSummary?.trackedRemainingCents ?? 0;
-  const currentBudgetMonth = budgetSummary?.budgetMonth ?? new Date().toISOString().slice(0, 7);
-  const currentBudgetMonthLabel = useMemo(
-    () => formatBudgetMonthLabel(currentBudgetMonth, locale),
-    [currentBudgetMonth, locale],
+      if (!key || suggestions.has(key)) {
+        continue;
+      }
+
+      suggestions.set(key, suggestion);
+    }
+
+    return [...suggestions.values()];
+  }, [itemSuggestions]);
+
+  const mergedCategorySuggestions = useMemo(
+    () => [...new Set([...COMMON_ITEM_CATEGORIES, ...categorySuggestions].filter(Boolean))],
+    [categorySuggestions],
   );
-  const summaryCards = useMemo(
-    () => [
-      {
-        key: "today",
-        label: t("gastos.summary.today"),
-        tone: theme.colors.warning,
-        value: formatCurrencyFromCents(summary?.todayExpenseCents ?? 0),
-      },
-      {
-        key: "week",
-        label: t("gastos.summary.week"),
-        tone: theme.colors.warning,
-        value: formatCurrencyFromCents(summary?.weekExpenseCents ?? 0),
-      },
-      {
-        key: "month",
-        label: t("gastos.summary.month"),
-        tone: theme.colors.warning,
-        value: formatCurrencyFromCents(summary?.monthExpenseCents ?? 0),
-      },
-      {
-        key: "budget-left",
-        label: trackedRemainingCents >= 0 ? t("gastos.budget.summary.remaining") : t("gastos.budget.summary.over"),
-        tone: trackedRemainingCents >= 0 ? theme.colors.success : theme.colors.warning,
-        value: formatCurrencyFromCents(Math.abs(trackedRemainingCents)),
-      },
-    ],
-    [summary?.monthExpenseCents, summary?.todayExpenseCents, summary?.weekExpenseCents, t, theme.colors.success, theme.colors.warning, trackedRemainingCents],
-  );
-  const expenseHistoryCountLabel = useMemo(
+
+  const draftItemRows = useMemo(
     () =>
-      t("gastos.history.showingResults", {
-        count: filteredExpenses.length,
-        total: expenses.length,
+      draftItems.map((item) => {
+        const quantityValue = parseQuantityInput(item.quantity);
+        const unitPriceCents = parseCurrencyToCents(item.unitPrice);
+        const lineTotalCents =
+          Number.isFinite(quantityValue) &&
+          quantityValue > 0 &&
+          Number.isFinite(unitPriceCents) &&
+          unitPriceCents >= 0
+            ? Math.max(0, Math.round(quantityValue * unitPriceCents))
+            : 0;
+
+        return {
+          ...item,
+          lineTotalCents,
+          quantityValue,
+          unitPriceCentsValue: unitPriceCents,
+        };
       }),
-    [expenses.length, filteredExpenses.length, t],
+    [draftItems],
   );
 
-  const openNewExpenseModal = useCallback(() => {
-    const initialCategory = summary?.recentCategories[0] ?? filterCategories[0] ?? "other";
-    setEditingExpense(null);
-    setAmountInput("");
-    setDescriptionInput("");
-    setDraftCategory(initialCategory);
-    setDraftExpenseDate(new Date().toISOString());
-    setModalVisible(true);
-  }, [filterCategories, summary?.recentCategories]);
+  const pamasaheCents = safeMoneyInputToCents(pamasaheInput);
+  const gasolinaCents = safeMoneyInputToCents(gasolinaInput);
+  const otherTravelCents = safeMoneyInputToCents(otherTravelInput);
+  const totalItemsCents = draftItemRows.reduce((sum, item) => sum + item.lineTotalCents, 0);
+  const totalTravelCents = pamasaheCents + gasolinaCents + otherTravelCents;
+  const grandTotalCents = totalItemsCents + totalTravelCents;
+  const currentMonthLabel = useMemo(
+    () =>
+      new Intl.DateTimeFormat(locale, {
+        month: "long",
+        year: "numeric",
+      }).format(new Date()),
+    [locale],
+  );
 
-  const openEditExpenseModal = useCallback((expense: Expense) => {
-    setEditingExpense(expense);
-    setAmountInput(centsToDisplayValue(expense.amountCents));
-    setDescriptionInput(expense.description ?? "");
-    setDraftCategory(expense.category);
-    setDraftExpenseDate(expense.expenseDate);
-    setModalVisible(true);
-  }, []);
-
-  const openNewBudgetModal = useCallback((category: string | null = null) => {
-    setEditingBudget(null);
-    setBudgetAmountInput("");
-    setBudgetScopeMode(category ? "category" : "overall");
-    setBudgetCategory(category);
-    setBudgetModalVisible(true);
-  }, []);
-
-  const openEditBudgetModal = useCallback((budget: ExpenseBudget) => {
-    setEditingBudget(budget);
-    setBudgetAmountInput(centsToDisplayValue(budget.amountCents));
-    setBudgetScopeMode(budget.category ? "category" : "overall");
-    setBudgetCategory(budget.category);
-    setBudgetModalVisible(true);
-  }, []);
-
-  const closeModal = useCallback(() => {
-    setModalVisible(false);
-    setEditingExpense(null);
-    setAmountInput("");
-    setDescriptionInput("");
-    setDraftExpenseDate(new Date().toISOString());
-  }, []);
-
-  const closeBudgetModal = useCallback(() => {
-    setBudgetModalVisible(false);
-    setEditingBudget(null);
-    setBudgetAmountInput("");
-    setBudgetScopeMode("overall");
-    setBudgetCategory(null);
-  }, []);
-
-  const openCategoryModal = useCallback(
-    (target: CategoryModalTarget) => {
-      setCategoryModalTarget(target);
-      setCategoryDraft(target === "expense" ? draftCategory : budgetCategory ?? "");
-      setCategoryModalVisible(true);
+  const updateDraftItem = useCallback(
+    (itemId: string, field: keyof Omit<DraftTripItem, "id">, value: string) => {
+      setDraftItems((current) =>
+        current.map((item) => (item.id === itemId ? { ...item, [field]: value } : item)),
+      );
     },
-    [budgetCategory, draftCategory],
+    [],
   );
 
-  const closeCategoryModal = useCallback(() => {
-    setCategoryModalVisible(false);
-    setCategoryDraft("");
+  const handleSuggestionSelect = useCallback((itemId: string, suggestion: ExpenseTripItemSuggestion) => {
+    setDraftItems((current) =>
+      current.map((item) =>
+        item.id === itemId
+          ? {
+              ...item,
+              category: item.category || suggestion.category || "",
+              itemName: suggestion.name,
+            }
+          : item,
+      ),
+    );
   }, []);
 
-  const persistHiddenCategories = useCallback(async (nextHiddenCategories: string[]) => {
-    const normalizedCategories = [...new Set(nextHiddenCategories.map(normalizeCategoryDraft).filter((value) => value.length >= 2))];
-    setHiddenCategories(normalizedCategories);
-    await Storage.setItem(HIDDEN_EXPENSE_CATEGORIES_KEY, JSON.stringify(normalizedCategories));
-    return normalizedCategories;
+  const handleRemoveItem = useCallback((itemId: string) => {
+    setDraftItems((current) => {
+      const nextItems = current.filter((item) => item.id !== itemId);
+      return nextItems.length > 0 ? nextItems : [createDraftItem()];
+    });
   }, []);
 
-  const handleSaveExpense = useCallback(async () => {
-    const amountCents = parseCurrencyToCents(amountInput);
-    const resolvedCategory = draftCategory.trim();
+  const openNewTripModal = useCallback(() => {
+    resetForm();
+    setFormVisible(true);
+  }, [resetForm]);
 
-    if (!Number.isFinite(amountCents) || amountCents <= 0) {
-      Alert.alert(t("gastos.alert.invalidAmountTitle"), t("gastos.alert.invalidAmountMessage"));
+  const closeNewTripModal = useCallback(() => {
+    if (!saving) {
+      setFormVisible(false);
+    }
+  }, [saving]);
+
+  const openTripDetail = useCallback(
+    async (tripId: number) => {
+      setDetailTripId(tripId);
+      setDetailTrip(null);
+      setDetailLoading(true);
+
+      try {
+        const nextTrip = await getExpenseTripById(db, tripId);
+        setDetailTrip(nextTrip);
+      } catch (error) {
+        setDetailTripId(null);
+        Alert.alert(
+          "Hindi makuha ang detalye",
+          error instanceof Error ? error.message : "May problema habang kinukuha ang detalye ng biyahe.",
+        );
+      } finally {
+        setDetailLoading(false);
+      }
+    },
+    [db],
+  );
+
+  const closeTripDetail = useCallback(() => {
+    if (!deleting) {
+      setDetailTripId(null);
+      setDetailTrip(null);
+      setDetailLoading(false);
+    }
+  }, [deleting]);
+
+  const handleSaveTrip = useCallback(async () => {
+    const tripDate = parseDateInputToIso(tripDateInput);
+
+    if (!tripDate) {
+      Alert.alert("Invalid na petsa", "Gamitin ang format na YYYY-MM-DD para sa petsa ng biyahe.");
       return;
     }
 
-    if (resolvedCategory.length < 2) {
-      Alert.alert(t("gastos.alert.invalidCategoryTitle"), t("gastos.alert.invalidCategoryMessage"));
+    if (marketNameInput.trim().length < 2) {
+      Alert.alert("Kulang ang lugar", "Ilagay ang pangalan ng palengke o tindahan.");
       return;
+    }
+
+    const activeItems = draftItemRows.filter(
+      (item) =>
+        item.itemName.trim().length > 0 ||
+        item.quantity.trim().length > 0 ||
+        item.unitPrice.trim().length > 0 ||
+        item.category.trim().length > 0,
+    );
+
+    if (!activeItems.length) {
+      Alert.alert("Walang laman ang listahan", "Maglagay ng kahit isang item na binili bago mag-save.");
+      return;
+    }
+
+    for (const item of activeItems) {
+      if (item.itemName.trim().length < 2) {
+        Alert.alert("May kulang na item", "Kumpletuhin ang pangalan ng item bago mag-save.");
+        return;
+      }
+
+      if (!Number.isFinite(item.quantityValue) || item.quantityValue <= 0) {
+        Alert.alert("Invalid na dami", `Ayusin ang dami para sa ${item.itemName}.`);
+        return;
+      }
+
+      if (!Number.isFinite(item.unitPriceCentsValue) || item.unitPriceCentsValue <= 0) {
+        Alert.alert("Invalid na presyo", `Ayusin ang presyo para sa ${item.itemName}.`);
+        return;
+      }
+
+      if (item.category.trim().length < 2) {
+        Alert.alert("Kulang ang category", `Maglagay ng category para sa ${item.itemName}.`);
+        return;
+      }
     }
 
     setSaving(true);
 
     try {
-      const payload = {
-        amountCents,
-        category: resolvedCategory,
-        description: descriptionInput,
-        expenseDate: draftExpenseDate,
-      };
+      await createExpenseTrip(db, {
+        tripDate,
+        marketName: marketNameInput,
+        paymentMethod,
+        pamasaheCents,
+        gasolinaCents,
+        otherTravelCents,
+        notes: notesInput,
+        items: activeItems.map((item) => ({
+          category: item.category,
+          itemName: item.itemName,
+          quantity: item.quantityValue,
+          unitPriceCents: item.unitPriceCentsValue,
+        })),
+      });
 
-      if (editingExpense) {
-        await updateExpense(db, editingExpense.id, payload);
-      } else {
-        await addExpense(db, payload);
-      }
-
-      closeModal();
-      await loadExpenses();
+      setFormVisible(false);
+      resetForm();
+      await loadTrips();
     } catch (error) {
       Alert.alert(
-        t("gastos.alert.saveFailedTitle"),
-        error instanceof Error ? error.message : t("gastos.alert.saveFailedMessage"),
+        "Hindi na-save ang biyahe",
+        error instanceof Error ? error.message : "May nangyaring problema habang sine-save ang biyahe.",
       );
     } finally {
       setSaving(false);
     }
   }, [
-    amountInput,
-    closeModal,
     db,
-    descriptionInput,
-    draftCategory,
-    draftExpenseDate,
-    editingExpense,
-    loadExpenses,
-    t,
+    draftItemRows,
+    gasolinaCents,
+    loadTrips,
+    marketNameInput,
+    notesInput,
+    otherTravelCents,
+    pamasaheCents,
+    paymentMethod,
+    resetForm,
+    tripDateInput,
   ]);
 
-  const handleSaveBudget = useCallback(async () => {
-    const amountCents = parseCurrencyToCents(budgetAmountInput);
-    const resolvedBudgetCategory = budgetScopeMode === "overall" ? null : budgetCategory?.trim() ?? "";
-
-    if (!Number.isFinite(amountCents) || amountCents <= 0) {
-      Alert.alert(t("gastos.budget.alert.invalidAmountTitle"), t("gastos.budget.alert.invalidAmountMessage"));
+  const handleDeleteTrip = useCallback(() => {
+    if (!detailTrip) {
       return;
     }
 
-    if (budgetScopeMode === "category" && (!resolvedBudgetCategory || resolvedBudgetCategory.length < 2)) {
-      Alert.alert(t("gastos.budget.alert.invalidCategoryTitle"), t("gastos.budget.alert.invalidCategoryMessage"));
-      return;
-    }
-
-    setSavingBudget(true);
-
-    try {
-      const payload = {
-        amountCents,
-        budgetMonth: currentBudgetMonth,
-        category: resolvedBudgetCategory,
-      };
-
-      if (editingBudget) {
-        await updateExpenseBudget(db, editingBudget.id, payload);
-      } else {
-        await upsertExpenseBudget(db, payload);
-      }
-
-      closeBudgetModal();
-      await loadExpenses();
-    } catch (error) {
-      Alert.alert(
-        t("gastos.budget.alert.saveFailedTitle"),
-        error instanceof Error ? error.message : t("gastos.budget.alert.saveFailedMessage"),
-      );
-    } finally {
-      setSavingBudget(false);
-    }
-  }, [
-    budgetAmountInput,
-    budgetCategory,
-    budgetScopeMode,
-    closeBudgetModal,
-    currentBudgetMonth,
-    db,
-    editingBudget,
-    loadExpenses,
-    t,
-  ]);
-
-  const handleDeleteExpense = useCallback(() => {
-    if (!editingExpense) {
-      return;
-    }
-
-    Alert.alert(t("gastos.alert.deleteTitle"), t("gastos.alert.deleteMessage"), [
-      { text: t("home.cloud.cancel"), style: "cancel" },
-      {
-        text: t("gastos.alert.deleteConfirm"),
-        style: "destructive",
-        onPress: () => {
-          void (async () => {
-            try {
-              await deleteExpense(db, editingExpense.id);
-              closeModal();
-              await loadExpenses();
-            } catch (error) {
-              Alert.alert(
-                t("gastos.alert.deleteFailedTitle"),
-                error instanceof Error ? error.message : t("gastos.alert.deleteFailedMessage"),
-              );
-            }
-          })();
-        },
-      },
-    ]);
-  }, [closeModal, db, editingExpense, loadExpenses, t]);
-
-  const handleDeleteBudget = useCallback(() => {
-    if (!editingBudget) {
-      return;
-    }
-
-    Alert.alert(t("gastos.budget.alert.deleteTitle"), t("gastos.budget.alert.deleteMessage"), [
-      { text: t("home.cloud.cancel"), style: "cancel" },
-      {
-        text: t("gastos.budget.alert.deleteConfirm"),
-        style: "destructive",
-        onPress: () => {
-          void (async () => {
-            try {
-              await deleteExpenseBudget(db, editingBudget.id);
-              closeBudgetModal();
-              await loadExpenses();
-            } catch (error) {
-              Alert.alert(
-                t("gastos.budget.alert.deleteFailedTitle"),
-                error instanceof Error ? error.message : t("gastos.budget.alert.deleteFailedMessage"),
-              );
-            }
-          })();
-        },
-      },
-    ]);
-  }, [closeBudgetModal, db, editingBudget, loadExpenses, t]);
-
-  const handleCreateCategory = useCallback(() => {
-    const normalizedCategory = normalizeCategoryDraft(categoryDraft);
-
-    if (normalizedCategory.length < 2) {
-      Alert.alert(t("gastos.alert.invalidCategoryTitle"), t("gastos.alert.invalidCategoryMessage"));
-      return;
-    }
-
-    void (async () => {
-      await persistHiddenCategories(hiddenCategories.filter((category) => category !== normalizedCategory));
-      setCustomCategories((current) => [...new Set([...current, normalizedCategory])]);
-
-      if (categoryModalTarget === "expense") {
-        setDraftCategory(normalizedCategory);
-      } else {
-        setBudgetScopeMode("category");
-        setBudgetCategory(normalizedCategory);
-      }
-
-      closeCategoryModal();
-    })();
-  }, [categoryDraft, categoryModalTarget, closeCategoryModal, hiddenCategories, persistHiddenCategories, t]);
-
-  const handleDeleteCategory = useCallback(
-    (category: string) => {
-      Alert.alert(t("gastos.category.deleteTitle"), t("gastos.category.deleteMessage"), [
-        { text: t("home.cloud.cancel"), style: "cancel" },
+    Alert.alert(
+      "Burahin ang biyahe?",
+      "Tatanggalin nito ang buong record ng biyahe pati ang lahat ng item at gastos na kasama rito.",
+      [
+        { text: "Huwag", style: "cancel" },
         {
-          text: t("gastos.category.deleteConfirm"),
+          text: "Burahin",
           style: "destructive",
           onPress: () => {
             void (async () => {
+              setDeleting(true);
+
               try {
-                await deleteExpenseCategory(db, category);
-                await persistHiddenCategories([...hiddenCategories, category]);
-                setCustomCategories((current) => current.filter((entry) => entry !== category));
-
-                if (selectedCategory === category) {
-                  setSelectedCategory(null);
-                }
-
-                if (draftCategory === category) {
-                  setDraftCategory("other");
-                }
-
-                if (budgetCategory === category) {
-                  setBudgetCategory("other");
-                }
-
-                if (categoryDraft === category) {
-                  setCategoryDraft("");
-                }
-
-                await loadExpenses();
+                await deleteExpenseTrip(db, detailTrip.id);
+                closeTripDetail();
+                await loadTrips();
               } catch (error) {
                 Alert.alert(
-                  t("gastos.category.deleteFailedTitle"),
-                  error instanceof Error ? error.message : t("gastos.category.deleteFailedMessage"),
+                  "Hindi nabura ang biyahe",
+                  error instanceof Error ? error.message : "May problema habang binubura ang biyahe.",
                 );
+              } finally {
+                setDeleting(false);
               }
             })();
           },
         },
-      ]);
-    },
-    [
-      budgetCategory,
-      categoryDraft,
-      db,
-      draftCategory,
-      hiddenCategories,
-      loadExpenses,
-      persistHiddenCategories,
-      selectedCategory,
-      t,
-    ],
+      ],
+    );
+  }, [closeTripDetail, db, detailTrip, loadTrips]);
+
+  const formatTripDate = useCallback(
+    (dateIso: string, options?: Intl.DateTimeFormatOptions) =>
+      new Intl.DateTimeFormat(locale, options ?? { day: "numeric", month: "short", year: "numeric" }).format(
+        new Date(dateIso),
+      ),
+    [locale],
   );
 
-  const renderBudgetRow = (progress: ExpenseBudgetProgress) => (
-    <Pressable
-      key={`${getBudgetCategoryKey(progress.category)}-${progress.budgetId}`}
-      onPress={() => {
-        const matchingBudget = budgets.find((budget) => budget.id === progress.budgetId);
-        if (matchingBudget) {
-          openEditBudgetModal(matchingBudget);
-        }
-      }}
-      style={({ pressed }) => ({ opacity: pressed ? 0.95 : 1 })}
-    >
-      <SurfaceCard style={[compactCardStyle, { gap: theme.spacing.sm, padding: theme.spacing.sm }]}>
-        <View
-          style={{
-            alignItems: "center",
-            flexDirection: "row",
-            gap: theme.spacing.sm,
-            justifyContent: "space-between",
-          }}
-        >
+  const renderHistoryContent = () => (
+    <>
+      <SurfaceCard style={[compactCardStyle, { gap: theme.spacing.md }]}>
+        <View style={{ gap: theme.spacing.xs }}>
+          <Text style={microLabelStyle}>Buod</Text>
           <Text
             style={{
               color: theme.colors.text,
-              flex: 1,
-              fontFamily: theme.typography.label,
-              fontSize: 14,
+              fontFamily: theme.typography.display,
+              fontSize: 22,
               fontWeight: "600",
             }}
           >
-            {formatBudgetCategoryLabel(progress.category, t)}
-          </Text>
-          <View
-            style={{
-              alignItems: "center",
-              backgroundColor: theme.colors.surfaceMuted,
-              borderColor: theme.colors.border,
-              borderRadius: theme.radius.pill,
-              borderWidth: 1,
-              paddingHorizontal: 10,
-              paddingVertical: 6,
-            }}
-          >
-            <Text
-              style={[
-                microLabelStyle,
-                {
-                  color: progress.remainingCents < 0 ? theme.colors.warning : theme.colors.primary,
-                },
-              ]}
-            >
-              {getBudgetBalanceBadge(progress)}
-            </Text>
-          </View>
-        </View>
-
-        <View
-          style={{
-            alignItems: "center",
-            flexDirection: "row",
-            justifyContent: "space-between",
-          }}
-        >
-          <Text
-            style={{
-              color: theme.colors.textMuted,
-              fontFamily: theme.typography.body,
-              fontSize: 13,
-              fontWeight: "400",
-            }}
-          >
-            {`${formatCurrencyFromCents(progress.spentCents)} / ${formatCurrencyFromCents(progress.budgetCents)}`}
-          </Text>
-          <Text
-            style={{
-              color: progress.remainingCents < 0 ? theme.colors.warning : theme.colors.success,
-              fontFamily: MONO_FONT_FAMILY,
-              fontSize: 14,
-              fontWeight: "600",
-            }}
-          >
-            {progress.remainingCents >= 0
-              ? formatCurrencyFromCents(progress.remainingCents)
-              : formatCurrencyFromCents(Math.abs(progress.remainingCents))}
+            {currentMonthLabel}
           </Text>
         </View>
 
-        <View
-          style={{
-            backgroundColor: theme.colors.surfaceMuted,
-            borderRadius: theme.radius.pill,
-            height: 4,
-            overflow: "hidden",
-          }}
-        >
-          <View
-            style={{
-              backgroundColor: progress.remainingCents < 0 ? theme.colors.warning : theme.colors.primary,
-              borderRadius: theme.radius.pill,
-              height: "100%",
-              width: getBudgetProgressWidth(progress.usageRatio),
-            }}
-          />
-        </View>
-      </SurfaceCard>
-    </Pressable>
-  );
-
-  return (
-    <>
-      <Screen
-        contentContainerStyle={{
-          gap: theme.spacing.md,
-          paddingBottom: 120,
-          paddingTop: theme.spacing.md,
-        }}
-        titleStyle={{
-          fontFamily: theme.typography.label,
-          fontSize: 28,
-          fontWeight: "600",
-          letterSpacing: 0.2,
-        }}
-        title={t("gastos.title")}
-      >
-        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
-          {summaryCards.map((item) => (
-            <SurfaceCard
-              key={item.key}
+        <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
+          {[
+            {
+              helper: `${overview?.currentMonthTripCount ?? 0} biyahe`,
+              label: "Ngayong Buwan",
+              value: formatCurrencyFromCents(overview?.currentMonthTotalCents ?? 0),
+            },
+            {
+              helper: `${overview?.allTimeTripCount ?? 0} lahat`,
+              label: "Simula Noong Una",
+              value: formatCurrencyFromCents(overview?.allTimeTotalCents ?? 0),
+            },
+          ].map((card) => (
+            <View
+              key={card.label}
               style={{
+                backgroundColor: theme.colors.surface,
+                borderColor: theme.colors.border,
+                borderRadius: theme.radius.md,
+                borderWidth: 1,
                 flex: 1,
                 gap: theme.spacing.xs,
-                minWidth: "47%",
                 padding: theme.spacing.md,
               }}
             >
-              <Text style={microLabelStyle}>{item.label}</Text>
-              <Text
-                style={{
-                  color: item.tone,
-                  fontFamily: MONO_FONT_FAMILY,
-                  fontSize: 20,
-                  fontWeight: "600",
-                }}
-              >
-                {item.value}
-              </Text>
-            </SurfaceCard>
-          ))}
-        </View>
-
-        <SurfaceCard style={[compactCardStyle, { gap: theme.spacing.md }]}>
-          <View
-            style={{
-              alignItems: "flex-start",
-              flexDirection: "row",
-              gap: theme.spacing.md,
-              justifyContent: "space-between",
-            }}
-          >
-            <View style={{ flex: 1, gap: theme.spacing.xs, minWidth: 0 }}>
-              <Text style={microLabelStyle}>{currentBudgetMonthLabel}</Text>
+              <Text style={[microLabelStyle, { color: theme.colors.textSoft }]}>{card.label}</Text>
               <Text
                 style={{
                   color: theme.colors.text,
-                  fontFamily: theme.typography.label,
-                  fontSize: 18,
+                  fontFamily: theme.typography.display,
+                  fontSize: 21,
                   fontWeight: "600",
                 }}
               >
-                {t("gastos.budget.title")}
+                {card.value}
               </Text>
-            </View>
-
-            <View style={{ alignItems: "center", flexDirection: "row", gap: theme.spacing.sm }}>
-              <Pressable
-                accessibilityLabel={t("gastos.budget.openButton")}
-                onPress={() => openNewBudgetModal()}
-                style={({ pressed }) => ({
-                  alignItems: "center",
-                  backgroundColor: theme.colors.primaryMuted,
-                  borderColor: theme.colors.primary,
-                  borderRadius: theme.radius.pill,
-                  borderWidth: 1,
-                  height: 44,
-                  justifyContent: "center",
-                  opacity: pressed ? 0.9 : 1,
-                  width: 44,
-                })}
-              >
-                <Feather color={theme.colors.primary} name="target" size={16} />
-              </Pressable>
-
-              <Pressable
-                accessibilityLabel={t("gastos.addButton")}
-                onPress={openNewExpenseModal}
-                style={({ pressed }) => ({
-                  alignItems: "center",
-                  backgroundColor: theme.colors.primary,
-                  borderRadius: theme.radius.pill,
-                  height: 44,
-                  justifyContent: "center",
-                  opacity: pressed ? 0.9 : 1,
-                  width: 44,
-                })}
-              >
-                <Feather color={theme.colors.primaryText} name="plus" size={16} />
-              </Pressable>
-            </View>
-          </View>
-
-          {budgetSummary && budgetSummary.trackedBudgetCents > 0 ? (
-            <>
-              <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
-                {[
-                  {
-                    key: "budget",
-                    label: t("gastos.budget.summary.budget"),
-                    tone: theme.colors.text,
-                    value: formatCurrencyFromCents(budgetSummary.trackedBudgetCents),
-                  },
-                  {
-                    key: "spent",
-                    label: t("gastos.budget.summary.spent"),
-                    tone: theme.colors.warning,
-                    value: formatCurrencyFromCents(budgetSummary.totalSpentCents),
-                  },
-                  {
-                    key: "left",
-                    label:
-                      budgetSummary.trackedRemainingCents >= 0
-                        ? t("gastos.budget.summary.remaining")
-                        : t("gastos.budget.summary.over"),
-                    tone:
-                      budgetSummary.trackedRemainingCents >= 0
-                        ? theme.colors.success
-                        : theme.colors.warning,
-                    value: formatCurrencyFromCents(Math.abs(budgetSummary.trackedRemainingCents)),
-                  },
-                ].map((item) => (
-                  <View
-                    key={item.key}
-                    style={{
-                      flex: 1,
-                      gap: theme.spacing.xs,
-                      minWidth: 0,
-                    }}
-                  >
-                    <Text style={microLabelStyle}>{item.label}</Text>
-                    <Text
-                      style={{
-                        color: item.tone,
-                        fontFamily: MONO_FONT_FAMILY,
-                        fontSize: 18,
-                        fontWeight: "600",
-                      }}
-                    >
-                      {item.value}
-                    </Text>
-                  </View>
-                ))}
-              </View>
-
-              <View style={{ backgroundColor: theme.colors.border, height: 1 }} />
-
-              {budgetSummary.unbudgetedSpentCents > 0 ? (
-                <View
-                  style={{
-                    alignItems: "center",
-                    alignSelf: "flex-start",
-                    backgroundColor: theme.colors.surfaceMuted,
-                    borderColor: theme.colors.border,
-                    borderRadius: theme.radius.pill,
-                    borderWidth: 1,
-                    paddingHorizontal: 10,
-                    paddingVertical: 6,
-                  }}
-                >
-                  <Text style={[microLabelStyle, { color: theme.colors.warning }]}>
-                    {t("gastos.budget.summary.unbudgeted", {
-                      amount: formatCurrencyFromCents(budgetSummary.unbudgetedSpentCents),
-                    })}
-                  </Text>
-                </View>
-              ) : null}
-
-              <View style={{ gap: theme.spacing.sm }}>
-                {budgetRows.map(renderBudgetRow)}
-              </View>
-            </>
-          ) : (
-            <View style={{ gap: theme.spacing.sm }}>
               <Text
                 style={{
                   color: theme.colors.textMuted,
                   fontFamily: theme.typography.body,
-                  fontSize: 14,
-                  lineHeight: 20,
+                  fontSize: 12,
                 }}
               >
-                {t("gastos.budget.emptyMessage")}
+                {card.helper}
               </Text>
             </View>
-          )}
-        </SurfaceCard>
+          ))}
+        </View>
 
+        <ActionButton
+          icon={<Feather color={theme.colors.primaryText} name="shopping-bag" size={16} />}
+          label="Mag-log ng Bagong Biyahe"
+          onPress={openNewTripModal}
+        />
+      </SurfaceCard>
+
+      <View style={{ gap: theme.spacing.md }}>
         <View
           style={{
             alignItems: "center",
             flexDirection: "row",
-            gap: theme.spacing.md,
             justifyContent: "space-between",
           }}
         >
-          <View style={{ flex: 1, gap: theme.spacing.xs }}>
-            <Text style={microLabelStyle}>{t("gastos.history.title")}</Text>
-          </View>
-
-          {!loading && expenses.length > 0 ? <StatusBadge label={expenseHistoryCountLabel} tone="neutral" /> : null}
-        </View>
-
-        <SurfaceCard style={compactCardStyle}>
-          <View
-            style={{
-              alignItems: "center",
-              backgroundColor: theme.colors.surface,
-              borderColor: theme.colors.border,
-              borderRadius: theme.radius.sm,
-              borderWidth: 1,
-              flexDirection: "row",
-              minHeight: 52,
-              paddingHorizontal: theme.spacing.md,
-            }}
-          >
-            <Feather color={theme.colors.textSoft} name="search" size={16} />
-            <TextInput
-              allowFontScaling={false}
-              onChangeText={setSearchTerm}
-              placeholder={t("gastos.searchPlaceholder")}
-              placeholderTextColor={theme.colors.textSoft}
+          <View style={{ gap: 2 }}>
+            <Text style={microLabelStyle}>Kasaysayan</Text>
+            <Text
               style={{
                 color: theme.colors.text,
-                flex: 1,
-                fontFamily: theme.typography.body,
-                fontSize: 14,
-                minHeight: 50,
-                paddingLeft: theme.spacing.sm,
+                fontFamily: theme.typography.display,
+                fontSize: 22,
+                fontWeight: "600",
               }}
-              value={searchTerm}
-            />
+            >
+              Mga Nakaraang Biyahe
+            </Text>
           </View>
-
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
-              <Pressable
-                key="all"
-                onPress={() => setSelectedCategory(null)}
-                style={({ pressed }) => ({
-                  backgroundColor: selectedCategory === null ? theme.colors.primaryMuted : theme.colors.surface,
-                  borderColor: selectedCategory === null ? theme.colors.primary : theme.colors.border,
-                  opacity: pressed ? 0.92 : 1,
-                  ...pillChipBaseStyle,
-                })}
-              >
-                <Text
-                  style={[microLabelStyle, { color: selectedCategory === null ? theme.colors.primary : theme.colors.textMuted }]}
-                >
-                  {t("gastos.category.all")}
-                </Text>
-              </Pressable>
-
-              {filterCategories.map((category) => {
-                const active = selectedCategory === category;
-
-                return (
-                  <Pressable
-                    key={category}
-                    onPress={() => setSelectedCategory(category)}
-                    style={({ pressed }) => ({
-                      backgroundColor: active ? theme.colors.primaryMuted : theme.colors.surface,
-                      borderColor: active ? theme.colors.primary : theme.colors.border,
-                      opacity: pressed ? 0.92 : 1,
-                      ...pillChipBaseStyle,
-                    })}
-                  >
-                    <Text
-                      style={[microLabelStyle, { color: active ? theme.colors.primary : theme.colors.textMuted }]}
-                    >
-                      {formatExpenseCategoryLabel(category, t)}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </ScrollView>
-        </SurfaceCard>
+          {!loading && trips.length > 0 ? <StatusBadge label={`${trips.length} biyahe`} tone="neutral" /> : null}
+        </View>
 
         {loading ? (
           <SurfaceCard style={[compactCardStyle, { alignItems: "center" }]}>
@@ -1100,563 +638,790 @@ export default function GastosScreen() {
                 fontSize: 14,
               }}
             >
-              {t("gastos.loading")}
+              Inaayos ang kasaysayan ng biyahe...
             </Text>
           </SurfaceCard>
-        ) : expenses.length === 0 ? (
+        ) : trips.length === 0 ? (
           <EmptyState
-            icon="minus-circle"
-            message={t("gastos.emptyMessage")}
-            title={t("gastos.emptyTitle")}
-          />
-        ) : filteredExpenses.length === 0 ? (
-          <EmptyState
-            icon="search"
-            message={t("gastos.noResultsMessage")}
-            title={t("gastos.noResultsTitle")}
+            icon="truck"
+            message="Kapag may biyahe ka na sa restock, lalabas dito ang tindahan, petsa, mga item, at kabuuang gastos."
+            title="Wala Pang Nai-log na Biyahe"
           />
         ) : (
-          filteredExpenses.map((expense) => (
-            <Pressable
-              key={expense.id}
-              onPress={() => openEditExpenseModal(expense)}
-              style={({ pressed }) => ({ opacity: pressed ? 0.95 : 1 })}
-            >
-              <SurfaceCard style={[compactCardStyle, { gap: theme.spacing.xs }]}>
-                <View
-                  style={{
-                    alignItems: "center",
-                    flexDirection: "row",
-                    gap: theme.spacing.md,
-                    justifyContent: "space-between",
-                  }}
+          trips.map((trip) => (
+            <Pressable key={trip.id} onPress={() => void openTripDetail(trip.id)}>
+              {({ pressed }) => (
+                <SurfaceCard
+                  style={[
+                    compactCardStyle,
+                    {
+                      gap: theme.spacing.md,
+                      opacity: pressed ? 0.94 : 1,
+                      transform: [{ scale: pressed ? 0.995 : 1 }],
+                    },
+                  ]}
                 >
                   <View
                     style={{
                       alignItems: "center",
-                      backgroundColor: theme.colors.surfaceMuted,
-                      borderColor: theme.colors.border,
-                      borderRadius: theme.radius.pill,
-                      borderWidth: 1,
-                      height: 40,
-                      justifyContent: "center",
-                      width: 40,
+                      flexDirection: "row",
+                      gap: theme.spacing.md,
+                      justifyContent: "space-between",
                     }}
                   >
-                    <Text style={[microLabelStyle, { color: theme.colors.primary }]}>
-                      {getInitials(getExpensePrimaryLabel(expense, t))}
-                    </Text>
-                  </View>
-
-                  <View style={{ flex: 1, gap: theme.spacing.xs }}>
-                    <View
-                      style={{
-                        alignItems: "center",
-                        flexDirection: "row",
-                        gap: theme.spacing.md,
-                        justifyContent: "space-between",
-                      }}
-                    >
+                    <View style={{ flex: 1, gap: theme.spacing.xs }}>
                       <Text
                         numberOfLines={1}
                         style={{
                           color: theme.colors.text,
-                          flex: 1,
-                          fontFamily: theme.typography.label,
-                          fontSize: 14,
+                          fontFamily: theme.typography.display,
+                          fontSize: 20,
                           fontWeight: "600",
                         }}
                       >
-                        {getExpenseTitle(expense, t)}
+                        {trip.marketName}
                       </Text>
-
                       <Text
-                        style={{
-                          color: theme.colors.warning,
-                          fontFamily: MONO_FONT_FAMILY,
-                          fontSize: 18,
-                          fontWeight: "600",
-                        }}
-                      >
-                        {formatCurrencyFromCents(expense.amountCents)}
-                      </Text>
-                    </View>
-
-                    <View
-                      style={{
-                        alignItems: "center",
-                        flexDirection: "row",
-                        gap: theme.spacing.sm,
-                        justifyContent: "space-between",
-                      }}
-                    >
-                      <StatusBadge label={formatExpenseCategoryLabel(expense.category, t)} tone="neutral" />
-                      <Text
-                        numberOfLines={1}
                         style={{
                           color: theme.colors.textMuted,
-                          flex: 1,
                           fontFamily: theme.typography.body,
                           fontSize: 13,
-                          textAlign: "right",
                         }}
                       >
-                        {formatExpenseTimestamp(expense.expenseDate)}
+                        {`${formatTripDate(trip.tripDate)} - ${trip.itemCount} item`}
                       </Text>
                     </View>
+                    <StatusBadge label={getPaymentMethodLabel(trip.paymentMethod)} tone={getPaymentMethodTone(trip.paymentMethod)} />
                   </View>
-                </View>
-              </SurfaceCard>
+
+                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
+                    {trip.itemTags.slice(0, 3).map((tag) => (
+                      <View
+                        key={`${trip.id}-${tag}`}
+                        style={{
+                          backgroundColor: theme.colors.surfaceMuted,
+                          borderRadius: theme.radius.pill,
+                          paddingHorizontal: theme.spacing.md,
+                          paddingVertical: 8,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            color: theme.colors.textMuted,
+                            fontFamily: theme.typography.body,
+                            fontSize: 12,
+                            fontWeight: "600",
+                          }}
+                        >
+                          {tag}
+                        </Text>
+                      </View>
+                    ))}
+                    {trip.itemTags.length > 3 ? (
+                      <View
+                        style={{
+                          backgroundColor: theme.colors.primaryMuted,
+                          borderRadius: theme.radius.pill,
+                          paddingHorizontal: theme.spacing.md,
+                          paddingVertical: 8,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            color: theme.colors.primary,
+                            fontFamily: theme.typography.body,
+                            fontSize: 12,
+                            fontWeight: "600",
+                          }}
+                        >
+                          {`+${trip.itemTags.length - 3} pa`}
+                        </Text>
+                      </View>
+                    ) : null}
+                  </View>
+
+                  <View
+                    style={{
+                      alignItems: "center",
+                      flexDirection: "row",
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <View style={{ gap: 2 }}>
+                      <Text style={[microLabelStyle, { color: theme.colors.textSoft }]}>Kabuuang Gastos</Text>
+                      <Text
+                        style={{
+                          color: theme.colors.primary,
+                          fontFamily: theme.typography.display,
+                          fontSize: 24,
+                          fontWeight: "600",
+                        }}
+                      >
+                        {formatCurrencyFromCents(trip.grandTotalCents)}
+                      </Text>
+                    </View>
+                    <Feather color={theme.colors.textSoft} name="chevron-right" size={18} />
+                  </View>
+                </SurfaceCard>
+              )}
             </Pressable>
           ))
         )}
-      </Screen>
+      </View>
+    </>
+  );
 
-      <ModalSheet
-        footer={
-          <View style={{ gap: theme.spacing.sm }}>
-            <ActionButton
-              label={t("gastos.category.create")}
-              onPress={handleCreateCategory}
-            />
-          </View>
-        }
-        onClose={closeCategoryModal}
-        subtitle={
-          categoryModalTarget === "expense"
-            ? t("gastos.category.modal.subtitle.expense")
-            : t("gastos.category.modal.subtitle.budget")
-        }
-        title={t("gastos.category.modal.title")}
-        visible={categoryModalVisible}
-      >
-        <InputField
-          label={t("gastos.category.modal.field")}
-          onChangeText={setCategoryDraft}
-          placeholder={t("gastos.category.modal.placeholder")}
-          value={categoryDraft}
-        />
-        <SurfaceCard style={{ gap: theme.spacing.sm }}>
-          <Text
-            style={{
-              color: theme.colors.text,
-              fontFamily: theme.typography.body,
-              fontSize: 14,
-              fontWeight: "600",
-            }}
-          >
-            {t("gastos.category.modal.saved")}
-          </Text>
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
-            {filterCategories.length > 0 ? (
-              filterCategories.map((category) => (
-                <View
-                  key={category}
-                  style={{
-                    alignItems: "center",
-                    backgroundColor: theme.colors.surface,
-                    borderColor: theme.colors.border,
-                    borderRadius: theme.radius.pill,
-                    borderWidth: 1,
-                    flexDirection: "row",
-                    gap: theme.spacing.xs,
-                    paddingHorizontal: theme.spacing.md,
-                    paddingVertical: 10,
-                  }}
-                >
-                  <Pressable
-                    onPress={() => setCategoryDraft(category)}
-                    style={({ pressed }) => ({
-                      opacity: pressed ? 0.9 : 1,
-                    })}
-                  >
-                    <Text
-                      style={{
-                        color: theme.colors.text,
-                        fontFamily: theme.typography.body,
-                        fontSize: 12,
-                        fontWeight: "600",
-                      }}
-                    >
-                      {formatExpenseCategoryLabel(category, t)}
-                    </Text>
-                  </Pressable>
-
-                  {category !== "other" ? (
-                    <Pressable
-                      accessibilityLabel={t("gastos.category.deleteButton")}
-                      hitSlop={6}
-                      onPress={() => handleDeleteCategory(category)}
-                      style={({ pressed }) => ({
-                        opacity: pressed ? 0.7 : 1,
-                      })}
-                    >
-                      <Feather color={theme.colors.danger} name="x" size={14} />
-                    </Pressable>
-                  ) : null}
-                </View>
-              ))
-            ) : (
+  const renderFormContent = () => (
+    <>
+      <SurfaceCard style={[compactCardStyle, { gap: theme.spacing.md }]}>
+        <Text style={microLabelStyle}>Tumatakbong Total</Text>
+        <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
+          {[
+            { label: "Mga Item", value: formatCurrencyFromCents(totalItemsCents) },
+            { label: "Biyahe", value: formatCurrencyFromCents(totalTravelCents) },
+          ].map((entry) => (
+            <View
+              key={entry.label}
+              style={{
+                backgroundColor: theme.colors.surface,
+                borderColor: theme.colors.border,
+                borderRadius: theme.radius.md,
+                borderWidth: 1,
+                flex: 1,
+                gap: theme.spacing.xs,
+                padding: theme.spacing.md,
+              }}
+            >
+              <Text style={[microLabelStyle, { color: theme.colors.textSoft }]}>{entry.label}</Text>
               <Text
                 style={{
-                  color: theme.colors.textSoft,
-                  fontFamily: theme.typography.body,
-                  fontSize: 12,
+                  color: theme.colors.text,
+                  fontFamily: theme.typography.display,
+                  fontSize: 18,
+                  fontWeight: "600",
                 }}
               >
-                {t("gastos.category.modal.empty")}
+                {entry.value}
               </Text>
-            )}
-          </View>
-        </SurfaceCard>
-      </ModalSheet>
-
-      <ModalSheet
-        footer={
-          <View style={{ gap: theme.spacing.sm }}>
-            {editingExpense ? (
-              <ActionButton
-                disabled={saving}
-                label={t("gastos.delete")}
-                onPress={handleDeleteExpense}
-                variant="danger"
-              />
-            ) : null}
-            <ActionButton
-              disabled={saving}
-              label={
-                saving
-                  ? t("gastos.save.saving")
-                  : editingExpense
-                    ? t("gastos.save.update")
-                    : t("gastos.save.create")
-              }
-              onPress={() => void handleSaveExpense()}
-            />
-          </View>
-        }
-        onClose={closeModal}
-        subtitle={t("gastos.modal.subtitle")}
-        title={editingExpense ? t("gastos.modal.editTitle") : t("gastos.modal.newTitle")}
-        visible={modalVisible}
-      >
-        <InputField
-          keyboardType="decimal-pad"
-          label={t("gastos.field.amount")}
-          onChangeText={setAmountInput}
-          placeholder="0.00"
-          value={amountInput}
-        />
-
-        <View style={{ gap: theme.spacing.sm }}>
-          <Text
-            style={{
-              color: theme.colors.textMuted,
-              fontFamily: theme.typography.body,
-              fontSize: 13,
-              fontWeight: "600",
-            }}
-          >
-            {t("gastos.quickAmount.title")}
-          </Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
-              {QUICK_AMOUNT_OPTIONS.map((amountCents) => {
-                const active = parseCurrencyToCents(amountInput) === amountCents;
-
-                return (
-                  <Pressable
-                    key={amountCents}
-                    onPress={() => setAmountInput(centsToDisplayValue(amountCents))}
-                    style={({ pressed }) => ({
-                      backgroundColor: active ? theme.colors.primaryMuted : theme.colors.surface,
-                      borderColor: active ? theme.colors.primary : theme.colors.border,
-                      borderRadius: theme.radius.pill,
-                      borderWidth: 1,
-                      opacity: pressed ? 0.92 : 1,
-                      paddingHorizontal: theme.spacing.md,
-                      paddingVertical: 10,
-                    })}
-                  >
-                    <Text
-                      style={{
-                        color: active ? theme.colors.primary : theme.colors.textMuted,
-                        fontFamily: theme.typography.body,
-                        fontSize: 13,
-                        fontWeight: "600",
-                      }}
-                    >
-                      {formatCurrencyFromCents(amountCents)}
-                    </Text>
-                  </Pressable>
-                );
-              })}
             </View>
-          </ScrollView>
+          ))}
         </View>
-
-        <View style={{ gap: theme.spacing.sm }}>
+        <View
+          style={{
+            backgroundColor: theme.colors.primaryMuted,
+            borderRadius: theme.radius.md,
+            gap: theme.spacing.xs,
+            padding: theme.spacing.md,
+          }}
+        >
+          <Text style={[microLabelStyle, { color: theme.colors.primary }]}>Kabuuan Bago I-save</Text>
           <Text
             style={{
-              color: theme.colors.textMuted,
-              fontFamily: theme.typography.body,
-              fontSize: 13,
+              color: theme.colors.primary,
+              fontFamily: theme.typography.display,
+              fontSize: 28,
               fontWeight: "600",
             }}
           >
-            {t("gastos.field.category")}
+            {formatCurrencyFromCents(grandTotalCents)}
           </Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
+        </View>
+      </SurfaceCard>
+
+      <InputField
+        label="Petsa"
+        onChangeText={setTripDateInput}
+        placeholder="YYYY-MM-DD"
+        value={tripDateInput}
+      />
+
+      <InputField
+        label="Palengke / Tindahan"
+        onChangeText={setMarketNameInput}
+        placeholder="Halimbawa: Puregold Bocaue o Palengke ng Bayan"
+        value={marketNameInput}
+      />
+
+      <View style={{ gap: theme.spacing.sm }}>
+        <Text style={microLabelStyle}>Paraan ng Bayad</Text>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
+          {PAYMENT_METHOD_OPTIONS.map((option) => {
+            const active = paymentMethod === option.value;
+
+            return (
               <Pressable
-                accessibilityLabel={t("gastos.category.addButton")}
-                onPress={() => openCategoryModal("expense")}
+                key={option.value}
+                onPress={() => setPaymentMethod(option.value)}
                 style={({ pressed }) => ({
-                  alignItems: "center",
-                  backgroundColor: theme.colors.primaryMuted,
-                  borderColor: theme.colors.primary,
+                  backgroundColor: active ? theme.colors.primaryMuted : theme.colors.surface,
+                  borderColor: active ? theme.colors.primary : theme.colors.border,
                   borderRadius: theme.radius.pill,
                   borderWidth: 1,
-                  justifyContent: "center",
                   opacity: pressed ? 0.92 : 1,
                   paddingHorizontal: theme.spacing.md,
                   paddingVertical: 10,
                 })}
               >
-                <Feather color={theme.colors.primary} name="plus" size={14} />
+                <Text
+                  style={{
+                    color: active ? theme.colors.primary : theme.colors.textMuted,
+                    fontFamily: theme.typography.body,
+                    fontSize: 13,
+                    fontWeight: "600",
+                  }}
+                >
+                  {option.label}
+                </Text>
               </Pressable>
-              {modalCategories.map((category) => {
-                const active = draftCategory === category;
+            );
+          })}
+        </View>
+      </View>
 
-                return (
+      <View style={{ gap: theme.spacing.sm }}>
+        <View
+          style={{
+            alignItems: "center",
+            flexDirection: "row",
+            justifyContent: "space-between",
+          }}
+        >
+          <View style={{ gap: 2 }}>
+            <Text style={microLabelStyle}>Mga Binili</Text>
+            <Text
+              style={{
+                color: theme.colors.text,
+                fontFamily: theme.typography.display,
+              fontSize: 20,
+              fontWeight: "600",
+            }}
+          >
+              Listahan ng Mga Binili
+            </Text>
+          </View>
+          <Pressable
+            accessibilityLabel="Magdagdag ng item"
+            onPress={() => setDraftItems((current) => [...current, createDraftItem()])}
+            style={({ pressed }) => ({
+              alignItems: "center",
+              backgroundColor: theme.colors.primaryMuted,
+              borderRadius: theme.radius.pill,
+              height: 38,
+              justifyContent: "center",
+              opacity: pressed ? 0.92 : 1,
+              width: 38,
+            })}
+          >
+            <Feather color={theme.colors.primary} name="plus" size={16} />
+          </Pressable>
+        </View>
+
+        {draftItemRows.map((item, index) => {
+          const searchValue = normalizeSearchValue(item.itemName);
+          const matchingSuggestions =
+            searchValue.length === 0
+              ? mergedItemSuggestions.slice(0, 6)
+              : mergedItemSuggestions
+                  .filter((suggestion) => normalizeSearchValue(suggestion.name).includes(searchValue))
+                  .slice(0, 6);
+
+          return (
+            <SurfaceCard key={item.id} style={[compactCardStyle, { gap: theme.spacing.md }]}>
+              <View
+                style={{
+                  alignItems: "center",
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                }}
+              >
+                <Text style={microLabelStyle}>{`Binili ${index + 1}`}</Text>
+                {draftItems.length > 1 ? (
                   <Pressable
-                    key={category}
-                    onPress={() => setDraftCategory(category)}
+                    accessibilityLabel="Tanggalin ang item"
+                    onPress={() => handleRemoveItem(item.id)}
                     style={({ pressed }) => ({
-                      backgroundColor: active ? theme.colors.primaryMuted : theme.colors.surface,
-                      borderColor: active ? theme.colors.primary : theme.colors.border,
-                      borderRadius: theme.radius.pill,
-                      borderWidth: 1,
-                      opacity: pressed ? 0.92 : 1,
-                      paddingHorizontal: theme.spacing.md,
-                      paddingVertical: 10,
+                      opacity: pressed ? 0.7 : 1,
                     })}
                   >
-                    <Text
-                      style={{
-                        color: active ? theme.colors.primary : theme.colors.textMuted,
-                        fontFamily: theme.typography.body,
-                        fontSize: 13,
-                        fontWeight: "600",
-                      }}
-                    >
-                      {formatExpenseCategoryLabel(category, t)}
-                    </Text>
+                    <Feather color={theme.colors.danger} name="trash-2" size={16} />
                   </Pressable>
-                );
-              })}
-            </View>
-          </ScrollView>
-        </View>
+                ) : null}
+              </View>
 
-        <InputField
-          label={t("gastos.field.description")}
-          onChangeText={setDescriptionInput}
-          placeholder={t("gastos.field.descriptionPlaceholder")}
-          value={descriptionInput}
-        />
-
-        <View style={{ gap: theme.spacing.xs }}>
-          <Text
-            style={{
-              color: theme.colors.textMuted,
-              fontFamily: theme.typography.body,
-              fontSize: 13,
-              fontWeight: "600",
-            }}
-          >
-            {t("gastos.field.loggedAt")}
-          </Text>
-          <StatusBadge label={formatExpenseTimestamp(draftExpenseDate)} tone="neutral" />
-        </View>
-      </ModalSheet>
-
-      <ModalSheet
-        footer={
-          <View style={{ gap: theme.spacing.sm }}>
-            {editingBudget ? (
-              <ActionButton
-                disabled={savingBudget}
-                label={t("gastos.budget.delete")}
-                onPress={handleDeleteBudget}
-                variant="danger"
+              <InputField
+                label="Pangalan ng Item"
+                onChangeText={(value) => updateDraftItem(item.id, "itemName", value)}
+                placeholder="Halimbawa: Sardinas, Bigas, Noodles"
+                value={item.itemName}
               />
-            ) : null}
-            <ActionButton
-              disabled={savingBudget}
-              label={
-                savingBudget
-                  ? t("gastos.budget.save.saving")
-                  : editingBudget
-                    ? t("gastos.budget.save.update")
-                    : t("gastos.budget.save.create")
-              }
-              onPress={() => void handleSaveBudget()}
-            />
-          </View>
-        }
-        onClose={closeBudgetModal}
-        subtitle={t("gastos.budget.modal.subtitle")}
-        title={editingBudget ? t("gastos.budget.modal.editTitle") : t("gastos.budget.modal.newTitle")}
-        visible={budgetModalVisible}
-      >
-        <View style={{ gap: theme.spacing.xs }}>
+
+              {matchingSuggestions.length > 0 ? (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
+                    {matchingSuggestions.map((suggestion) => (
+                      <Pressable
+                        key={`${item.id}-${suggestion.name}`}
+                        onPress={() => handleSuggestionSelect(item.id, suggestion)}
+                        style={({ pressed }) => ({
+                          backgroundColor: theme.colors.surfaceMuted,
+                          borderColor: theme.colors.border,
+                          borderRadius: theme.radius.pill,
+                          borderWidth: 1,
+                          opacity: pressed ? 0.92 : 1,
+                          paddingHorizontal: theme.spacing.md,
+                          paddingVertical: 10,
+                        })}
+                      >
+                        <Text
+                          style={{
+                            color: theme.colors.textMuted,
+                            fontFamily: theme.typography.body,
+                            fontSize: 12,
+                            fontWeight: "600",
+                          }}
+                        >
+                          {suggestion.name}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                </ScrollView>
+              ) : null}
+
+              <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
+                <View style={{ flex: 1 }}>
+                  <InputField
+                    keyboardType="decimal-pad"
+                    label="Dami"
+                    onChangeText={(value) => updateDraftItem(item.id, "quantity", value)}
+                    placeholder="1"
+                    value={item.quantity}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <InputField
+                    keyboardType="decimal-pad"
+                    label="Presyo Kada Unit"
+                    onChangeText={(value) => updateDraftItem(item.id, "unitPrice", value)}
+                    placeholder="0.00"
+                    value={item.unitPrice}
+                  />
+                </View>
+              </View>
+
+              <InputField
+                label="Kategorya"
+                onChangeText={(value) => updateDraftItem(item.id, "category", value)}
+                placeholder="Halimbawa: Delata, Bigas, Inumin"
+                value={item.category}
+              />
+
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
+                  {mergedCategorySuggestions.slice(0, 10).map((category) => {
+                    const active = normalizeSearchValue(item.category) === normalizeSearchValue(category);
+
+                    return (
+                      <Pressable
+                        key={`${item.id}-${category}`}
+                        onPress={() => updateDraftItem(item.id, "category", category)}
+                        style={({ pressed }) => ({
+                          backgroundColor: active ? theme.colors.primaryMuted : theme.colors.surface,
+                          borderColor: active ? theme.colors.primary : theme.colors.border,
+                          borderRadius: theme.radius.pill,
+                          borderWidth: 1,
+                          opacity: pressed ? 0.92 : 1,
+                          paddingHorizontal: theme.spacing.md,
+                          paddingVertical: 10,
+                        })}
+                      >
+                        <Text
+                          style={{
+                            color: active ? theme.colors.primary : theme.colors.textMuted,
+                            fontFamily: theme.typography.body,
+                            fontSize: 12,
+                            fontWeight: "600",
+                          }}
+                        >
+                          {humanizeCategory(category)}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </ScrollView>
+
+              <View
+                style={{
+                  alignItems: "center",
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                }}
+              >
+                <Text
+                  style={{
+                    color: theme.colors.textMuted,
+                    fontFamily: theme.typography.body,
+                    fontSize: 13,
+                  }}
+                >
+                  {Number.isFinite(item.quantityValue) && item.quantityValue > 0
+                    ? `${formatQuantityLabel(item.quantityValue)} x ${formatCurrencyFromCents(
+                        Number.isFinite(item.unitPriceCentsValue) && item.unitPriceCentsValue > 0 ? item.unitPriceCentsValue : 0,
+                      )}`
+                    : "Hintayin ang quantity at presyo para lumabas ang subtotal."}
+                </Text>
+                <Text
+                  style={{
+                    color: theme.colors.primary,
+                    fontFamily: theme.typography.display,
+                    fontSize: 18,
+                    fontWeight: "600",
+                  }}
+                >
+                  {formatCurrencyFromCents(item.lineTotalCents)}
+                </Text>
+              </View>
+            </SurfaceCard>
+          );
+        })}
+      </View>
+
+      <SurfaceCard style={[compactCardStyle, { gap: theme.spacing.md }]}>
+        <View style={{ gap: 2 }}>
+          <Text style={microLabelStyle}>Gastos sa Biyahe</Text>
           <Text
             style={{
-              color: theme.colors.textMuted,
-              fontFamily: theme.typography.body,
-              fontSize: 13,
+              color: theme.colors.text,
+              fontFamily: theme.typography.display,
+              fontSize: 20,
               fontWeight: "600",
             }}
           >
-            {t("gastos.budget.field.month")}
+            Pamasahe at Iba Pa
           </Text>
-          <StatusBadge label={currentBudgetMonthLabel} tone="neutral" />
         </View>
 
         <InputField
           keyboardType="decimal-pad"
-          label={t("gastos.budget.field.amount")}
-          onChangeText={setBudgetAmountInput}
+          label="Pamasahe"
+          onChangeText={setPamasaheInput}
           placeholder="0.00"
-          value={budgetAmountInput}
+          value={pamasaheInput}
         />
+        <InputField
+          keyboardType="decimal-pad"
+          label="Gasolina"
+          onChangeText={setGasolinaInput}
+          placeholder="0.00"
+          value={gasolinaInput}
+        />
+        <InputField
+          keyboardType="decimal-pad"
+          label="Iba Pang Gastos sa Biyahe"
+          onChangeText={setOtherTravelInput}
+          placeholder="Pagkain, bayad sa tao, atbp."
+          value={otherTravelInput}
+        />
+      </SurfaceCard>
 
-        <View style={{ gap: theme.spacing.sm }}>
+      <InputField
+        label="Mga Tala"
+        multiline
+        onChangeText={setNotesInput}
+        placeholder="Opsyonal na tala tungkol sa biyaheng ito"
+        value={notesInput}
+      />
+    </>
+  );
+
+  const renderDetailContent = () => (
+    <>
+      {detailLoading ? (
+        <SurfaceCard style={[compactCardStyle, { alignItems: "center" }]}>
+          <ActivityIndicator color={theme.colors.primary} />
           <Text
             style={{
               color: theme.colors.textMuted,
               fontFamily: theme.typography.body,
-              fontSize: 13,
-              fontWeight: "600",
+              fontSize: 14,
             }}
           >
-            {t("gastos.budget.field.scope")}
+            Kinukuha ang detalye ng biyahe...
           </Text>
-          <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
-            {[
-              { key: "overall" as const, label: t("gastos.budget.scope.overall") },
-              { key: "category" as const, label: t("gastos.budget.scope.category") },
-            ].map((scope) => {
-              const active = budgetScopeMode === scope.key;
+        </SurfaceCard>
+      ) : detailTrip ? (
+        <View style={{ gap: theme.spacing.md }}>
+          <SurfaceCard style={[compactCardStyle, { gap: theme.spacing.md }]}>
+            <View
+              style={{
+                alignItems: "center",
+                flexDirection: "row",
+                justifyContent: "space-between",
+              }}
+            >
+              <StatusBadge label={getPaymentMethodLabel(detailTrip.paymentMethod)} tone={getPaymentMethodTone(detailTrip.paymentMethod)} />
+              <Text
+                style={{
+                  color: theme.colors.textMuted,
+                  fontFamily: theme.typography.body,
+                  fontSize: 13,
+                }}
+              >
+                {formatTripDate(detailTrip.tripDate)}
+              </Text>
+            </View>
 
-              return (
-                <Pressable
-                  key={scope.key}
-                  onPress={() => {
-                    setBudgetScopeMode(scope.key);
-
-                    if (scope.key === "overall") {
-                      setBudgetCategory(null);
-                      return;
-                    }
-
-                    const fallbackCategory = budgetCategory || modalCategories[0] || customCategories[0] || "other";
-                    setBudgetCategory(fallbackCategory);
-                  }}
-                  style={({ pressed }) => ({
-                    backgroundColor: active ? theme.colors.primaryMuted : theme.colors.surface,
-                    borderColor: active ? theme.colors.primary : theme.colors.border,
-                    borderRadius: theme.radius.pill,
+            <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
+              {[
+                { label: "Mga Item", value: formatCurrencyFromCents(detailTrip.totalItemsCents) },
+                { label: "Biyahe", value: formatCurrencyFromCents(detailTrip.totalTravelCents) },
+                { label: "Kabuuan", value: formatCurrencyFromCents(detailTrip.grandTotalCents) },
+              ].map((entry) => (
+                <View
+                  key={entry.label}
+                  style={{
+                    backgroundColor: theme.colors.surface,
+                    borderColor: theme.colors.border,
+                    borderRadius: theme.radius.md,
                     borderWidth: 1,
-                    opacity: pressed ? 0.92 : 1,
-                    paddingHorizontal: theme.spacing.md,
-                    paddingVertical: 10,
-                  })}
+                    flex: 1,
+                    gap: theme.spacing.xs,
+                    padding: theme.spacing.md,
+                  }}
                 >
+                  <Text style={[microLabelStyle, { color: theme.colors.textSoft }]}>{entry.label}</Text>
                   <Text
                     style={{
-                      color: active ? theme.colors.primary : theme.colors.textMuted,
-                      fontFamily: theme.typography.body,
-                      fontSize: 13,
+                      color: entry.label === "Kabuuan" ? theme.colors.primary : theme.colors.text,
+                      fontFamily: theme.typography.display,
+                      fontSize: 18,
                       fontWeight: "600",
                     }}
                   >
-                    {scope.label}
+                    {entry.value}
                   </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        </View>
+                </View>
+              ))}
+            </View>
+          </SurfaceCard>
 
-        {budgetScopeMode === "category" ? (
-          <View style={{ gap: theme.spacing.sm }}>
-            <Text
-              style={{
-                color: theme.colors.textMuted,
-                fontFamily: theme.typography.body,
-                fontSize: 13,
-                fontWeight: "600",
-              }}
-            >
-              {t("gastos.budget.field.category")}
-            </Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
-                <Pressable
-                  accessibilityLabel={t("gastos.category.addButton")}
-                  onPress={() => openCategoryModal("budget")}
-                  style={({ pressed }) => ({
+          <SurfaceCard style={[compactCardStyle, { gap: theme.spacing.md }]}>
+            <View style={{ gap: 2 }}>
+              <Text style={microLabelStyle}>Listahan ng Mga Binili</Text>
+              <Text
+                style={{
+                  color: theme.colors.text,
+                  fontFamily: theme.typography.display,
+                  fontSize: 20,
+                  fontWeight: "600",
+                }}
+              >
+                {`${detailTrip.items.length} item na binili`}
+              </Text>
+            </View>
+
+            {detailTrip.items.map((item) => (
+              <View
+                key={item.id}
+                style={{
+                  borderColor: theme.colors.border,
+                  borderRadius: theme.radius.md,
+                  borderWidth: 1,
+                  gap: theme.spacing.sm,
+                  padding: theme.spacing.md,
+                }}
+              >
+                <View
+                  style={{
                     alignItems: "center",
-                    backgroundColor: theme.colors.primaryMuted,
-                    borderColor: theme.colors.primary,
-                    borderRadius: theme.radius.pill,
-                    borderWidth: 1,
-                    justifyContent: "center",
-                    opacity: pressed ? 0.92 : 1,
-                    paddingHorizontal: theme.spacing.md,
-                    paddingVertical: 10,
-                  })}
+                    flexDirection: "row",
+                    gap: theme.spacing.sm,
+                    justifyContent: "space-between",
+                  }}
                 >
-                  <Feather color={theme.colors.primary} name="plus" size={14} />
-                </Pressable>
-                {budgetCategoryOptions.filter((category): category is string => category !== null).map((category) => {
-                  const active = budgetCategory === category;
-
-                  return (
-                    <Pressable
-                      key={getBudgetCategoryKey(category)}
-                      onPress={() => setBudgetCategory(category)}
-                      style={({ pressed }) => ({
-                        backgroundColor: active ? theme.colors.primaryMuted : theme.colors.surface,
-                        borderColor: active ? theme.colors.primary : theme.colors.border,
-                        borderRadius: theme.radius.pill,
-                        borderWidth: 1,
-                        opacity: pressed ? 0.92 : 1,
-                        paddingHorizontal: theme.spacing.md,
-                        paddingVertical: 10,
-                      })}
+                  <View style={{ flex: 1, gap: 2 }}>
+                    <Text
+                      style={{
+                        color: theme.colors.text,
+                        fontFamily: theme.typography.label,
+                        fontSize: 15,
+                        fontWeight: "600",
+                      }}
                     >
-                      <Text
-                        style={{
-                          color: active ? theme.colors.primary : theme.colors.textMuted,
-                          fontFamily: theme.typography.body,
-                          fontSize: 13,
-                          fontWeight: "600",
-                        }}
-                      >
-                        {formatExpenseCategoryLabel(category, t)}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
+                      {item.itemName}
+                    </Text>
+                    <Text
+                      style={{
+                        color: theme.colors.textMuted,
+                        fontFamily: theme.typography.body,
+                        fontSize: 13,
+                      }}
+                    >
+                      {`${formatQuantityLabel(item.quantity)} x ${formatCurrencyFromCents(item.unitPriceCents)}`}
+                    </Text>
+                  </View>
+                  <Text
+                    style={{
+                      color: theme.colors.primary,
+                      fontFamily: theme.typography.display,
+                      fontSize: 18,
+                      fontWeight: "600",
+                    }}
+                  >
+                    {formatCurrencyFromCents(item.lineTotalCents)}
+                  </Text>
+                </View>
+                <StatusBadge label={humanizeCategory(item.category)} tone="neutral" />
               </View>
-            </ScrollView>
+            ))}
+          </SurfaceCard>
+
+          <SurfaceCard style={[compactCardStyle, { gap: theme.spacing.md }]}>
+            <View style={{ gap: 2 }}>
+              <Text style={microLabelStyle}>Gastos sa Biyahe</Text>
+              <Text
+                style={{
+                  color: theme.colors.text,
+                  fontFamily: theme.typography.display,
+                  fontSize: 20,
+                  fontWeight: "600",
+                }}
+              >
+                Pamasahe at Iba Pa
+              </Text>
+            </View>
+
+            {[
+              { label: "Pamasahe", value: detailTrip.pamasaheCents },
+              { label: "Gasolina", value: detailTrip.gasolinaCents },
+              { label: "Iba Pa", value: detailTrip.otherTravelCents },
+            ].map((entry) => (
+              <View
+                key={entry.label}
+                style={{
+                  alignItems: "center",
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                }}
+              >
+                <Text
+                  style={{
+                    color: theme.colors.textMuted,
+                    fontFamily: theme.typography.body,
+                    fontSize: 14,
+                  }}
+                >
+                  {entry.label}
+                </Text>
+                <Text
+                  style={{
+                    color: theme.colors.text,
+                    fontFamily: theme.typography.label,
+                    fontSize: 14,
+                    fontWeight: "600",
+                  }}
+                >
+                  {formatCurrencyFromCents(entry.value)}
+                </Text>
+              </View>
+            ))}
+          </SurfaceCard>
+
+          {detailTrip.notes?.trim() ? (
+            <SurfaceCard style={[compactCardStyle, { gap: theme.spacing.sm }]}>
+              <Text style={microLabelStyle}>Mga Tala</Text>
+              <Text
+                style={{
+                  color: theme.colors.text,
+                  fontFamily: theme.typography.body,
+                  fontSize: 14,
+                  lineHeight: 22,
+                }}
+              >
+                {detailTrip.notes}
+              </Text>
+            </SurfaceCard>
+          ) : null}
+        </View>
+      ) : (
+        <EmptyState
+          icon="file-text"
+          message="Hindi makita ang detalye ng biyahe na ito."
+          title="Walang Detalye"
+        />
+      )}
+    </>
+  );
+
+  return (
+    <>
+      <Screen
+        rightSlot={
+          <Pressable
+            accessibilityLabel="Mag-log ng biyahe"
+            hitSlop={6}
+            onPress={openNewTripModal}
+            style={({ pressed }) => ({
+              alignItems: "center",
+              backgroundColor: theme.colors.primary,
+              borderRadius: theme.radius.pill,
+              height: 40,
+              justifyContent: "center",
+              opacity: pressed ? 0.92 : 1,
+              width: 40,
+            })}
+          >
+            <Feather color={theme.colors.primaryText} name="plus" size={18} />
+          </Pressable>
+        }
+        subtitle="I-log ang buong biyahe sa restock kasama ang mga item at gastos sa biyahe."
+        title="Biyahe sa Restock"
+      >
+        {renderHistoryContent()}
+      </Screen>
+
+      <ModalSheet
+        contentContainerStyle={{ paddingBottom: theme.spacing.md }}
+        footer={
+          <View style={{ gap: theme.spacing.sm }}>
+            <ActionButton
+              disabled={saving}
+              label={saving ? "Sine-save ang biyahe..." : "I-save ang Biyahe"}
+              onPress={() => void handleSaveTrip()}
+            />
           </View>
-        ) : null}
+        }
+        fullHeight
+        onClose={closeNewTripModal}
+        subtitle="Mga item, pamasahe, at tala para sa isang biyahe sa restock"
+        title="Bagong Biyahe"
+        visible={formVisible}
+      >
+        {renderFormContent()}
+      </ModalSheet>
+
+      <ModalSheet
+        footer={
+          detailTrip ? (
+            <View style={{ gap: theme.spacing.sm }}>
+              <ActionButton
+                disabled={deleting}
+                label={deleting ? "Binubura ang biyahe..." : "Burahin ang Biyahe"}
+                onPress={handleDeleteTrip}
+                variant="danger"
+              />
+            </View>
+          ) : undefined
+        }
+        fullHeight
+        onClose={closeTripDetail}
+        subtitle={detailTrip ? formatTripDate(detailTrip.tripDate, { day: "numeric", month: "long", year: "numeric" }) : "Detalye"}
+        title={detailTrip?.marketName ?? "Detalye ng Biyahe"}
+        visible={detailTripId !== null}
+      >
+        {renderDetailContent()}
       </ModalSheet>
     </>
   );
 }
-
