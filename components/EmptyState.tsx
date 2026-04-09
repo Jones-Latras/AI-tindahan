@@ -39,7 +39,7 @@ export function EmptyState({ icon, title, message }: EmptyStateProps) {
       <Text
         style={{
           color: theme.colors.text,
-          fontFamily: theme.typography.display,
+          fontFamily: theme.typography.strong,
           fontSize: theme.typography.scale.h1.fontSize,
           lineHeight: theme.typography.scale.h1.lineHeight,
           textAlign: "center",

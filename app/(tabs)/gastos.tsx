@@ -225,13 +225,13 @@ export default function GastosScreen() {
             detailTitle: "Trip Details",
             detailsLoadFailedMessage: "There was a problem loading this trip.",
             detailsLoadFailedTitle: "Could not load details",
-            emptyMessage: "Once you log a restock trip, the store, date, items, and total cost will appear here.",
+            emptyMessage: "Your restock trips will show up here.",
             emptyTitle: "No Trips Logged Yet",
             enterCategory: (itemName: string) => `Enter a category for ${itemName}.`,
             enterItemName: "Complete the item name before saving.",
             formGrandTotal: "Total Before Save",
             formItemsTotal: "Items",
-            formLoadingHistory: "Loading trip history...",
+            formLoadingHistory: "Loading trips...",
             formRunningTotal: "Running Total",
             formTravelTotal: "Travel",
             history: "History",
@@ -261,7 +261,7 @@ export default function GastosScreen() {
             marketName: "Store / Market",
             marketNamePlaceholder: "Example: Puregold Bocaue or Town Market",
             moreItems: (count: number) => `+${count} more`,
-            newTripSubtitle: "Items, travel costs, and notes for one restock trip",
+            newTripSubtitle: "Items, travel costs, and notes.",
             newTripTitle: "New Trip",
             noItemsMessage: "Add at least one purchased item before saving.",
             noItemsTitle: "No items yet",
@@ -275,7 +275,7 @@ export default function GastosScreen() {
             saveFailedMessage: "There was a problem while saving the trip.",
             saveFailedTitle: "Trip not saved",
             saveProgress: "Saving trip...",
-            screenSubtitle: "Log the full restock trip together with items and travel expenses.",
+            screenSubtitle: "Track restock trips, items, and travel costs.",
             screenTitle: "Restock Trips",
             thisMonth: "This Month",
             totalCost: "Total Cost",
@@ -307,14 +307,13 @@ export default function GastosScreen() {
             detailTitle: "Detalye ng Biyahe",
             detailsLoadFailedMessage: "May problema habang kinukuha ang detalye ng biyahe.",
             detailsLoadFailedTitle: "Hindi makuha ang detalye",
-            emptyMessage:
-              "Kapag may biyahe ka na sa restock, lalabas dito ang tindahan, petsa, mga item, at kabuuang gastos.",
+            emptyMessage: "Lalabas dito ang mga restock trip mo.",
             emptyTitle: "Wala Pang Nai-log na Biyahe",
             enterCategory: (itemName: string) => `Maglagay ng category para sa ${itemName}.`,
             enterItemName: "Kumpletuhin ang pangalan ng item bago mag-save.",
             formGrandTotal: "Kabuuan Bago I-save",
             formItemsTotal: "Mga Item",
-            formLoadingHistory: "Inaayos ang kasaysayan ng biyahe...",
+            formLoadingHistory: "Inaayos ang mga biyahe...",
             formRunningTotal: "Tumatakbong Total",
             formTravelTotal: "Biyahe",
             history: "Kasaysayan",
@@ -344,7 +343,7 @@ export default function GastosScreen() {
             marketName: "Palengke / Tindahan",
             marketNamePlaceholder: "Halimbawa: Puregold Bocaue o Palengke ng Bayan",
             moreItems: (count: number) => `+${count} pa`,
-            newTripSubtitle: "Mga item, pamasahe, at tala para sa isang biyahe sa restock",
+            newTripSubtitle: "Mga item, pamasahe, at tala.",
             newTripTitle: "Bagong Biyahe",
             noItemsMessage: "Maglagay ng kahit isang item na binili bago mag-save.",
             noItemsTitle: "Walang laman ang listahan",
@@ -358,7 +357,7 @@ export default function GastosScreen() {
             saveFailedMessage: "May nangyaring problema habang sine-save ang biyahe.",
             saveFailedTitle: "Hindi na-save ang biyahe",
             saveProgress: "Sine-save ang biyahe...",
-            screenSubtitle: "I-log ang buong biyahe sa restock kasama ang mga item at gastos sa biyahe.",
+            screenSubtitle: "I-track ang restock trips, items, at gastos sa biyahe.",
             screenTitle: "Biyahe sa Restock",
             thisMonth: "Ngayong Buwan",
             totalCost: "Kabuuang Gastos",
@@ -377,10 +376,9 @@ export default function GastosScreen() {
   const microLabelStyle = {
     color: theme.colors.textMuted,
     fontFamily: theme.typography.label,
-    fontSize: 11,
-    fontWeight: "600" as const,
-    letterSpacing: 0.8,
-    textTransform: "uppercase" as const,
+    fontSize: theme.typography.scale.label.fontSize,
+    letterSpacing: 0.3,
+    lineHeight: theme.typography.scale.label.lineHeight,
   };
 
   const resetForm = useCallback(() => {
@@ -692,9 +690,9 @@ export default function GastosScreen() {
           <Text
             style={{
               color: theme.colors.text,
-              fontFamily: theme.typography.display,
-              fontSize: 22,
-              fontWeight: "600",
+              fontFamily: theme.typography.money,
+              fontSize: theme.typography.scale.h1.fontSize,
+              lineHeight: theme.typography.scale.h1.lineHeight,
             }}
           >
             {currentMonthLabel}
@@ -730,9 +728,9 @@ export default function GastosScreen() {
               <Text
                 style={{
                   color: theme.colors.text,
-                  fontFamily: theme.typography.display,
-                  fontSize: 21,
-                  fontWeight: "600",
+                  fontFamily: theme.typography.money,
+                  fontSize: theme.typography.scale.h2.fontSize,
+                  lineHeight: theme.typography.scale.h2.lineHeight,
                 }}
               >
                 {card.value}
@@ -750,11 +748,6 @@ export default function GastosScreen() {
           ))}
         </View>
 
-        <ActionButton
-          icon={<Feather color={theme.colors.primaryText} name="shopping-bag" size={16} />}
-          label={copy.addTrip}
-          onPress={openNewTripModal}
-        />
       </SurfaceCard>
 
       <View style={{ gap: theme.spacing.md }}>
@@ -770,9 +763,9 @@ export default function GastosScreen() {
             <Text
               style={{
                 color: theme.colors.text,
-                fontFamily: theme.typography.display,
-                fontSize: 22,
-                fontWeight: "600",
+                fontFamily: theme.typography.strong,
+                fontSize: theme.typography.scale.h1.fontSize,
+                lineHeight: theme.typography.scale.h1.lineHeight,
               }}
             >
               {copy.historyTitle}
@@ -827,9 +820,9 @@ export default function GastosScreen() {
                         numberOfLines={1}
                         style={{
                           color: theme.colors.text,
-                          fontFamily: theme.typography.display,
-                          fontSize: 20,
-                          fontWeight: "600",
+                          fontFamily: theme.typography.strong,
+                          fontSize: theme.typography.scale.h2.fontSize,
+                          lineHeight: theme.typography.scale.h2.lineHeight,
                         }}
                       >
                         {trip.marketName}
@@ -908,9 +901,9 @@ export default function GastosScreen() {
                       <Text
                         style={{
                           color: theme.colors.primary,
-                          fontFamily: theme.typography.display,
-                          fontSize: 24,
-                          fontWeight: "600",
+                          fontFamily: theme.typography.money,
+                          fontSize: theme.typography.scale.h2.fontSize,
+                          lineHeight: theme.typography.scale.h2.lineHeight,
                         }}
                       >
                         {formatCurrencyFromCents(trip.grandTotalCents)}
@@ -952,9 +945,9 @@ export default function GastosScreen() {
               <Text
                 style={{
                   color: theme.colors.text,
-                  fontFamily: theme.typography.display,
-                  fontSize: 18,
-                  fontWeight: "600",
+                  fontFamily: theme.typography.money,
+                  fontSize: theme.typography.scale.h2.fontSize,
+                  lineHeight: theme.typography.scale.h2.lineHeight,
                 }}
               >
                 {entry.value}
@@ -974,9 +967,9 @@ export default function GastosScreen() {
           <Text
             style={{
               color: theme.colors.primary,
-              fontFamily: theme.typography.display,
-              fontSize: 28,
-              fontWeight: "600",
+              fontFamily: theme.typography.money,
+              fontSize: theme.typography.scale.h1.fontSize,
+              lineHeight: theme.typography.scale.h1.lineHeight,
             }}
           >
             {formatCurrencyFromCents(grandTotalCents)}
@@ -1047,9 +1040,9 @@ export default function GastosScreen() {
             <Text
               style={{
                 color: theme.colors.text,
-                fontFamily: theme.typography.display,
-                fontSize: 20,
-                fontWeight: "600",
+                fontFamily: theme.typography.strong,
+                fontSize: theme.typography.scale.h2.fontSize,
+                lineHeight: theme.typography.scale.h2.lineHeight,
               }}
             >
               {copy.itemsSectionTitle}
@@ -1230,9 +1223,9 @@ export default function GastosScreen() {
                 <Text
                   style={{
                     color: theme.colors.primary,
-                    fontFamily: theme.typography.display,
-                    fontSize: 18,
-                    fontWeight: "600",
+                    fontFamily: theme.typography.money,
+                    fontSize: theme.typography.scale.h2.fontSize,
+                    lineHeight: theme.typography.scale.h2.lineHeight,
                   }}
                 >
                   {formatCurrencyFromCents(item.lineTotalCents)}
@@ -1249,9 +1242,9 @@ export default function GastosScreen() {
           <Text
             style={{
               color: theme.colors.text,
-              fontFamily: theme.typography.display,
-              fontSize: 20,
-              fontWeight: "600",
+              fontFamily: theme.typography.strong,
+              fontSize: theme.typography.scale.h2.fontSize,
+              lineHeight: theme.typography.scale.h2.lineHeight,
             }}
           >
             {copy.travelSubtitle}
@@ -1356,9 +1349,9 @@ export default function GastosScreen() {
                         entry.label === (language === "english" ? "Total" : "Kabuuan")
                           ? theme.colors.primary
                           : theme.colors.text,
-                      fontFamily: theme.typography.display,
-                      fontSize: 18,
-                      fontWeight: "600",
+                      fontFamily: theme.typography.money,
+                      fontSize: theme.typography.scale.h2.fontSize,
+                      lineHeight: theme.typography.scale.h2.lineHeight,
                     }}
                   >
                     {entry.value}
@@ -1374,9 +1367,9 @@ export default function GastosScreen() {
               <Text
                 style={{
                   color: theme.colors.text,
-                  fontFamily: theme.typography.display,
-                  fontSize: 20,
-                  fontWeight: "600",
+                  fontFamily: theme.typography.strong,
+                  fontSize: theme.typography.scale.h2.fontSize,
+                  lineHeight: theme.typography.scale.h2.lineHeight,
                 }}
               >
                 {copy.detailItemsCount(detailTrip.items.length)}
@@ -1426,9 +1419,9 @@ export default function GastosScreen() {
                   <Text
                     style={{
                       color: theme.colors.primary,
-                      fontFamily: theme.typography.display,
-                      fontSize: 18,
-                      fontWeight: "600",
+                      fontFamily: theme.typography.money,
+                      fontSize: theme.typography.scale.h2.fontSize,
+                      lineHeight: theme.typography.scale.h2.lineHeight,
                     }}
                   >
                     {formatCurrencyFromCents(item.lineTotalCents)}
@@ -1445,9 +1438,9 @@ export default function GastosScreen() {
               <Text
                 style={{
                   color: theme.colors.text,
-                  fontFamily: theme.typography.display,
-                  fontSize: 20,
-                  fontWeight: "600",
+                  fontFamily: theme.typography.strong,
+                  fontSize: theme.typography.scale.h2.fontSize,
+                  lineHeight: theme.typography.scale.h2.lineHeight,
                 }}
               >
                 {copy.travelSubtitle}
