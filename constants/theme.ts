@@ -1,8 +1,33 @@
 import type { ThemeMode } from "@/types/models";
 
-const displayFontFamily = "Inter_600SemiBold";
+const displayFontFamily = "Inter_700Bold";
 const bodyFontFamily = "Inter_400Regular";
-const labelFontFamily = "Inter_600SemiBold";
+const labelFontFamily = "Inter_500Medium";
+const strongFontFamily = "Inter_600SemiBold";
+
+const typography = {
+  body: bodyFontFamily,
+  display: displayFontFamily,
+  label: labelFontFamily,
+  money: displayFontFamily,
+  scale: {
+    body: { fontSize: 16, lineHeight: 22 },
+    bodySm: { fontSize: 14, lineHeight: 20 },
+    caption: { fontSize: 12, lineHeight: 16 },
+    display: { fontSize: 40, lineHeight: 44 },
+    h1: { fontSize: 24, lineHeight: 30 },
+    h2: { fontSize: 18, lineHeight: 24 },
+    label: { fontSize: 13, lineHeight: 18 },
+    micro: { fontSize: 11, lineHeight: 14 },
+  },
+  strong: strongFontFamily,
+  weight: {
+    bold: "700" as const,
+    medium: "500" as const,
+    regular: "400" as const,
+    semibold: "600" as const,
+  },
+} as const;
 
 export const lightTheme = {
   mode: "light" as ThemeMode,
@@ -30,11 +55,7 @@ export const lightTheme = {
     overlay: "rgba(18, 24, 21, 0.38)",
     shadow: "rgba(19, 24, 22, 0.12)"
   },
-  typography: {
-    display: displayFontFamily,
-    body: bodyFontFamily,
-    label: labelFontFamily,
-  },
+  typography,
   spacing: {
     xs: 6,
     sm: 10,
@@ -77,11 +98,7 @@ export const darkTheme = {
     overlay: "rgba(0, 0, 0, 0.76)",
     shadow: "rgba(0, 0, 0, 0.55)"
   },
-  typography: {
-    display: displayFontFamily,
-    body: bodyFontFamily,
-    label: labelFontFamily,
-  },
+  typography,
   spacing: {
     xs: 6,
     sm: 10,

@@ -85,8 +85,8 @@ export function ActionButton({
           color: disabled ? theme.colors.textSoft : palette.textColor,
           flexShrink: 1,
           fontFamily: theme.typography.label,
-          fontSize: 14,
-          fontWeight: "600",
+          fontSize: theme.typography.scale.label.fontSize,
+          lineHeight: theme.typography.scale.label.lineHeight,
           textAlign: "center",
         }}
       >

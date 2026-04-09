@@ -23,7 +23,7 @@ import {
 } from "@/db/repositories";
 import { useAppLanguage } from "@/contexts/LanguageContext";
 import { useAppTheme } from "@/contexts/ThemeContext";
-import type { ExpenseTrip, ExpenseTripOverview, ExpenseTripSummary, PaymentMethod } from "@/types/models";
+import type { AppLanguage, ExpenseTrip, ExpenseTripOverview, ExpenseTripSummary, PaymentMethod } from "@/types/models";
 import { formatCurrencyFromCents, parseCurrencyToCents } from "@/utils/money";
 
 type DraftTripItem = {
@@ -71,12 +71,7 @@ const COMMON_ITEM_CATEGORIES = [
   "iba_pa",
 ] as const;
 
-const PAYMENT_METHOD_OPTIONS: { label: string; value: PaymentMethod }[] = [
-  { label: "Cash", value: "cash" },
-  { label: "GCash", value: "gcash" },
-  { label: "Maya", value: "maya" },
-  { label: "Utang", value: "utang" },
-];
+const PAYMENT_METHOD_OPTIONS: PaymentMethod[] = ["cash", "gcash", "maya", "utang"];
 
 function createDraftItem(): DraftTripItem {
   return {
@@ -153,7 +148,7 @@ function parseDateInputToIso(value: string) {
   return date.toISOString();
 }
 
-function getPaymentMethodLabel(paymentMethod: PaymentMethod) {
+function getPaymentMethodLabel(paymentMethod: PaymentMethod, language: AppLanguage) {
   if (paymentMethod === "gcash") {
     return "GCash";
   }
@@ -163,7 +158,7 @@ function getPaymentMethodLabel(paymentMethod: PaymentMethod) {
   }
 
   if (paymentMethod === "utang") {
-    return "Utang";
+    return language === "english" ? "Credit" : "Utang";
   }
 
   return "Cash";
@@ -205,6 +200,175 @@ export default function GastosScreen() {
   const [notesInput, setNotesInput] = useState("");
   const [draftItems, setDraftItems] = useState<DraftTripItem[]>(() => [createDraftItem()]);
   const locale = language === "english" ? "en-PH" : "fil-PH";
+  const copy = useMemo(
+    () =>
+      language === "english"
+        ? {
+            addItem: "Add item",
+            addTrip: "Log New Trip",
+            addTripAccessibility: "Log a trip",
+            allTime: "All Time",
+            cancel: "Cancel",
+            date: "Date",
+            delete: "Delete Trip",
+            deleteConfirm: "Delete",
+            deleteFailedMessage: "There was a problem deleting the trip.",
+            deleteFailedTitle: "Trip not deleted",
+            deleteMessage: "This will remove the full trip record together with all attached items and travel costs.",
+            deleteProgress: "Deleting trip...",
+            deleteTitle: "Delete trip?",
+            detailEmptyMessage: "Could not find the details for this trip.",
+            detailEmptyTitle: "No Details",
+            detailFallbackSubtitle: "Details",
+            detailItemsCount: (count: number) => `${count} ${count === 1 ? "item bought" : "items bought"}`,
+            detailLoading: "Loading trip details...",
+            detailTitle: "Trip Details",
+            detailsLoadFailedMessage: "There was a problem loading this trip.",
+            detailsLoadFailedTitle: "Could not load details",
+            emptyMessage: "Once you log a restock trip, the store, date, items, and total cost will appear here.",
+            emptyTitle: "No Trips Logged Yet",
+            enterCategory: (itemName: string) => `Enter a category for ${itemName}.`,
+            enterItemName: "Complete the item name before saving.",
+            formGrandTotal: "Total Before Save",
+            formItemsTotal: "Items",
+            formLoadingHistory: "Loading trip history...",
+            formRunningTotal: "Running Total",
+            formTravelTotal: "Travel",
+            history: "History",
+            historyTitle: "Past Trips",
+            invalidDateMessage: "Use the format YYYY-MM-DD for the trip date.",
+            invalidDateTitle: "Invalid date",
+            invalidMarketMessage: "Enter the store or market name.",
+            invalidMarketTitle: "Missing store",
+            invalidPriceTitle: "Invalid price",
+            invalidQuantityTitle: "Invalid quantity",
+            invalidPrice: (itemName: string) => `Fix the price for ${itemName}.`,
+            invalidQuantity: (itemName: string) => `Fix the quantity for ${itemName}.`,
+            itemCategory: "Category",
+            itemCategoryPlaceholder: "Example: Canned Goods, Rice, Drinks",
+            itemCount: (count: number) => `${count} ${count === 1 ? "item" : "items"}`,
+            itemHint: "Subtotal will appear after quantity and price.",
+            itemIndex: (index: number) => `Item ${index}`,
+            itemName: "Item Name",
+            itemNamePlaceholder: "Example: Sardines, Rice, Noodles",
+            itemQuantity: "Quantity",
+            itemsSectionLabel: "Items Bought",
+            itemsSectionTitle: "Item Breakdown",
+            itemUnitPrice: "Unit Price",
+            listSummary: "Summary",
+            loadFailedMessage: "There was a problem loading trip expenses.",
+            loadFailedTitle: "Could not load trips",
+            marketName: "Store / Market",
+            marketNamePlaceholder: "Example: Puregold Bocaue or Town Market",
+            moreItems: (count: number) => `+${count} more`,
+            newTripSubtitle: "Items, travel costs, and notes for one restock trip",
+            newTripTitle: "New Trip",
+            noItemsMessage: "Add at least one purchased item before saving.",
+            noItemsTitle: "No items yet",
+            notes: "Notes",
+            notesPlaceholder: "Optional note about this trip",
+            otherTravel: "Other Travel Costs",
+            otherTravelLabel: "Other",
+            otherTravelPlaceholder: "Food, helper fee, etc.",
+            paymentMethod: "Payment Method",
+            save: "Save Trip",
+            saveFailedMessage: "There was a problem while saving the trip.",
+            saveFailedTitle: "Trip not saved",
+            saveProgress: "Saving trip...",
+            screenSubtitle: "Log the full restock trip together with items and travel expenses.",
+            screenTitle: "Restock Trips",
+            thisMonth: "This Month",
+            totalCost: "Total Cost",
+            travelCosts: "Travel Expenses",
+            travelSubtitle: "Fare and Other Costs",
+            tripCount: (count: number) => `${count} ${count === 1 ? "trip" : "trips"}`,
+            tripSummaryLine: (dateLabel: string, itemCount: number) =>
+              `${dateLabel} - ${itemCount} ${itemCount === 1 ? "item" : "items"}`,
+          }
+        : {
+            addItem: "Magdagdag ng item",
+            addTrip: "Mag-log ng Bagong Biyahe",
+            addTripAccessibility: "Mag-log ng biyahe",
+            allTime: "Simula Noong Una",
+            cancel: "Huwag",
+            date: "Petsa",
+            delete: "Burahin ang Biyahe",
+            deleteConfirm: "Burahin",
+            deleteFailedMessage: "May problema habang binubura ang biyahe.",
+            deleteFailedTitle: "Hindi nabura ang biyahe",
+            deleteMessage: "Tatanggalin nito ang buong record ng biyahe pati ang lahat ng item at gastos na kasama rito.",
+            deleteProgress: "Binubura ang biyahe...",
+            deleteTitle: "Burahin ang biyahe?",
+            detailEmptyMessage: "Hindi makita ang detalye ng biyahe na ito.",
+            detailEmptyTitle: "Walang Detalye",
+            detailFallbackSubtitle: "Detalye",
+            detailItemsCount: (count: number) => `${count} item na binili`,
+            detailLoading: "Kinukuha ang detalye ng biyahe...",
+            detailTitle: "Detalye ng Biyahe",
+            detailsLoadFailedMessage: "May problema habang kinukuha ang detalye ng biyahe.",
+            detailsLoadFailedTitle: "Hindi makuha ang detalye",
+            emptyMessage:
+              "Kapag may biyahe ka na sa restock, lalabas dito ang tindahan, petsa, mga item, at kabuuang gastos.",
+            emptyTitle: "Wala Pang Nai-log na Biyahe",
+            enterCategory: (itemName: string) => `Maglagay ng category para sa ${itemName}.`,
+            enterItemName: "Kumpletuhin ang pangalan ng item bago mag-save.",
+            formGrandTotal: "Kabuuan Bago I-save",
+            formItemsTotal: "Mga Item",
+            formLoadingHistory: "Inaayos ang kasaysayan ng biyahe...",
+            formRunningTotal: "Tumatakbong Total",
+            formTravelTotal: "Biyahe",
+            history: "Kasaysayan",
+            historyTitle: "Mga Nakaraang Biyahe",
+            invalidDateMessage: "Gamitin ang format na YYYY-MM-DD para sa petsa ng biyahe.",
+            invalidDateTitle: "Invalid na petsa",
+            invalidMarketMessage: "Ilagay ang pangalan ng palengke o tindahan.",
+            invalidMarketTitle: "Kulang ang lugar",
+            invalidPriceTitle: "Invalid na presyo",
+            invalidQuantityTitle: "Invalid na dami",
+            invalidPrice: (itemName: string) => `Ayusin ang presyo para sa ${itemName}.`,
+            invalidQuantity: (itemName: string) => `Ayusin ang dami para sa ${itemName}.`,
+            itemCategory: "Kategorya",
+            itemCategoryPlaceholder: "Halimbawa: Delata, Bigas, Inumin",
+            itemCount: (count: number) => `${count} item`,
+            itemHint: "Hintayin ang quantity at presyo para lumabas ang subtotal.",
+            itemIndex: (index: number) => `Binili ${index}`,
+            itemName: "Pangalan ng Item",
+            itemNamePlaceholder: "Halimbawa: Sardinas, Bigas, Noodles",
+            itemQuantity: "Dami",
+            itemsSectionLabel: "Mga Binili",
+            itemsSectionTitle: "Listahan ng Mga Binili",
+            itemUnitPrice: "Presyo Kada Unit",
+            listSummary: "Buod",
+            loadFailedMessage: "May problema habang kinukuha ang gastos sa biyahe.",
+            loadFailedTitle: "Hindi makuha ang mga biyahe",
+            marketName: "Palengke / Tindahan",
+            marketNamePlaceholder: "Halimbawa: Puregold Bocaue o Palengke ng Bayan",
+            moreItems: (count: number) => `+${count} pa`,
+            newTripSubtitle: "Mga item, pamasahe, at tala para sa isang biyahe sa restock",
+            newTripTitle: "Bagong Biyahe",
+            noItemsMessage: "Maglagay ng kahit isang item na binili bago mag-save.",
+            noItemsTitle: "Walang laman ang listahan",
+            notes: "Mga Tala",
+            notesPlaceholder: "Opsyonal na tala tungkol sa biyaheng ito",
+            otherTravel: "Iba Pang Gastos sa Biyahe",
+            otherTravelLabel: "Iba Pa",
+            otherTravelPlaceholder: "Pagkain, bayad sa tao, atbp.",
+            paymentMethod: "Paraan ng Bayad",
+            save: "I-save ang Biyahe",
+            saveFailedMessage: "May nangyaring problema habang sine-save ang biyahe.",
+            saveFailedTitle: "Hindi na-save ang biyahe",
+            saveProgress: "Sine-save ang biyahe...",
+            screenSubtitle: "I-log ang buong biyahe sa restock kasama ang mga item at gastos sa biyahe.",
+            screenTitle: "Biyahe sa Restock",
+            thisMonth: "Ngayong Buwan",
+            totalCost: "Kabuuang Gastos",
+            travelCosts: "Gastos sa Biyahe",
+            travelSubtitle: "Pamasahe at Iba Pa",
+            tripCount: (count: number) => `${count} biyahe`,
+            tripSummaryLine: (dateLabel: string, itemCount: number) => `${dateLabel} - ${itemCount} item`,
+          },
+    [language],
+  );
 
   const compactCardStyle = {
     gap: theme.spacing.sm,
@@ -245,15 +409,12 @@ export default function GastosScreen() {
       setTrips(nextTrips);
       setItemSuggestions(nextItemSuggestions);
       setCategorySuggestions(productCategories);
-    } catch (error) {
-      Alert.alert(
-        "Hindi makuha ang mga biyahe",
-        error instanceof Error ? error.message : "May problema habang kinukuha ang gastos sa biyahe.",
-      );
+    } catch {
+      Alert.alert(copy.loadFailedTitle, copy.loadFailedMessage);
     } finally {
       setLoading(false);
     }
-  }, [db]);
+  }, [copy.loadFailedMessage, copy.loadFailedTitle, db]);
 
   useFocusEffect(
     useCallback(() => {
@@ -374,17 +535,14 @@ export default function GastosScreen() {
       try {
         const nextTrip = await getExpenseTripById(db, tripId);
         setDetailTrip(nextTrip);
-      } catch (error) {
+      } catch {
         setDetailTripId(null);
-        Alert.alert(
-          "Hindi makuha ang detalye",
-          error instanceof Error ? error.message : "May problema habang kinukuha ang detalye ng biyahe.",
-        );
+        Alert.alert(copy.detailsLoadFailedTitle, copy.detailsLoadFailedMessage);
       } finally {
         setDetailLoading(false);
       }
     },
-    [db],
+    [copy.detailsLoadFailedMessage, copy.detailsLoadFailedTitle, db],
   );
 
   const closeTripDetail = useCallback(() => {
@@ -399,12 +557,12 @@ export default function GastosScreen() {
     const tripDate = parseDateInputToIso(tripDateInput);
 
     if (!tripDate) {
-      Alert.alert("Invalid na petsa", "Gamitin ang format na YYYY-MM-DD para sa petsa ng biyahe.");
+      Alert.alert(copy.invalidDateTitle, copy.invalidDateMessage);
       return;
     }
 
     if (marketNameInput.trim().length < 2) {
-      Alert.alert("Kulang ang lugar", "Ilagay ang pangalan ng palengke o tindahan.");
+      Alert.alert(copy.invalidMarketTitle, copy.invalidMarketMessage);
       return;
     }
 
@@ -417,28 +575,28 @@ export default function GastosScreen() {
     );
 
     if (!activeItems.length) {
-      Alert.alert("Walang laman ang listahan", "Maglagay ng kahit isang item na binili bago mag-save.");
+      Alert.alert(copy.noItemsTitle, copy.noItemsMessage);
       return;
     }
 
     for (const item of activeItems) {
       if (item.itemName.trim().length < 2) {
-        Alert.alert("May kulang na item", "Kumpletuhin ang pangalan ng item bago mag-save.");
+        Alert.alert(copy.noItemsTitle, copy.enterItemName);
         return;
       }
 
       if (!Number.isFinite(item.quantityValue) || item.quantityValue <= 0) {
-        Alert.alert("Invalid na dami", `Ayusin ang dami para sa ${item.itemName}.`);
+        Alert.alert(copy.invalidQuantityTitle, copy.invalidQuantity(item.itemName));
         return;
       }
 
       if (!Number.isFinite(item.unitPriceCentsValue) || item.unitPriceCentsValue <= 0) {
-        Alert.alert("Invalid na presyo", `Ayusin ang presyo para sa ${item.itemName}.`);
+        Alert.alert(copy.invalidPriceTitle, copy.invalidPrice(item.itemName));
         return;
       }
 
       if (item.category.trim().length < 2) {
-        Alert.alert("Kulang ang category", `Maglagay ng category para sa ${item.itemName}.`);
+        Alert.alert(copy.invalidMarketTitle, copy.enterCategory(item.itemName));
         return;
       }
     }
@@ -465,15 +623,13 @@ export default function GastosScreen() {
       setFormVisible(false);
       resetForm();
       await loadTrips();
-    } catch (error) {
-      Alert.alert(
-        "Hindi na-save ang biyahe",
-        error instanceof Error ? error.message : "May nangyaring problema habang sine-save ang biyahe.",
-      );
+    } catch {
+      Alert.alert(copy.saveFailedTitle, copy.saveFailedMessage);
     } finally {
       setSaving(false);
     }
   }, [
+    copy,
     db,
     draftItemRows,
     gasolinaCents,
@@ -493,12 +649,12 @@ export default function GastosScreen() {
     }
 
     Alert.alert(
-      "Burahin ang biyahe?",
-      "Tatanggalin nito ang buong record ng biyahe pati ang lahat ng item at gastos na kasama rito.",
+      copy.deleteTitle,
+      copy.deleteMessage,
       [
-        { text: "Huwag", style: "cancel" },
+        { text: copy.cancel, style: "cancel" },
         {
-          text: "Burahin",
+          text: copy.deleteConfirm,
           style: "destructive",
           onPress: () => {
             void (async () => {
@@ -508,11 +664,8 @@ export default function GastosScreen() {
                 await deleteExpenseTrip(db, detailTrip.id);
                 closeTripDetail();
                 await loadTrips();
-              } catch (error) {
-                Alert.alert(
-                  "Hindi nabura ang biyahe",
-                  error instanceof Error ? error.message : "May problema habang binubura ang biyahe.",
-                );
+              } catch {
+                Alert.alert(copy.deleteFailedTitle, copy.deleteFailedMessage);
               } finally {
                 setDeleting(false);
               }
@@ -521,7 +674,7 @@ export default function GastosScreen() {
         },
       ],
     );
-  }, [closeTripDetail, db, detailTrip, loadTrips]);
+  }, [closeTripDetail, copy, db, detailTrip, loadTrips]);
 
   const formatTripDate = useCallback(
     (dateIso: string, options?: Intl.DateTimeFormatOptions) =>
@@ -535,7 +688,7 @@ export default function GastosScreen() {
     <>
       <SurfaceCard style={[compactCardStyle, { gap: theme.spacing.md }]}>
         <View style={{ gap: theme.spacing.xs }}>
-          <Text style={microLabelStyle}>Buod</Text>
+          <Text style={microLabelStyle}>{copy.listSummary}</Text>
           <Text
             style={{
               color: theme.colors.text,
@@ -551,13 +704,13 @@ export default function GastosScreen() {
         <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
           {[
             {
-              helper: `${overview?.currentMonthTripCount ?? 0} biyahe`,
-              label: "Ngayong Buwan",
+              helper: copy.tripCount(overview?.currentMonthTripCount ?? 0),
+              label: copy.thisMonth,
               value: formatCurrencyFromCents(overview?.currentMonthTotalCents ?? 0),
             },
             {
-              helper: `${overview?.allTimeTripCount ?? 0} lahat`,
-              label: "Simula Noong Una",
+              helper: copy.tripCount(overview?.allTimeTripCount ?? 0),
+              label: copy.allTime,
               value: formatCurrencyFromCents(overview?.allTimeTotalCents ?? 0),
             },
           ].map((card) => (
@@ -599,7 +752,7 @@ export default function GastosScreen() {
 
         <ActionButton
           icon={<Feather color={theme.colors.primaryText} name="shopping-bag" size={16} />}
-          label="Mag-log ng Bagong Biyahe"
+          label={copy.addTrip}
           onPress={openNewTripModal}
         />
       </SurfaceCard>
@@ -613,7 +766,7 @@ export default function GastosScreen() {
           }}
         >
           <View style={{ gap: 2 }}>
-            <Text style={microLabelStyle}>Kasaysayan</Text>
+            <Text style={microLabelStyle}>{copy.history}</Text>
             <Text
               style={{
                 color: theme.colors.text,
@@ -622,10 +775,10 @@ export default function GastosScreen() {
                 fontWeight: "600",
               }}
             >
-              Mga Nakaraang Biyahe
+              {copy.historyTitle}
             </Text>
           </View>
-          {!loading && trips.length > 0 ? <StatusBadge label={`${trips.length} biyahe`} tone="neutral" /> : null}
+          {!loading && trips.length > 0 ? <StatusBadge label={copy.tripCount(trips.length)} tone="neutral" /> : null}
         </View>
 
         {loading ? (
@@ -638,14 +791,14 @@ export default function GastosScreen() {
                 fontSize: 14,
               }}
             >
-              Inaayos ang kasaysayan ng biyahe...
+              {copy.formLoadingHistory}
             </Text>
           </SurfaceCard>
         ) : trips.length === 0 ? (
           <EmptyState
             icon="truck"
-            message="Kapag may biyahe ka na sa restock, lalabas dito ang tindahan, petsa, mga item, at kabuuang gastos."
-            title="Wala Pang Nai-log na Biyahe"
+            message={copy.emptyMessage}
+            title={copy.emptyTitle}
           />
         ) : (
           trips.map((trip) => (
@@ -688,10 +841,13 @@ export default function GastosScreen() {
                           fontSize: 13,
                         }}
                       >
-                        {`${formatTripDate(trip.tripDate)} - ${trip.itemCount} item`}
+                        {copy.tripSummaryLine(formatTripDate(trip.tripDate), trip.itemCount)}
                       </Text>
                     </View>
-                    <StatusBadge label={getPaymentMethodLabel(trip.paymentMethod)} tone={getPaymentMethodTone(trip.paymentMethod)} />
+                    <StatusBadge
+                      label={getPaymentMethodLabel(trip.paymentMethod, language)}
+                      tone={getPaymentMethodTone(trip.paymentMethod)}
+                    />
                   </View>
 
                   <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
@@ -734,7 +890,7 @@ export default function GastosScreen() {
                             fontWeight: "600",
                           }}
                         >
-                          {`+${trip.itemTags.length - 3} pa`}
+                          {copy.moreItems(trip.itemTags.length - 3)}
                         </Text>
                       </View>
                     ) : null}
@@ -748,7 +904,7 @@ export default function GastosScreen() {
                     }}
                   >
                     <View style={{ gap: 2 }}>
-                      <Text style={[microLabelStyle, { color: theme.colors.textSoft }]}>Kabuuang Gastos</Text>
+                      <Text style={[microLabelStyle, { color: theme.colors.textSoft }]}>{copy.totalCost}</Text>
                       <Text
                         style={{
                           color: theme.colors.primary,
@@ -774,11 +930,11 @@ export default function GastosScreen() {
   const renderFormContent = () => (
     <>
       <SurfaceCard style={[compactCardStyle, { gap: theme.spacing.md }]}>
-        <Text style={microLabelStyle}>Tumatakbong Total</Text>
+        <Text style={microLabelStyle}>{copy.formRunningTotal}</Text>
         <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
           {[
-            { label: "Mga Item", value: formatCurrencyFromCents(totalItemsCents) },
-            { label: "Biyahe", value: formatCurrencyFromCents(totalTravelCents) },
+            { label: copy.formItemsTotal, value: formatCurrencyFromCents(totalItemsCents) },
+            { label: copy.formTravelTotal, value: formatCurrencyFromCents(totalTravelCents) },
           ].map((entry) => (
             <View
               key={entry.label}
@@ -814,7 +970,7 @@ export default function GastosScreen() {
             padding: theme.spacing.md,
           }}
         >
-          <Text style={[microLabelStyle, { color: theme.colors.primary }]}>Kabuuan Bago I-save</Text>
+          <Text style={[microLabelStyle, { color: theme.colors.primary }]}>{copy.formGrandTotal}</Text>
           <Text
             style={{
               color: theme.colors.primary,
@@ -829,29 +985,29 @@ export default function GastosScreen() {
       </SurfaceCard>
 
       <InputField
-        label="Petsa"
+        label={copy.date}
         onChangeText={setTripDateInput}
         placeholder="YYYY-MM-DD"
         value={tripDateInput}
       />
 
       <InputField
-        label="Palengke / Tindahan"
+        label={copy.marketName}
         onChangeText={setMarketNameInput}
-        placeholder="Halimbawa: Puregold Bocaue o Palengke ng Bayan"
+        placeholder={copy.marketNamePlaceholder}
         value={marketNameInput}
       />
 
       <View style={{ gap: theme.spacing.sm }}>
-        <Text style={microLabelStyle}>Paraan ng Bayad</Text>
+        <Text style={microLabelStyle}>{copy.paymentMethod}</Text>
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.sm }}>
           {PAYMENT_METHOD_OPTIONS.map((option) => {
-            const active = paymentMethod === option.value;
+            const active = paymentMethod === option;
 
             return (
               <Pressable
-                key={option.value}
-                onPress={() => setPaymentMethod(option.value)}
+                key={option}
+                onPress={() => setPaymentMethod(option)}
                 style={({ pressed }) => ({
                   backgroundColor: active ? theme.colors.primaryMuted : theme.colors.surface,
                   borderColor: active ? theme.colors.primary : theme.colors.border,
@@ -870,7 +1026,7 @@ export default function GastosScreen() {
                     fontWeight: "600",
                   }}
                 >
-                  {option.label}
+                  {getPaymentMethodLabel(option, language)}
                 </Text>
               </Pressable>
             );
@@ -887,20 +1043,20 @@ export default function GastosScreen() {
           }}
         >
           <View style={{ gap: 2 }}>
-            <Text style={microLabelStyle}>Mga Binili</Text>
+            <Text style={microLabelStyle}>{copy.itemsSectionLabel}</Text>
             <Text
               style={{
                 color: theme.colors.text,
                 fontFamily: theme.typography.display,
-              fontSize: 20,
-              fontWeight: "600",
-            }}
-          >
-              Listahan ng Mga Binili
+                fontSize: 20,
+                fontWeight: "600",
+              }}
+            >
+              {copy.itemsSectionTitle}
             </Text>
           </View>
           <Pressable
-            accessibilityLabel="Magdagdag ng item"
+            accessibilityLabel={copy.addItem}
             onPress={() => setDraftItems((current) => [...current, createDraftItem()])}
             style={({ pressed }) => ({
               alignItems: "center",
@@ -934,10 +1090,10 @@ export default function GastosScreen() {
                   justifyContent: "space-between",
                 }}
               >
-                <Text style={microLabelStyle}>{`Binili ${index + 1}`}</Text>
+                <Text style={microLabelStyle}>{copy.itemIndex(index + 1)}</Text>
                 {draftItems.length > 1 ? (
                   <Pressable
-                    accessibilityLabel="Tanggalin ang item"
+                    accessibilityLabel={language === "english" ? "Remove item" : "Tanggalin ang item"}
                     onPress={() => handleRemoveItem(item.id)}
                     style={({ pressed }) => ({
                       opacity: pressed ? 0.7 : 1,
@@ -949,9 +1105,9 @@ export default function GastosScreen() {
               </View>
 
               <InputField
-                label="Pangalan ng Item"
+                label={copy.itemName}
                 onChangeText={(value) => updateDraftItem(item.id, "itemName", value)}
-                placeholder="Halimbawa: Sardinas, Bigas, Noodles"
+                placeholder={copy.itemNamePlaceholder}
                 value={item.itemName}
               />
 
@@ -992,7 +1148,7 @@ export default function GastosScreen() {
                 <View style={{ flex: 1 }}>
                   <InputField
                     keyboardType="decimal-pad"
-                    label="Dami"
+                    label={copy.itemQuantity}
                     onChangeText={(value) => updateDraftItem(item.id, "quantity", value)}
                     placeholder="1"
                     value={item.quantity}
@@ -1001,7 +1157,7 @@ export default function GastosScreen() {
                 <View style={{ flex: 1 }}>
                   <InputField
                     keyboardType="decimal-pad"
-                    label="Presyo Kada Unit"
+                    label={copy.itemUnitPrice}
                     onChangeText={(value) => updateDraftItem(item.id, "unitPrice", value)}
                     placeholder="0.00"
                     value={item.unitPrice}
@@ -1010,9 +1166,9 @@ export default function GastosScreen() {
               </View>
 
               <InputField
-                label="Kategorya"
+                label={copy.itemCategory}
                 onChangeText={(value) => updateDraftItem(item.id, "category", value)}
-                placeholder="Halimbawa: Delata, Bigas, Inumin"
+                placeholder={copy.itemCategoryPlaceholder}
                 value={item.category}
               />
 
@@ -1069,7 +1225,7 @@ export default function GastosScreen() {
                     ? `${formatQuantityLabel(item.quantityValue)} x ${formatCurrencyFromCents(
                         Number.isFinite(item.unitPriceCentsValue) && item.unitPriceCentsValue > 0 ? item.unitPriceCentsValue : 0,
                       )}`
-                    : "Hintayin ang quantity at presyo para lumabas ang subtotal."}
+                    : copy.itemHint}
                 </Text>
                 <Text
                   style={{
@@ -1089,7 +1245,7 @@ export default function GastosScreen() {
 
       <SurfaceCard style={[compactCardStyle, { gap: theme.spacing.md }]}>
         <View style={{ gap: 2 }}>
-          <Text style={microLabelStyle}>Gastos sa Biyahe</Text>
+          <Text style={microLabelStyle}>{copy.travelCosts}</Text>
           <Text
             style={{
               color: theme.colors.text,
@@ -1098,38 +1254,38 @@ export default function GastosScreen() {
               fontWeight: "600",
             }}
           >
-            Pamasahe at Iba Pa
+            {copy.travelSubtitle}
           </Text>
         </View>
 
         <InputField
           keyboardType="decimal-pad"
-          label="Pamasahe"
+          label={language === "english" ? "Fare" : "Pamasahe"}
           onChangeText={setPamasaheInput}
           placeholder="0.00"
           value={pamasaheInput}
         />
         <InputField
           keyboardType="decimal-pad"
-          label="Gasolina"
+          label={language === "english" ? "Gas" : "Gasolina"}
           onChangeText={setGasolinaInput}
           placeholder="0.00"
           value={gasolinaInput}
         />
         <InputField
           keyboardType="decimal-pad"
-          label="Iba Pang Gastos sa Biyahe"
+          label={copy.otherTravel}
           onChangeText={setOtherTravelInput}
-          placeholder="Pagkain, bayad sa tao, atbp."
+          placeholder={copy.otherTravelPlaceholder}
           value={otherTravelInput}
         />
       </SurfaceCard>
 
       <InputField
-        label="Mga Tala"
+        label={copy.notes}
         multiline
         onChangeText={setNotesInput}
-        placeholder="Opsyonal na tala tungkol sa biyaheng ito"
+        placeholder={copy.notesPlaceholder}
         value={notesInput}
       />
     </>
@@ -1147,7 +1303,7 @@ export default function GastosScreen() {
               fontSize: 14,
             }}
           >
-            Kinukuha ang detalye ng biyahe...
+            {copy.detailLoading}
           </Text>
         </SurfaceCard>
       ) : detailTrip ? (
@@ -1160,7 +1316,10 @@ export default function GastosScreen() {
                 justifyContent: "space-between",
               }}
             >
-              <StatusBadge label={getPaymentMethodLabel(detailTrip.paymentMethod)} tone={getPaymentMethodTone(detailTrip.paymentMethod)} />
+              <StatusBadge
+                label={getPaymentMethodLabel(detailTrip.paymentMethod, language)}
+                tone={getPaymentMethodTone(detailTrip.paymentMethod)}
+              />
               <Text
                 style={{
                   color: theme.colors.textMuted,
@@ -1174,9 +1333,9 @@ export default function GastosScreen() {
 
             <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
               {[
-                { label: "Mga Item", value: formatCurrencyFromCents(detailTrip.totalItemsCents) },
-                { label: "Biyahe", value: formatCurrencyFromCents(detailTrip.totalTravelCents) },
-                { label: "Kabuuan", value: formatCurrencyFromCents(detailTrip.grandTotalCents) },
+                { label: copy.formItemsTotal, value: formatCurrencyFromCents(detailTrip.totalItemsCents) },
+                { label: copy.formTravelTotal, value: formatCurrencyFromCents(detailTrip.totalTravelCents) },
+                { label: language === "english" ? "Total" : "Kabuuan", value: formatCurrencyFromCents(detailTrip.grandTotalCents) },
               ].map((entry) => (
                 <View
                   key={entry.label}
@@ -1193,7 +1352,10 @@ export default function GastosScreen() {
                   <Text style={[microLabelStyle, { color: theme.colors.textSoft }]}>{entry.label}</Text>
                   <Text
                     style={{
-                      color: entry.label === "Kabuuan" ? theme.colors.primary : theme.colors.text,
+                      color:
+                        entry.label === (language === "english" ? "Total" : "Kabuuan")
+                          ? theme.colors.primary
+                          : theme.colors.text,
                       fontFamily: theme.typography.display,
                       fontSize: 18,
                       fontWeight: "600",
@@ -1208,7 +1370,7 @@ export default function GastosScreen() {
 
           <SurfaceCard style={[compactCardStyle, { gap: theme.spacing.md }]}>
             <View style={{ gap: 2 }}>
-              <Text style={microLabelStyle}>Listahan ng Mga Binili</Text>
+              <Text style={microLabelStyle}>{copy.itemsSectionTitle}</Text>
               <Text
                 style={{
                   color: theme.colors.text,
@@ -1217,7 +1379,7 @@ export default function GastosScreen() {
                   fontWeight: "600",
                 }}
               >
-                {`${detailTrip.items.length} item na binili`}
+                {copy.detailItemsCount(detailTrip.items.length)}
               </Text>
             </View>
 
@@ -1279,7 +1441,7 @@ export default function GastosScreen() {
 
           <SurfaceCard style={[compactCardStyle, { gap: theme.spacing.md }]}>
             <View style={{ gap: 2 }}>
-              <Text style={microLabelStyle}>Gastos sa Biyahe</Text>
+              <Text style={microLabelStyle}>{copy.travelCosts}</Text>
               <Text
                 style={{
                   color: theme.colors.text,
@@ -1288,14 +1450,14 @@ export default function GastosScreen() {
                   fontWeight: "600",
                 }}
               >
-                Pamasahe at Iba Pa
+                {copy.travelSubtitle}
               </Text>
             </View>
 
             {[
-              { label: "Pamasahe", value: detailTrip.pamasaheCents },
-              { label: "Gasolina", value: detailTrip.gasolinaCents },
-              { label: "Iba Pa", value: detailTrip.otherTravelCents },
+              { label: language === "english" ? "Fare" : "Pamasahe", value: detailTrip.pamasaheCents },
+              { label: language === "english" ? "Gas" : "Gasolina", value: detailTrip.gasolinaCents },
+              { label: copy.otherTravelLabel, value: detailTrip.otherTravelCents },
             ].map((entry) => (
               <View
                 key={entry.label}
@@ -1330,7 +1492,7 @@ export default function GastosScreen() {
 
           {detailTrip.notes?.trim() ? (
             <SurfaceCard style={[compactCardStyle, { gap: theme.spacing.sm }]}>
-              <Text style={microLabelStyle}>Mga Tala</Text>
+              <Text style={microLabelStyle}>{copy.notes}</Text>
               <Text
                 style={{
                   color: theme.colors.text,
@@ -1347,8 +1509,8 @@ export default function GastosScreen() {
       ) : (
         <EmptyState
           icon="file-text"
-          message="Hindi makita ang detalye ng biyahe na ito."
-          title="Walang Detalye"
+          message={copy.detailEmptyMessage}
+          title={copy.detailEmptyTitle}
         />
       )}
     </>
@@ -1359,7 +1521,7 @@ export default function GastosScreen() {
       <Screen
         rightSlot={
           <Pressable
-            accessibilityLabel="Mag-log ng biyahe"
+            accessibilityLabel={copy.addTripAccessibility}
             hitSlop={6}
             onPress={openNewTripModal}
             style={({ pressed }) => ({
@@ -1375,8 +1537,8 @@ export default function GastosScreen() {
             <Feather color={theme.colors.primaryText} name="plus" size={18} />
           </Pressable>
         }
-        subtitle="I-log ang buong biyahe sa restock kasama ang mga item at gastos sa biyahe."
-        title="Biyahe sa Restock"
+        subtitle={copy.screenSubtitle}
+        title={copy.screenTitle}
       >
         {renderHistoryContent()}
       </Screen>
@@ -1387,15 +1549,15 @@ export default function GastosScreen() {
           <View style={{ gap: theme.spacing.sm }}>
             <ActionButton
               disabled={saving}
-              label={saving ? "Sine-save ang biyahe..." : "I-save ang Biyahe"}
+              label={saving ? copy.saveProgress : copy.save}
               onPress={() => void handleSaveTrip()}
             />
           </View>
         }
         fullHeight
         onClose={closeNewTripModal}
-        subtitle="Mga item, pamasahe, at tala para sa isang biyahe sa restock"
-        title="Bagong Biyahe"
+        subtitle={copy.newTripSubtitle}
+        title={copy.newTripTitle}
         visible={formVisible}
       >
         {renderFormContent()}
@@ -1407,7 +1569,7 @@ export default function GastosScreen() {
             <View style={{ gap: theme.spacing.sm }}>
               <ActionButton
                 disabled={deleting}
-                label={deleting ? "Binubura ang biyahe..." : "Burahin ang Biyahe"}
+                label={deleting ? copy.deleteProgress : copy.delete}
                 onPress={handleDeleteTrip}
                 variant="danger"
               />
@@ -1416,8 +1578,12 @@ export default function GastosScreen() {
         }
         fullHeight
         onClose={closeTripDetail}
-        subtitle={detailTrip ? formatTripDate(detailTrip.tripDate, { day: "numeric", month: "long", year: "numeric" }) : "Detalye"}
-        title={detailTrip?.marketName ?? "Detalye ng Biyahe"}
+        subtitle={
+          detailTrip
+            ? formatTripDate(detailTrip.tripDate, { day: "numeric", month: "long", year: "numeric" })
+            : copy.detailFallbackSubtitle
+        }
+        title={detailTrip?.marketName ?? copy.detailTitle}
         visible={detailTripId !== null}
       >
         {renderDetailContent()}

@@ -40,8 +40,8 @@ export function EmptyState({ icon, title, message }: EmptyStateProps) {
         style={{
           color: theme.colors.text,
           fontFamily: theme.typography.display,
-          fontSize: 22,
-          fontWeight: "600",
+          fontSize: theme.typography.scale.h1.fontSize,
+          lineHeight: theme.typography.scale.h1.lineHeight,
           textAlign: "center",
         }}
       >
@@ -51,8 +51,8 @@ export function EmptyState({ icon, title, message }: EmptyStateProps) {
         style={{
           color: theme.colors.textMuted,
           fontFamily: theme.typography.body,
-          fontSize: 14,
-          lineHeight: 22,
+          fontSize: theme.typography.scale.bodySm.fontSize,
+          lineHeight: theme.typography.scale.bodySm.lineHeight,
           textAlign: "center",
         }}
       >

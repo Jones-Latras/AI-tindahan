@@ -31,10 +31,8 @@ export function InputField({
         style={{
           color: theme.colors.textMuted,
           fontFamily: theme.typography.label,
-          fontSize: 11,
-          fontWeight: "600",
-          letterSpacing: 0.8,
-          textTransform: "uppercase",
+          fontSize: theme.typography.scale.label.fontSize,
+          lineHeight: theme.typography.scale.label.lineHeight,
         }}
       >
         {label}
@@ -54,7 +52,8 @@ export function InputField({
           borderWidth: 1,
           color: theme.colors.text,
           fontFamily: theme.typography.body,
-          fontSize: 14,
+          fontSize: theme.typography.scale.body.fontSize,
+          lineHeight: theme.typography.scale.body.lineHeight,
           minHeight: multiline ? 96 : 52,
           paddingHorizontal: theme.spacing.md,
           paddingTop: multiline ? theme.spacing.md : 0,
@@ -66,8 +65,8 @@ export function InputField({
           style={{
             color: theme.colors.danger,
             fontFamily: theme.typography.body,
-            fontSize: 12,
-            lineHeight: 18,
+            fontSize: theme.typography.scale.caption.fontSize,
+            lineHeight: theme.typography.scale.caption.lineHeight,
           }}
         >
           {error}

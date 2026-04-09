@@ -127,9 +127,9 @@ export function Screen({
                 {
                   color: theme.colors.text,
                   fontFamily: theme.typography.display,
-                  fontSize: 30,
-                  fontWeight: "600",
-                  letterSpacing: 0.3,
+                  fontSize: theme.typography.scale.display.fontSize,
+                  letterSpacing: -1,
+                  lineHeight: theme.typography.scale.display.lineHeight,
                 },
                 titleStyle,
               ]}
@@ -140,12 +140,9 @@ export function Screen({
               <Text
                 style={{
                   color: theme.colors.textMuted,
-                  fontFamily: theme.typography.label,
-                  fontSize: 11,
-                  fontWeight: "600",
-                  letterSpacing: 0.8,
-                  lineHeight: 16,
-                  textTransform: "uppercase",
+                  fontFamily: theme.typography.body,
+                  fontSize: theme.typography.scale.bodySm.fontSize,
+                  lineHeight: theme.typography.scale.bodySm.lineHeight,
                 }}
               >
                 {subtitle}

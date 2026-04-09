@@ -9,7 +9,9 @@ import { ActivityIndicator, Animated, Easing, Text, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import {
   Inter_400Regular,
+  Inter_500Medium,
   Inter_600SemiBold,
+  Inter_700Bold,
 } from "@expo-google-fonts/inter";
 
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
@@ -318,7 +320,6 @@ function AppShell() {
                         color: theme.colors.text,
                         fontFamily: theme.typography.display,
                         fontSize: 26,
-                        fontWeight: "600",
                         left: 1,
                         letterSpacing: -0.8,
                         position: "absolute",
@@ -332,7 +333,6 @@ function AppShell() {
                         color: theme.colors.primary,
                         fontFamily: theme.typography.display,
                         fontSize: 25,
-                        fontWeight: "600",
                         letterSpacing: -0.8,
                         opacity: 0.98,
                         position: "absolute",
@@ -374,10 +374,10 @@ function AppShell() {
               <Text
                 style={{
                   color: theme.colors.textMuted,
-                  fontFamily: theme.typography.body,
-                  fontSize: 10,
-                  fontWeight: "600",
-                  letterSpacing: 1.8,
+                  fontFamily: theme.typography.label,
+                  fontSize: theme.typography.scale.micro.fontSize,
+                  letterSpacing: 1.2,
+                  lineHeight: theme.typography.scale.micro.lineHeight,
                   textTransform: "uppercase",
                 }}
               >
@@ -387,8 +387,8 @@ function AppShell() {
                 style={{
                   color: theme.colors.text,
                   fontFamily: theme.typography.display,
-                  fontSize: 24,
-                  fontWeight: "600",
+                  fontSize: theme.typography.scale.h1.fontSize,
+                  lineHeight: theme.typography.scale.h1.lineHeight,
                   letterSpacing: 0.1,
                 }}
               >
@@ -410,10 +410,10 @@ function AppShell() {
           <Text
             style={{
               color: theme.colors.textMuted,
-              fontFamily: theme.typography.body,
-              fontSize: 12,
-              fontWeight: "600",
-              letterSpacing: 1.2,
+              fontFamily: theme.typography.label,
+              fontSize: theme.typography.scale.caption.fontSize,
+              letterSpacing: 0.8,
+              lineHeight: theme.typography.scale.caption.lineHeight,
               paddingLeft: 4,
               textTransform: "uppercase",
             }}
@@ -441,7 +441,8 @@ function AppShell() {
           style={{
             color: theme.colors.textMuted,
             fontFamily: theme.typography.body,
-            fontSize: 14,
+            fontSize: theme.typography.scale.bodySm.fontSize,
+            lineHeight: theme.typography.scale.bodySm.lineHeight,
           }}
         >
           {t("app.preparing")}
@@ -522,7 +523,9 @@ function AppShell() {
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
     Inter_400Regular,
+    Inter_500Medium,
     Inter_600SemiBold,
+    Inter_700Bold,
   });
 
   if (!fontsLoaded && !fontError) {

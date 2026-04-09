@@ -36,10 +36,8 @@ export function StatusBadge({ label, tone = "neutral" }: StatusBadgeProps) {
         style={{
           color: palette.color,
           fontFamily: theme.typography.label,
-          fontSize: 11,
-          fontWeight: "600",
-          letterSpacing: 0.8,
-          textTransform: "uppercase",
+          fontSize: theme.typography.scale.label.fontSize,
+          lineHeight: theme.typography.scale.label.lineHeight,
         }}
       >
         {label}
