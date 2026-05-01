@@ -11,6 +11,7 @@ import {
 } from "@/utils/supabase";
 
 const LAST_SYNC_KEY_PREFIX = "tindahan.last-sync";
+const EXPENSE_BUDGETS_TABLE = "expense_budgets";
 
 type PendingProductImageRow = {
   id: number;
@@ -44,6 +45,24 @@ function getProductImageUploadFormat(uri: string) {
 function buildProductImagePath(storeId: string, productSyncId: string, extension: string) {
   const suffix = Math.random().toString(36).slice(2, 8);
   return `${storeId}/products/${productSyncId}/${Date.now()}-${suffix}.${extension}`;
+}
+
+function isMissingSupabaseTableError(error: unknown, table: string) {
+  const message = error instanceof Error ? error.message : String(error);
+  const normalizedMessage = message.toLowerCase();
+
+  return (
+    normalizedMessage.includes(table.toLowerCase()) &&
+    (normalizedMessage.includes("schema cache") || normalizedMessage.includes("could not find the table"))
+  );
+}
+
+function appendCloudSchemaWarnings(message: string, warnings: string[]) {
+  if (warnings.length === 0) {
+    return message;
+  }
+
+  return `${message}\n\n${warnings.join("\n")}`;
 }
 
 async function requireStoreScope(db: SQLiteDatabase) {
@@ -141,6 +160,7 @@ async function uploadPendingProductImages(db: SQLiteDatabase, storeId: string) {
 export async function syncToCloud(db: SQLiteDatabase) {
   const { storeId } = await requireStoreScope(db);
   let pushed = 0;
+  const warnings: string[] = [];
 
   await uploadPendingProductImages(db, storeId);
 
@@ -403,9 +423,19 @@ export async function syncToCloud(db: SQLiteDatabase) {
     WHERE synced = 0`,
   );
   if (expenseBudgets.length > 0) {
-    await supabaseUpsert("expense_budgets", expenseBudgets.map((row) => ({ store_id: storeId, ...row })));
-    await db.runAsync("UPDATE expense_budgets SET synced = 1 WHERE synced = 0");
-    pushed += expenseBudgets.length;
+    try {
+      await supabaseUpsert(EXPENSE_BUDGETS_TABLE, expenseBudgets.map((row) => ({ store_id: storeId, ...row })));
+      await db.runAsync("UPDATE expense_budgets SET synced = 1 WHERE synced = 0");
+      pushed += expenseBudgets.length;
+    } catch (error) {
+      if (!isMissingSupabaseTableError(error, EXPENSE_BUDGETS_TABLE)) {
+        throw error;
+      }
+
+      warnings.push(
+        `Skipped expense budgets because the Supabase "${EXPENSE_BUDGETS_TABLE}" table is missing. Run scripts/supabase-setup.sql in your Supabase SQL editor, then sync again.`,
+      );
+    }
   }
 
   const restockLists = await db.getAllAsync<Record<string, unknown>>(
@@ -450,14 +480,17 @@ export async function syncToCloud(db: SQLiteDatabase) {
   }
 
   const timestamp = await setLastSyncTime(storeId);
-  return pushed > 0
+  const message = pushed > 0
     ? `Na-backup na! ${pushed} records pushed to your store cloud backup. (${timestamp})`
     : `Up to date na. Wala nang bagong data i-backup. (${timestamp})`;
+
+  return appendCloudSchemaWarnings(message, warnings);
 }
 
 export async function restoreFromCloud(db: SQLiteDatabase) {
   const { storeId } = await requireStoreScope(db);
   let restored = 0;
+  const warnings: string[] = [];
 
   await db.execAsync("PRAGMA foreign_keys = OFF;");
 
@@ -653,35 +686,45 @@ export async function restoreFromCloud(db: SQLiteDatabase) {
       restored++;
     }
 
-    const expenseBudgets = await supabaseSelectAll("expense_budgets", { store_id: storeId });
-    for (const expenseBudget of expenseBudgets) {
-      const row = expenseBudget as Record<string, unknown>;
-      await db.runAsync(
-        `INSERT INTO expense_budgets (
-          category,
-          amount_cents,
-          budget_month,
-          created_at,
-          updated_at,
-          sync_id,
-          synced
-        )
-        VALUES (?, ?, ?, ?, ?, ?, 1)
-        ON CONFLICT(sync_id) DO UPDATE SET
-          category = excluded.category,
-          amount_cents = excluded.amount_cents,
-          budget_month = excluded.budget_month,
-          created_at = excluded.created_at,
-          updated_at = excluded.updated_at,
-          synced = 1`,
-        row.category as string,
-        row.amount_cents as number,
-        row.budget_month as string,
-        row.created_at as string,
-        row.updated_at as string,
-        row.sync_id as string,
+    try {
+      const expenseBudgets = await supabaseSelectAll(EXPENSE_BUDGETS_TABLE, { store_id: storeId });
+      for (const expenseBudget of expenseBudgets) {
+        const row = expenseBudget as Record<string, unknown>;
+        await db.runAsync(
+          `INSERT INTO expense_budgets (
+            category,
+            amount_cents,
+            budget_month,
+            created_at,
+            updated_at,
+            sync_id,
+            synced
+          )
+          VALUES (?, ?, ?, ?, ?, ?, 1)
+          ON CONFLICT(sync_id) DO UPDATE SET
+            category = excluded.category,
+            amount_cents = excluded.amount_cents,
+            budget_month = excluded.budget_month,
+            created_at = excluded.created_at,
+            updated_at = excluded.updated_at,
+            synced = 1`,
+          row.category as string,
+          row.amount_cents as number,
+          row.budget_month as string,
+          row.created_at as string,
+          row.updated_at as string,
+          row.sync_id as string,
+        );
+        restored++;
+      }
+    } catch (error) {
+      if (!isMissingSupabaseTableError(error, EXPENSE_BUDGETS_TABLE)) {
+        throw error;
+      }
+
+      warnings.push(
+        `Skipped expense budgets because the Supabase "${EXPENSE_BUDGETS_TABLE}" table is missing. Run scripts/supabase-setup.sql in your Supabase SQL editor, then restore again.`,
       );
-      restored++;
     }
 
     const restockLists = await supabaseSelectAll("restock_lists", { store_id: storeId });
@@ -1060,9 +1103,11 @@ export async function restoreFromCloud(db: SQLiteDatabase) {
   }
 
   const timestamp = await setLastSyncTime(storeId);
-  return restored > 0
+  const message = restored > 0
     ? `Na-restore na! ${restored} records downloaded from your store backup. (${timestamp})`
     : "Walang data sa cloud para sa active store.";
+
+  return appendCloudSchemaWarnings(message, warnings);
 }
 
 export async function getLastSyncTime(db: SQLiteDatabase) {

@@ -328,7 +328,12 @@ async function callGeminiWithFallback<T>(
       return parsePayload(payload);
     } catch (error) {
       const message = getGeminiErrorMessage(error) || `Unknown error for ${model}.`;
+      const failure = parseGeminiFailure(error);
       failures.push(message);
+
+      if (failure.kind === "network" || failure.kind === "config") {
+        break;
+      }
 
       if (model !== GEMINI_MODELS[GEMINI_MODELS.length - 1]) {
         console.warn(`Gemini model fallback from ${model}: ${message}`);

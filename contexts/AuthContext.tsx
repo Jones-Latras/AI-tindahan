@@ -98,7 +98,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let mounted = true;
 
-    void refresh().catch(() => {
+    void refresh().catch((error) => {
+      console.warn("Auth refresh failed:", error instanceof Error ? error.message : error);
       if (mounted) {
         setIsReady(true);
       }
@@ -111,7 +112,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     const unsubscribe = subscribeToAuthChanges(() => {
-      void refresh().catch(() => {
+      void refresh().catch((error) => {
+        console.warn("Auth state refresh failed:", error instanceof Error ? error.message : error);
         if (mounted) {
           setIsReady(true);
         }

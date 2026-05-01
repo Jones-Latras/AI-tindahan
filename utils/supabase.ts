@@ -10,6 +10,41 @@ const PRODUCT_IMAGE_BUCKET = "product-images";
 
 type FilterValue = string | number | boolean | null;
 
+function getRequestUrl(input: RequestInfo | URL) {
+  if (typeof input === "string") {
+    return input;
+  }
+
+  if (input instanceof URL) {
+    return input.toString();
+  }
+
+  return input.url;
+}
+
+function getRequestMethod(input: RequestInfo | URL, init?: RequestInit) {
+  if (init?.method) {
+    return init.method;
+  }
+
+  if (typeof input === "object" && "method" in input && input.method) {
+    return input.method;
+  }
+
+  return "GET";
+}
+
+const supabaseFetch: typeof fetch = async (input, init) => {
+  try {
+    return await fetch(input, init);
+  } catch (error) {
+    const method = getRequestMethod(input, init);
+    const url = getRequestUrl(input);
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Supabase network request failed (${method} ${url}): ${message}`);
+  }
+};
+
 const secureStoreAdapter = {
   getItem: (key: string) => SecureStore.getItemAsync(key),
   setItem: (key: string, value: string) => SecureStore.setItemAsync(key, value),
@@ -35,6 +70,9 @@ export function getSupabaseClient() {
         detectSessionInUrl: false,
         persistSession: true,
         storage: secureStoreAdapter,
+      },
+      global: {
+        fetch: supabaseFetch,
       },
     });
   }
@@ -180,8 +218,9 @@ export async function invokeSupabaseFunction<T = unknown>(
     throw new Error("Sign in before calling Supabase functions.");
   }
 
+  const url = `${FUNCTIONS_URL}/${functionName}`;
   const runRequest = async (token: string) =>
-    fetch(`${FUNCTIONS_URL}/${functionName}`, {
+    fetch(url, {
       method: "POST",
       headers: {
         apikey: supabaseAnonKey,
@@ -192,16 +231,29 @@ export async function invokeSupabaseFunction<T = unknown>(
       signal: options?.signal,
     });
 
-  let response = await runRequest(accessToken);
-  let rawBody = await response.text();
+  let response: Response;
+  let rawBody: string;
+
+  try {
+    response = await runRequest(accessToken);
+    rawBody = await response.text();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Network request to Supabase function "${functionName}" failed (${url}): ${message}`);
+  }
 
   if (response.status === 401 && rawBody.includes("Invalid JWT")) {
     const { data, error } = await client.auth.refreshSession();
 
     if (!error && data.session?.access_token) {
       accessToken = data.session.access_token;
-      response = await runRequest(accessToken);
-      rawBody = await response.text();
+      try {
+        response = await runRequest(accessToken);
+        rawBody = await response.text();
+      } catch (requestError) {
+        const message = requestError instanceof Error ? requestError.message : String(requestError);
+        throw new Error(`Network request to Supabase function "${functionName}" failed (${url}): ${message}`);
+      }
     }
   }
 
